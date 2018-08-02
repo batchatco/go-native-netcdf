@@ -2,6 +2,8 @@
 
 ## Introduction
 
+NOTE WELL: this is just the beginning of some documentation, code will arrive soon.
+
 This is a native implementation of NetCDF in the Go language.  It only supports the CDF
 file format at the current time. HDF5 support is forthcoming.
 

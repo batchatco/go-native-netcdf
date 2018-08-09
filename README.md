@@ -1,6 +1,11 @@
 # go-native-netcdf
 
+## Note
+
+This is a work in progress.
+
 ## Introduction
+
 
 This is a native implementation of NetCDF in the Go language.  It only supports the CDF
 file format at the current time. HDF5 support may be available sometime in the future.

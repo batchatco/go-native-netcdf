@@ -1,7 +1,5 @@
 package cdf
 
-// TODO: remove this test when we get test coverage otherwise
-//
 // 1. Need test of invalid fill value (slice instead of scalar)
 // 2. Need test of V1 file.
 // 3. Need test of null in name.

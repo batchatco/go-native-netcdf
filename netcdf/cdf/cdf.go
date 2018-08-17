@@ -95,6 +95,7 @@ func (cdf *CDF) ListVariables() []string {
 func (cdf *CDF) ListSubgroups() []string {
 	return nil
 }
+
 func SetLogLevel(level int) {
 	logger.SetLogLevel(level)
 }

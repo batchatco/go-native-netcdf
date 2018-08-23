@@ -364,7 +364,7 @@ func ncGen(t *testing.T, fileNameNoExt string) string {
 	return genName
 }
 
-const errorNcGen = "ncgen command from netcdf package not found"
+const errorNcGen = "Error running ncgen command from netcdf package"
 
 func TestOneDim(t *testing.T) {
 	// Set up
@@ -459,7 +459,7 @@ func TestUnlimited(t *testing.T) {
 			[]int32{12, 34},
 			[]string{"d1"},
 			nilMap}},
-		// ncgen doesn't generate int64 properly, using double to get 8-byte
+		// ncgen doesn't generate int64 properly for cdf v5, using double to get 8-byte
 		// scalars instead.
 		{"dx1", api.Variable{
 			[]float64{5.6e100, 7.8e100},

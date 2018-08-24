@@ -382,7 +382,7 @@ func TestOneDim(t *testing.T) {
 	defer nc.Close()
 
 	// Test reading what ncgen wrote
-	vr, err := nc.GetVariable("c")
+	vr, err := nc.GetVariable("c2")
 	if err != nil {
 		t.Error(err)
 		return
@@ -390,6 +390,22 @@ func TestOneDim(t *testing.T) {
 	if vr.Dimensions[0] != "d1" {
 		t.Error("dimension missing")
 		return
+	}
+	if vr.Values.(string) != "b" {
+		t.Error("expected \"b\"")
+	}
+
+	vr, err = nc.GetVariable("c")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if len(vr.Dimensions) != 0 {
+		t.Error("expected zero dimensions")
+		return
+	}
+	if vr.Values.(string) != "a" {
+		t.Error("expected \"a\"")
 	}
 
 	// Next test: write the file ourselves this time
@@ -400,9 +416,17 @@ func TestOneDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	err = cw.AddVar("c2", api.Variable{
+		Values:     "b",
+		Dimensions: []string{"d1"},
+		Attributes: nil})
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	err = cw.AddVar("c", api.Variable{
 		Values:     "a",
-		Dimensions: []string{"d1"},
+		Dimensions: nil,
 		Attributes: nil})
 	if err != nil {
 		t.Error(err)
@@ -420,7 +444,7 @@ func TestOneDim(t *testing.T) {
 		return
 	}
 	defer nc2.Close()
-	vr, err = nc2.GetVariable("c")
+	vr, err = nc2.GetVariable("c2")
 	if err != nil {
 		t.Error(err)
 		return
@@ -428,6 +452,21 @@ func TestOneDim(t *testing.T) {
 	if len(vr.Dimensions) != 1 || vr.Dimensions[0] != "d1" {
 		t.Error("dimension missing")
 		return
+	}
+	if vr.Values.(string) != "b" {
+		t.Error("expected \"b\"")
+	}
+	vr, err = nc2.GetVariable("c")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if len(vr.Dimensions) != 0 {
+		t.Error("expected zero dimensions")
+		return
+	}
+	if vr.Values.(string) != "a" {
+		t.Error("expected \"a\"")
 	}
 }
 

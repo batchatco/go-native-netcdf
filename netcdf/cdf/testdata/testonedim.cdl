@@ -2,7 +2,9 @@ netcdf onedim {
 dimensions:
 	d1 = 1;
 variables:
-	char c(d1);
+	char c;
+	char c2(d1);
 data:
-  c = "a";
+  c = 'a';
+  c2 = 'b';
 }

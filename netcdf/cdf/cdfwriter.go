@@ -2,7 +2,6 @@ package cdf
 
 // TODO: write unlimited dimension
 // TODO: too many dimensions error
-// TODO: validate names by regular expression
 // TODO: api for dimensions in case of unlimited and zero length
 import (
 	"bufio"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 	"github.com/batchatco/go-native-netcdf/netcdf/thrower"
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 )
 
 type countedWriter struct {
@@ -51,6 +51,7 @@ var (
 	ErrUnlimitedMustBeFirst = errors.New("Unlimited dimension must be first")
 	ErrEmptySlice           = errors.New("Empty slice encountered")
 	ErrDimensionSize        = errors.New("Dimension doesn't match size")
+	ErrInvalidName          = errors.New("Invalid name")
 )
 
 func (c *countedWriter) Count() int64 {
@@ -365,13 +366,35 @@ func (cw *CDFWriter) scalarKind(goKind reflect.Kind) int {
 	return typeNone
 }
 
-func (cw *CDFWriter) AddGlobalAttrs(attrs api.AttributeMap) {
+func hasValidNames(am api.AttributeMap) bool {
+	if am == nil {
+		return true
+	}
+	for _, key := range am.Keys() {
+		if !util.IsValidNetCDFName(key) {
+			return false
+		}
+	}
+	return true
+}
+
+func (cw *CDFWriter) AddGlobalAttrs(attrs api.AttributeMap) error {
+	if !hasValidNames(attrs) {
+		return ErrInvalidName
+	}
 	cw.globalAttrs = attrs
+	return nil
 }
 
 func (cw *CDFWriter) AddVar(name string, vr api.Variable) (err error) {
 	defer thrower.RecoverError(&err)
 
+	if !util.IsValidNetCDFName(name) {
+		return ErrInvalidName
+	}
+	if !hasValidNames(vr.Attributes) {
+		return ErrInvalidName
+	}
 	// TODO: check name for validity
 	cw.checkV5Attributes(vr.Attributes)
 	dimLengths, ty := cw.getDimLengths(vr.Values, vr.Dimensions)

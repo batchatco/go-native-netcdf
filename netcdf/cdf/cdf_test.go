@@ -289,6 +289,17 @@ func ndims(t *testing.T, val interface{}) int {
 	return n
 }
 
+func closeCW(t *testing.T, cw **CDFWriter) {
+	t.Helper()
+	if *cw == nil {
+		return
+	}
+	err := (*cw).Close()
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestTypes(t *testing.T) {
 	fileName := "testdata.nc"
 	_ = os.Remove(fileName)
@@ -298,6 +309,7 @@ func TestTypes(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw)
 	for i, v := range values {
 		var om *util.OrderedMap
 		var err error
@@ -318,11 +330,8 @@ func TestTypes(t *testing.T) {
 			t.Error(v.name, err)
 		}
 	}
-	err = cw.Close()
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	cw.Close()
+	cw = nil
 	nc, err := NewCDF(fileName)
 	if err != nil {
 		t.Error(err)
@@ -416,6 +425,7 @@ func TestOneDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw)
 	err = cw.AddVar("c2", api.Variable{
 		Values:     "b",
 		Dimensions: []string{"d1"},
@@ -432,12 +442,8 @@ func TestOneDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	err = cw.Close()
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
+	cw.Close()
+	cw = nil
 	nc2, err := NewCDF(genName)
 	if err != nil {
 		t.Error(err)
@@ -586,6 +592,7 @@ func TestFill(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw)
 	for i, v := range fills {
 		val := reflect.ValueOf(v.val.Values)
 		om, err := util.NewOrderedMap(
@@ -604,11 +611,8 @@ func TestFill(t *testing.T) {
 			return
 		}
 	}
-	err = cw.Close()
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	cw.Close()
+	cw = nil
 	nc, err := NewCDF(fileName)
 	if err != nil {
 		t.Error(err)
@@ -632,18 +636,20 @@ func TestGlobalAttributes(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw)
 	attributes, err := util.NewOrderedMap([]string{"gattr"},
 		map[string]interface{}{"gattr": 3.14})
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	cw.AddGlobalAttrs(attributes)
-	err = cw.Close()
+	err = cw.AddGlobalAttrs(attributes)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	cw.Close()
+	cw = nil
 	nc, err := NewCDF(fileName)
 	if err != nil {
 		t.Error(err)
@@ -679,6 +685,7 @@ func TestGroup(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw)
 	for _, v := range fills {
 		err = cw.AddVar(v.name, v.val)
 		if err != nil {
@@ -686,11 +693,8 @@ func TestGroup(t *testing.T) {
 			return
 		}
 	}
-	err = cw.Close()
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	cw.Close()
+	cw = nil
 	nc, err := NewCDF(fileName)
 	if err != nil {
 		t.Error(err)
@@ -735,6 +739,7 @@ func TestEmpty(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw)
 	empty := make([]int32, 0)
 	err = cw.AddVar("empty", api.Variable{
 		Values:     empty,
@@ -750,11 +755,6 @@ func TestEmpty(t *testing.T) {
 		Attributes: nil})
 	if err != ErrEmptySlice {
 		t.Error("empty slices are not allowed", err)
-		return
-	}
-	err = cw.Close()
-	if err != nil {
-		t.Error(err)
 		return
 	}
 }
@@ -780,6 +780,7 @@ func TestString(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw)
 	err = cw.AddVar("string", api.Variable{
 		Values:     []string{"short", "abcdefg"},
 		Dimensions: nil,
@@ -788,11 +789,8 @@ func TestString(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	err = cw.Close()
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	cw.Close()
+	cw = nil
 	nc, err := NewCDF(fileName)
 	if err != nil {
 		t.Error(err)
@@ -825,6 +823,7 @@ func TestMakeDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw)
 	err = cw.AddVar("ivec", api.Variable{
 		Values:     []int32{0, 1, 2},
 		Dimensions: nil,
@@ -833,11 +832,8 @@ func TestMakeDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	err = cw.Close()
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	cw.Close()
+	cw = nil
 	nc, err := NewCDF(fileName)
 	if err != nil {
 		t.Error(err)
@@ -858,5 +854,47 @@ func TestMakeDim(t *testing.T) {
 	}
 	if vr.Dimensions[0] != "_dimid_0" {
 		t.Error("wrong name for dimension", vr.Dimensions)
+	}
+}
+
+func TestInvalidName(t *testing.T) {
+	fileName := "testinvalidname.nc"
+	_ = os.Remove(fileName)
+	cw, err := NewCDFWriter(fileName)
+	defer os.Remove(fileName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer closeCW(t, &cw)
+	attributes, err := util.NewOrderedMap([]string{"not valid "},
+		map[string]interface{}{"not valid ": 3.14})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	// invalid variable name
+	err = cw.AddVar("not/valid", api.Variable{
+		Values:     []int32{222},
+		Dimensions: []string{"d1"},
+		Attributes: nil})
+	if err != ErrInvalidName {
+		t.Error("Invalid name not detected", err)
+		return
+	}
+	// Invalid local attribute name
+	err = cw.AddVar("valid", api.Variable{
+		Values:     []int32{222},
+		Dimensions: []string{"d1"},
+		Attributes: attributes})
+	if err != ErrInvalidName {
+		t.Error("Invalid name not detected", err)
+		return
+	}
+	// Invalid global attribute name
+	err = cw.AddGlobalAttrs(attributes)
+	if err != ErrInvalidName {
+		t.Error(err)
+		return
 	}
 }

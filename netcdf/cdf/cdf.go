@@ -493,6 +493,8 @@ func (cdf *CDF) Close() {
 	}
 }
 
+// TODO: use hdf5 file refcounting
+// TODO: fake groups with "/" in names
 func (cdf *CDF) GetGroup(group string) (g api.Group, err error) {
 	if group != "" && group != "/" {
 		return nil, ErrNotFound

@@ -3,6 +3,7 @@ package util
 import (
 	"log"
 	"os"
+	"runtime/debug"
 	"sync"
 )
 
@@ -100,9 +101,11 @@ func (l *Logger) Errorf(format string, v ...interface{}) {
 }
 
 func (l *Logger) Fatal(v ...interface{}) {
+	log.Print(string(debug.Stack()))
 	l.output(LevelFatal, l.logger.Fatalln, v...)
 }
 
 func (l *Logger) Fatalf(format string, v ...interface{}) {
+	log.Print(string(debug.Stack()))
 	l.outputf(LevelFatal, l.logger.Fatalf, format, v...)
 }

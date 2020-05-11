@@ -67,6 +67,9 @@ func RecoverError(err *error) {
 	if r := recover(); r != nil {
 		th, has := r.(thrown)
 		if has {
+			if err == nil {
+				return
+			}
 			*err = th.toError()
 			return
 		}

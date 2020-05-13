@@ -14,8 +14,8 @@ import (
 	"reflect"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
-	"github.com/batchatco/go-native-netcdf/netcdf/thrower"
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
+	"github.com/batchatco/go-thrower"
 )
 
 const (

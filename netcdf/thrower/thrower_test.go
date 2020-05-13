@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	myError    = errors.New("my error")
-	notMyError = errors.New("not my error")
+	errMine   = errors.New("my error")
+	errTheirs = errors.New("not my error")
 )
 
 func helper(t *testing.T, e error, notError error) (err error) {
@@ -18,23 +18,23 @@ func helper(t *testing.T, e error, notError error) (err error) {
 }
 
 func TestThrow(t *testing.T) {
-	err := helper(t, myError, notMyError)
-	if err != myError {
+	err := helper(t, errMine, errTheirs)
+	if err != errMine {
 		t.Error("Didn't catch my error", err)
 	}
 }
 
 func TestThrowIfNil(t *testing.T) {
-	myError := errors.New("my error")
-	err := helper(t, nil, myError)
-	if err != myError {
+	errMine := errors.New("my error")
+	err := helper(t, nil, errMine)
+	if err != errMine {
 		t.Error("Was not supposed to throw an error")
 	}
 }
 
 func TestThrowIfError(t *testing.T) {
-	err := helper(t, myError, notMyError)
-	if err != myError {
+	err := helper(t, errMine, errTheirs)
+	if err != errMine {
 		t.Error("Didn't catch my error", err)
 	}
 }
@@ -50,7 +50,7 @@ func TestDisabled(t *testing.T) {
 		}()
 
 		defer RecoverError(&err)
-		Throw(myError) // should cause a panic that doesn't get caught.
+		Throw(errMine) // should cause a panic that doesn't get caught.
 		return nil
 	}()
 	ReEnableCatching()
@@ -62,7 +62,7 @@ func TestDisabled(t *testing.T) {
 		}()
 
 		defer RecoverError(&err)
-		Throw(myError) // should cause a panic that gets caught.
+		Throw(errMine) // should cause a panic that gets caught.
 		return nil
 	}()
 }
@@ -82,7 +82,7 @@ func TestOtherPanic(t *testing.T) {
 }
 
 func TestString(t *testing.T) {
-	th := newThrown(myError)
+	th := newThrown(errMine)
 	s := th.Error()
 	if s != "my error" {
 		t.Error("wrong string", s)

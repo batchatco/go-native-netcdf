@@ -57,7 +57,7 @@ type variable struct {
 
 type CDF struct {
 	fname        string
-	file         *os.File
+	file         io.ReadSeeker
 	fileRefCount int
 	version      uint8
 	numRecs      uint64 // 64-bits in V5
@@ -136,7 +136,7 @@ func read64(r io.Reader) uint64 {
 	return data
 }
 
-func seekTo(f *os.File, offset int64) {
+func seekTo(f io.Seeker, offset int64) {
 	_, err := f.Seek(offset, os.SEEK_SET)
 	thrower.ThrowIfError(err)
 }
@@ -482,13 +482,18 @@ func (cdf *CDF) readHeader() (err error) {
 	return nil
 }
 
+// Close the CDF & release resources.
+//
+// Close will close the underlying reader if it implements io.Closer.
 func (cdf *CDF) Close() {
 	if cdf.fileRefCount <= 0 {
 		panic("refcount issue")
 	}
 	cdf.fileRefCount--
 	if cdf.fileRefCount == 0 {
-		cdf.file.Close()
+		if f, ok := cdf.file.(io.Closer); ok {
+			f.Close()
+		}
 		cdf.file = nil
 	}
 }
@@ -508,11 +513,21 @@ func NewCDF(fname string) (api.Group, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &CDF{fname: fname, file: file, fileRefCount: 1}
-	err = c.readHeader()
+	c, err := NewFrom(file)
 	if err != nil {
 		file.Close()
+	}
+	return c, err
+}
+
+func NewFrom(file io.ReadSeeker) (api.Group, error) {
+	c := &CDF{file: file, fileRefCount: 1}
+	err := c.readHeader()
+	if err != nil {
 		return nil, err
+	}
+	if f, ok := file.(*os.File); ok {
+		c.fname = f.Name()
 	}
 	return api.Group(c), nil
 }
@@ -628,7 +643,7 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 
 // Seeks and read bytes
 type seekReader struct {
-	file   *os.File
+	file   io.ReadSeeker
 	offset int64
 	reader io.Reader
 }
@@ -641,7 +656,7 @@ func (sr *seekReader) Read(p []byte) (int, error) {
 	return sr.reader.Read(p)
 }
 
-func newSeekReader(file *os.File, offset int64) io.Reader {
+func newSeekReader(file io.ReadSeeker, offset int64) io.Reader {
 	return &seekReader{file: file, offset: offset, reader: nil}
 }
 

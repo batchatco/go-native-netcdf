@@ -1,4 +1,4 @@
-// Package CDF supports v1 (classic), v2 (64-bit offset) and v5 file formats.
+// Package cdf supports v1 (classic), v2 (64-bit offset) and v5 file formats.
 package cdf
 
 // TODO: api for dimensions in case of unlimited
@@ -57,7 +57,7 @@ type variable struct {
 
 type CDF struct {
 	fname        string
-	file         *os.File
+	file         io.ReadSeeker
 	fileRefCount int
 	version      uint8
 	numRecs      uint64 // 64-bits in V5
@@ -71,17 +71,17 @@ type CDF struct {
 const maxDimensions = 1024
 
 var (
-	ErrNotCDF                = errors.New("Not a CDF file")
-	ErrUnsupportedVersion    = errors.New("Unsupported CDF version")
-	ErrUnknownVersion        = errors.New("Unknown CDF version")
-	ErrUnknownType           = errors.New("Unknown type")
-	ErrCorruptedFile         = errors.New("Corrupted file")
-	ErrNotFound              = errors.New("Not found")
-	ErrNoStreamingDimensions = errors.New("Streaming dimensions not supported")
-	ErrInternal              = errors.New("Internal error")
-	ErrDuplicateVariable     = errors.New("Duplicate variable")
-	ErrTooManyDimensions     = errors.New("Too many dimensions")
-	ErrFillValue             = errors.New("Fill value not a scalar")
+	ErrNotCDF                = errors.New("not a CDF file")
+	ErrUnsupportedVersion    = errors.New("unsupported CDF version")
+	ErrUnknownVersion        = errors.New("unknown CDF version")
+	ErrUnknownType           = errors.New("unknown type")
+	ErrCorruptedFile         = errors.New("corrupted file")
+	ErrNotFound              = errors.New("not found")
+	ErrNoStreamingDimensions = errors.New("streaming dimensions not supported")
+	ErrInternal              = errors.New("internal error")
+	ErrDuplicateVariable     = errors.New("duplicate variable")
+	ErrTooManyDimensions     = errors.New("too many dimensions")
+	ErrFillValue             = errors.New("fill value not a scalar")
 )
 
 var (
@@ -136,7 +136,7 @@ func read64(r io.Reader) uint64 {
 	return data
 }
 
-func seekTo(f *os.File, offset int64) {
+func seekTo(f io.Seeker, offset int64) {
 	_, err := f.Seek(offset, os.SEEK_SET)
 	thrower.ThrowIfError(err)
 }
@@ -461,7 +461,6 @@ func (cdf *CDF) readHeader() (err error) {
 			logger.Error("No record variables, size should be zero", cdf.recSize)
 			thrower.Throw(ErrInternal)
 		}
-		break
 	case 1:
 		firstLen := uint64(firstRecordVar.vsize)
 		switch firstRecordVar.vType {
@@ -482,13 +481,18 @@ func (cdf *CDF) readHeader() (err error) {
 	return nil
 }
 
+// Close the CDF & release resources.
+//
+// Close will close the underlying reader if it implements io.Closer.
 func (cdf *CDF) Close() {
 	if cdf.fileRefCount <= 0 {
 		panic("refcount issue")
 	}
 	cdf.fileRefCount--
 	if cdf.fileRefCount == 0 {
-		cdf.file.Close()
+		if f, ok := cdf.file.(io.Closer); ok {
+			f.Close()
+		}
 		cdf.file = nil
 	}
 }
@@ -503,16 +507,26 @@ func (cdf *CDF) GetGroup(group string) (g api.Group, err error) {
 	return api.Group(cdf), nil
 }
 
-func NewCDF(fname string) (api.Group, error) {
+func Open(fname string) (api.Group, error) {
 	file, err := os.Open(fname)
 	if err != nil {
 		return nil, err
 	}
-	c := &CDF{fname: fname, file: file, fileRefCount: 1}
-	err = c.readHeader()
+	c, err := New(file)
 	if err != nil {
 		file.Close()
+	}
+	return c, err
+}
+
+func New(file io.ReadSeeker) (api.Group, error) {
+	c := &CDF{file: file, fileRefCount: 1}
+	err := c.readHeader()
+	if err != nil {
 		return nil, err
+	}
+	if f, ok := file.(*os.File); ok {
+		c.fname = f.Name()
 	}
 	return api.Group(c), nil
 }
@@ -623,12 +637,15 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 	if converted == nil {
 		thrower.Throw(ErrInternal)
 	}
-	return &api.Variable{converted, dimNames, varFound.attrs}, nil
+	return &api.Variable{
+		Values:     converted,
+		Dimensions: dimNames,
+		Attributes: varFound.attrs}, nil
 }
 
 // Seeks and read bytes
 type seekReader struct {
-	file   *os.File
+	file   io.ReadSeeker
 	offset int64
 	reader io.Reader
 }
@@ -641,7 +658,7 @@ func (sr *seekReader) Read(p []byte) (int, error) {
 	return sr.reader.Read(p)
 }
 
-func newSeekReader(file *os.File, offset int64) io.Reader {
+func newSeekReader(file io.ReadSeeker, offset int64) io.Reader {
 	return &seekReader{file: file, offset: offset, reader: nil}
 }
 

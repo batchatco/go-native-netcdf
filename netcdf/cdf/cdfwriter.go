@@ -41,17 +41,17 @@ type CDFWriter struct {
 	dimLengths  map[string]int64
 	dimNames    []string
 	dimIds      map[string]int64
-	nextId      int64
+	nextID      int64
 	version     int8
 }
 
 type char byte
 
 var (
-	ErrUnlimitedMustBeFirst = errors.New("Unlimited dimension must be first")
-	ErrEmptySlice           = errors.New("Empty slice encountered")
-	ErrDimensionSize        = errors.New("Dimension doesn't match size")
-	ErrInvalidName          = errors.New("Invalid name")
+	ErrUnlimitedMustBeFirst = errors.New("unlimited dimension must be first")
+	ErrEmptySlice           = errors.New("empty slice encountered")
+	ErrDimensionSize        = errors.New("dimension doesn't match size")
+	ErrInvalidName          = errors.New("invalid name")
 )
 
 func (c *countedWriter) Count() int64 {
@@ -407,7 +407,7 @@ func (cw *CDFWriter) AddVar(name string, vr api.Variable) (err error) {
 			if ty == typeChar && i == len(dimLengths)-1 {
 				dimName = fmt.Sprintf("_stringlen_%s", name)
 			} else {
-				dimName = fmt.Sprintf("_dimid_%d", cw.nextId)
+				dimName = fmt.Sprintf("_dimid_%d", cw.nextID)
 			}
 			vr.Dimensions = append(vr.Dimensions, dimName)
 		}
@@ -420,9 +420,9 @@ func (cw *CDFWriter) AddVar(name string, vr api.Variable) (err error) {
 			}
 		} else {
 			cw.dimLengths[dimName] = dimLengths[i]
-			cw.dimIds[dimName] = cw.nextId
+			cw.dimIds[dimName] = cw.nextID
 			cw.dimNames = append(cw.dimNames, dimName)
-			cw.nextId++
+			cw.nextID++
 		}
 	}
 	cw.vars = append(cw.vars, savedVar{name, vr.Values, ty, dimLengths,
@@ -458,6 +458,7 @@ func (cw *CDFWriter) writeAttributes(attrs api.AttributeMap) {
 			cw.writeNumber(int64(len(vals)))
 			writeAny(cw.bf, vals)
 			cw.pad()
+
 		case []int16, int16:
 			write32(cw.bf, typeShort)
 			vals, ok := v.([]int16)
@@ -571,8 +572,8 @@ func (cw *CDFWriter) writeVar(saved *savedVar) {
 	cw.writeNumber(int64(len(saved.dimLengths)))
 	for i := range saved.dimLengths {
 		name := saved.dimNames[i]
-		dimId := cw.dimIds[name]
-		cw.writeNumber(int64(dimId))
+		dimID := cw.dimIds[name]
+		cw.writeNumber(int64(dimID))
 	}
 	cw.writeAttributes(saved.attrs)
 
@@ -701,8 +702,7 @@ func writeBytes(w io.Writer, bytes []byte) {
 }
 
 func write8(w io.Writer, i int8) {
-	var data byte
-	data = byte(i)
+	data := byte(i)
 	err := binary.Write(w, binary.BigEndian, &data)
 	thrower.ThrowIfError(err)
 }
@@ -746,7 +746,7 @@ func (cw *CDFWriter) writeAll() {
 	if len(cw.dimLengths) > 0 {
 		write32(cw.bf, fieldDimension)
 		cw.writeNumber(int64(len(cw.dimLengths)))
-		for dimid := int64(0); dimid < cw.nextId; dimid++ {
+		for dimid := int64(0); dimid < cw.nextID; dimid++ {
 			name := cw.dimNames[dimid]
 			cw.writeName(name)
 			cw.writeNumber(cw.dimLengths[name])
@@ -771,7 +771,7 @@ func (cw *CDFWriter) writeAll() {
 	}
 }
 
-func NewCDFWriter(fileName string) (*CDFWriter, error) {
+func OpenWriter(fileName string) (*CDFWriter, error) {
 	file, err := os.Create(fileName)
 	if err != nil {
 		return nil, err
@@ -785,7 +785,7 @@ func NewCDFWriter(fileName string) (*CDFWriter, error) {
 		dimLengths:  make(map[string]int64),
 		dimIds:      make(map[string]int64),
 		dimNames:    nil,
-		nextId:      0,
+		nextID:      0,
 		version:     2}
 	return cw, nil
 }

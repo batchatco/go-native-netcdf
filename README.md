@@ -11,7 +11,7 @@ This is a native implementation of NetCDF in the Go language.  It only supports 
 file format at the current time. HDF5 support may be available sometime in the future.
 
 The API is mainly intended for reading files, though there is support for writing CDF files.
-To read files, please use the generic *NewNetCDF4()* interface, rather than any lower layer interfaces.
+To read files, please use the generic *Open* and *New()* interface, rather than any lower layer interfaces.
 
 The goal of the API is to be easy to use, and some functionality may be compromised.
 
@@ -19,7 +19,8 @@ The goal of the API is to be easy to use, and some functionality may be compromi
 
 Most types are what you what you would expect and map one-to-one to Go language types.
 The only tricky ones are *bytes, unsigned bytes and strings*.  The NetCDF *byte* type is
-signed and the Go language *byte* type is unsigned, so the proper mapping is for NetCDF *bytes* to become Go *int8s*.  Conversely, the NetCDF *ubyte* becomes the Go *uint8*.
+signed and the Go language *byte* type is unsigned, so the proper mapping is for NetCDF *bytes*
+to become Go *int8s*.  Conversely, the NetCDF *ubyte* becomes the Go *uint8*.
 
 The *char* type in NetCDF is meant for strings, but *char* is a scalar in NetCDF and Go has
 no scalar character type, just a *string* type to represent character strings.  So, the
@@ -53,32 +54,32 @@ to NetCDF.  *int32* should be used instead.
 package main
 
 import (
-	"fmt"
+    "fmt"
 
-	"github.com/batchatco/go-native-netcdf/netcdf"
+    "github.com/batchatco/go-native-netcdf/netcdf"
 )
 func main() {
-	// Open the file
-	nc, err := netcdf.NewNetCDF4("data.nc")
-	if err != nil {
-		panic(err)
-	}
-	defer nc.Close()
+    // Open the file
+    nc, err := netcdf.Open("data.nc")
+    if err != nil {
+        panic(err)
+    }
+    defer nc.Close()
 
-	// Read the NetCDF variable from the file
-	vr, _ := nc.GetVariable("latitude")
-	if vr == nil {
-		panic("latitude variable not found")
-	}
-	
-	// Cast the data into a Go type we can use
-	lats, has := vr.Values.([]float32)
-	if !has {
-		panic("latitude data not found")
-	}
-	for i, lat := range lats {
-		fmt.Println(i, lat)
-        }
+    // Read the NetCDF variable from the file
+    vr, _ := nc.GetVariable("latitude")
+    if vr == nil {
+        panic("latitude variable not found")
+    }
+
+    // Cast the data into a Go type we can use
+    lats, has := vr.Values.([]float32)
+    if !has {
+        panic("latitude data not found")
+    }
+    for i, lat := range lats {
+        fmt.Println(i, lat)
+    }
 }
 
 ```
@@ -95,37 +96,31 @@ import (
 )
 
 func main() {
-	cw, err := cdf.NewCDFWriter("newdata.nc")
-	if err != nil {
-		panic(err)
-	}
+    cw, err := cdf.OpenWriter("newdata.nc")
+    if err != nil {
+        panic(err)
+    }
 
-	latitude := []float32{32.5, 64.1}
-	dimensions := []string{"sounding_id"}
-	attributes, err := util.NewOrderedMap(
-		[]string{"comment"},
-		map[string]interface{}{"comment": "Latitude indexed by sounding ID"})
-	if err != nil {
-		panic(err)
-	}
-	variable := api.Variable{
-		latitude,
-		dimensions,
-		attributes}
-	err = cw.AddVar("latitude", variable)
-	if err != nil {
-		panic(err)
-	}
-	// Close will write out the data and close the file
-	err = cw.Close()
-	if err != nil {
-		panic(err)
-	}
+    latitude := []float32{32.5, 64.1}
+    dimensions := []string{"sounding_id"}
+    attributes, err := util.NewOrderedMap(
+        []string{"comment"},
+        map[string]interface{}{"comment": "Latitude indexed by sounding ID"})
+    if err != nil {
+        panic(err)
+    }
+    variable := api.Variable{
+        latitude,
+        dimensions,
+        attributes}
+    err = cw.AddVar("latitude", variable)
+    if err != nil {
+        panic(err)
+    }
+    // Close will write out the data and close the file
+    err = cw.Close()
+    if err != nil {
+        panic(err)
+    }
 }
 ```
-
-
-
-
-
-

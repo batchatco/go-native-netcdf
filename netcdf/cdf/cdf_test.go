@@ -303,7 +303,7 @@ func closeCW(t *testing.T, cw **CDFWriter) {
 func TestTypes(t *testing.T) {
 	fileName := "testdata.nc"
 	_ = os.Remove(fileName)
-	cw, err := NewCDFWriter(fileName)
+	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)
@@ -332,7 +332,7 @@ func TestTypes(t *testing.T) {
 	}
 	cw.Close()
 	cw = nil
-	nc, err := NewCDF(fileName)
+	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -383,7 +383,7 @@ func TestOneDim(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
-	nc, err := NewCDF(genName)
+	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -419,7 +419,7 @@ func TestOneDim(t *testing.T) {
 
 	// Next test: write the file ourselves this time
 	_ = os.Remove(genName)
-	cw, err := NewCDFWriter(genName)
+	cw, err := OpenWriter(genName)
 	defer os.Remove(genName)
 	if err != nil {
 		t.Error(err)
@@ -444,7 +444,7 @@ func TestOneDim(t *testing.T) {
 	}
 	cw.Close()
 	cw = nil
-	nc2, err := NewCDF(genName)
+	nc2, err := Open(genName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -485,7 +485,7 @@ func TestUnlimited(t *testing.T) {
 	}
 	defer os.Remove(genName)
 
-	nc, err := NewCDF(genName)
+	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -522,7 +522,7 @@ func TestUnlimitedEmpty(t *testing.T) {
 		return
 	}
 	defer os.Remove(genName)
-	nc, err := NewCDF(genName)
+	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -545,7 +545,7 @@ func TestUnlimitedOnlyBytes(t *testing.T) {
 		return
 	}
 	defer os.Remove(genName)
-	nc, err := NewCDF(genName)
+	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -568,7 +568,7 @@ func TestUnlimitedOnlyShorts(t *testing.T) {
 		return
 	}
 	defer os.Remove(genName)
-	nc, err := NewCDF(genName)
+	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -586,7 +586,7 @@ func TestUnlimitedOnlyShorts(t *testing.T) {
 func TestFill(t *testing.T) {
 	fileName := "testfill.nc"
 	_ = os.Remove(fileName)
-	cw, err := NewCDFWriter(fileName)
+	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)
@@ -613,7 +613,7 @@ func TestFill(t *testing.T) {
 	}
 	cw.Close()
 	cw = nil
-	nc, err := NewCDF(fileName)
+	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -630,7 +630,7 @@ func TestFill(t *testing.T) {
 func TestGlobalAttributes(t *testing.T) {
 	fileName := "testgattr.nc"
 	_ = os.Remove(fileName)
-	cw, err := NewCDFWriter(fileName)
+	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)
@@ -650,7 +650,7 @@ func TestGlobalAttributes(t *testing.T) {
 	}
 	cw.Close()
 	cw = nil
-	nc, err := NewCDF(fileName)
+	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -679,7 +679,7 @@ func TestGlobalAttributes(t *testing.T) {
 func TestGroup(t *testing.T) {
 	fileName := "testgroup.nc"
 	_ = os.Remove(fileName)
-	cw, err := NewCDFWriter(fileName)
+	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)
@@ -695,7 +695,7 @@ func TestGroup(t *testing.T) {
 	}
 	cw.Close()
 	cw = nil
-	nc, err := NewCDF(fileName)
+	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -733,7 +733,7 @@ func TestGroup(t *testing.T) {
 func TestEmpty(t *testing.T) {
 	fileName := "testempty.nc"
 	_ = os.Remove(fileName)
-	cw, err := NewCDFWriter(fileName)
+	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)
@@ -774,7 +774,7 @@ func getString(s string) string {
 func TestString(t *testing.T) {
 	fileName := "teststring.nc"
 	_ = os.Remove(fileName)
-	cw, err := NewCDFWriter(fileName)
+	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)
@@ -791,7 +791,7 @@ func TestString(t *testing.T) {
 	}
 	cw.Close()
 	cw = nil
-	nc, err := NewCDF(fileName)
+	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -817,7 +817,7 @@ func TestString(t *testing.T) {
 func TestMakeDim(t *testing.T) {
 	fileName := "testdim.nc"
 	_ = os.Remove(fileName)
-	cw, err := NewCDFWriter(fileName)
+	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)
@@ -834,7 +834,7 @@ func TestMakeDim(t *testing.T) {
 	}
 	cw.Close()
 	cw = nil
-	nc, err := NewCDF(fileName)
+	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -860,7 +860,7 @@ func TestMakeDim(t *testing.T) {
 func TestInvalidName(t *testing.T) {
 	fileName := "testinvalidname.nc"
 	_ = os.Remove(fileName)
-	cw, err := NewCDFWriter(fileName)
+	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)

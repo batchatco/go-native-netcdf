@@ -41,7 +41,7 @@ func Open(fname string) (api.Group, error) {
 }
 
 // New is like Open, but takes an opened file instead of a filename.
-// If New return no error, it has taken ownership of the file.  Otherwise, it
+// If New returns no error, it has taken ownership of the file.  Otherwise, it
 // is up to the caller to close the file.
 func New(file io.ReadSeeker) (api.Group, error) {
 	kind, err := getKind(file)

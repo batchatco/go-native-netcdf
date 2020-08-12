@@ -35,194 +35,196 @@ func init() {
 var (
 	values = keyValList{
 		{"str", api.Variable{
-			"a",
-			nil,
-			nil}},
+			Values:     "a",
+			Dimensions: nil,
+			Attributes: nil}},
 		{"strx1", api.Variable{
-			"a",
-			[]string{"dim"},
-			nil}},
+			Values:     "a",
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"strx2", api.Variable{
-			[]string{"ab", "cd"},
-			[]string{"d1", "d2"},
-			nil}},
+			Values:     []string{"ab", "cd"},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"f32", api.Variable{
-			float32(-10.1),
-			nil,
-			nil}},
+			Values:     float32(-10.1),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"f32x1", api.Variable{
-			[]float32{-10.1},
-			[]string{"dim"},
-			nil}},
+			Values:     []float32{-10.1},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"f32x2", api.Variable{
-			[][]float32{[]float32{-10.1, 10.1},
-				[]float32{-20.2, 20.2}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]float32{{-10.1, 10.1},
+				{-20.2, 20.2}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"f64", api.Variable{
-			float64(-10.1),
-			nil,
-			nil}},
+			Values:     float64(-10.1),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"f64x1", api.Variable{
-			[]float64{-10.1},
-			[]string{"dim"},
-			nil}},
+			Values:     []float64{-10.1},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"f64x2", api.Variable{
-			[][]float64{[]float64{-10.1, 10.1},
-				[]float64{-20.2, 20.2}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]float64{[]float64{-10.1, 10.1},
+				{-20.2, 20.2}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"i8", api.Variable{
-			int8(-10),
-			nil,
-			nil}},
+			Values:     int8(-10),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"i8x1", api.Variable{
-			[]int8{-10},
-			[]string{"dim"},
-			nil}},
+			Values:     []int8{-10},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"i8x2", api.Variable{
-			[][]int8{[]int8{-10, 10},
-				[]int8{-20, 20}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]int8{{-10, 10},
+				{-20, 20}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"ui8", api.Variable{
-			uint8(10),
-			nil,
-			nil}},
+			Values:     uint8(10),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"ui8x1", api.Variable{
-			[]uint8{10},
-			[]string{"dim"},
-			nil}},
+			Values:     []uint8{10},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"ui8x2", api.Variable{
-			[][]uint8{[]uint8{10, 20},
-				[]uint8{20, 30}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]uint8{{10, 20},
+				{20, 30}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"i16", api.Variable{
-			int16(-10000),
-			nil,
-			nil}},
+			Values:     int16(-10000),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"i16x1", api.Variable{
-			[]int16{-10000},
-			[]string{"dim"},
-			nil}},
+			Values:     []int16{-10000},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"i16x2", api.Variable{
-			[][]int16{[]int16{-10000, 10000},
-				[]int16{-20000, 20000}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]int16{{-10000, 10000},
+				{-20000, 20000}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"ui16", api.Variable{
-			uint16(10000),
-			nil,
-			nil}},
+			Values:     uint16(10000),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"ui16x1", api.Variable{
-			[]uint16{10000},
-			[]string{"dim"},
-			nil}},
+			Values:     []uint16{10000},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"ui16x2", api.Variable{
-			[][]uint16{[]uint16{10000, 20000},
-				[]uint16{20000, 30000}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]uint16{{10000, 20000},
+				{20000, 30000}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"i32", api.Variable{
-			int32(-10000000),
-			nil,
-			nil}},
+			Values:     int32(-10000000),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"i32x1", api.Variable{
-			[]int32{-10000000},
-			[]string{"dim"},
-			nil}},
+			Values:     []int32{-10000000},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"i32x2", api.Variable{
-			[][]int32{[]int32{-10000000, 10000000},
-				[]int32{-20000000, 20000000}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]int32{{-10000000, 10000000},
+				{-20000000, 20000000}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"ui32", api.Variable{
-			uint32(10000000),
-			nil,
-			nil}},
+			Values:     uint32(10000000),
+			Dimensions: nil,
+			Attributes: nil}},
+
 		{"ui32x1", api.Variable{
-			[]uint32{10000000},
-			[]string{"dim"},
-			nil}},
+			Values:     []uint32{10000000},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"ui32x2", api.Variable{
-			[][]uint32{[]uint32{10000000, 20000000},
-				[]uint32{20000000, 30000000}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]uint32{{10000000, 20000000},
+				{20000000, 30000000}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"i64", api.Variable{
-			int64(-10000000000),
-			nil,
-			nil}},
+			Values:     int64(-10000000000),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"i64x1", api.Variable{
-			[]int64{-10000000000},
-			[]string{"dim"},
-			nil}},
+			Values:     []int64{-10000000000},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
 		{"i64x2", api.Variable{
-			[][]int64{[]int64{-10000000000, 10000000000},
-				[]int64{-20000000000, 20000000000}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]int64{{-10000000000, 10000000000},
+				{-20000000000, 20000000000}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 		{"ui64", api.Variable{
-			uint64(10000000000),
-			nil,
-			nil}},
+			Values:     uint64(10000000000),
+			Dimensions: nil,
+			Attributes: nil}},
 		{"ui64x1", api.Variable{
-			[]uint64{10000000000},
-			[]string{"dim"},
-			nil}},
+			Values:     []uint64{10000000000},
+			Dimensions: []string{"dim"},
+			Attributes: nil}},
+
 		{"ui64x2", api.Variable{
-			[][]uint64{[]uint64{10000000000, 20000000000},
-				[]uint64{20000000000, 30000000000}},
-			[]string{"d1", "d2"},
-			nil}},
+			Values: [][]uint64{{10000000000, 20000000000},
+				{20000000000, 30000000000}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nil}},
 	}
 
 	fills = keyValList{
 		{"strx1", api.Variable{
-			"aa",
-			[]string{"d1"},
-			nil}},
+			Values:     "aa",
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"f32x1", api.Variable{
-			[]float32{10.1, 10.1},
-			[]string{"d1"},
-			nil}},
+			Values:     []float32{10.1, 10.1},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"f64x1", api.Variable{
-			[]float64{10.1, 10.1},
-			[]string{"d1"},
-			nil}},
+			Values:     []float64{10.1, 10.1},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"i8x1", api.Variable{
-			[]int8{10, 10},
-			[]string{"d1"},
-			nil}},
+			Values:     []int8{10, 10},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"ui8x1", api.Variable{
-			[]uint8{20, 20},
-			[]string{"d1"},
-			nil}},
+			Values:     []uint8{20, 20},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"i16x1", api.Variable{
-			[]int16{10000, 10000},
-			[]string{"d1"},
-			nil}},
+			Values:     []int16{10000, 10000},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"ui16x1", api.Variable{
-			[]uint16{20000, 20000},
-			[]string{"d1"},
-			nil}},
+			Values:     []uint16{20000, 20000},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"i32x1", api.Variable{
-			[]int32{10000000, 10000000},
-			[]string{"d1"},
-			nil}},
+			Values:     []int32{10000000, 10000000},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"ui32x1", api.Variable{
-			[]uint32{20000000, 20000000},
-			[]string{"d1"},
-			nil}},
+			Values:     []uint32{20000000, 20000000},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"i64x1", api.Variable{
-			[]int64{10000000000, 10000000000},
-			[]string{"d1"},
-			nil}},
+			Values:     []int64{10000000000, 10000000000},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 		{"ui64x1", api.Variable{
-			[]uint64{20000000000, 20000000000},
-			[]string{"d1"},
-			nil}},
+			Values:     []uint64{20000000000, 20000000000},
+			Dimensions: []string{"d1"},
+			Attributes: nil}},
 	}
 )
 
@@ -493,23 +495,23 @@ func TestUnlimited(t *testing.T) {
 	defer nc.Close()
 	unlims := keyValList{
 		{"i8x1", api.Variable{
-			[][]int8{[]int8{12}, []int8{56}},
-			[]string{"d1", "d2"},
-			nilMap}},
+			Values:     [][]int8{{12}, {56}},
+			Dimensions: []string{"d1", "d2"},
+			Attributes: nilMap}},
 		{"i16x1", api.Variable{
-			[]int16{9876, 5432},
-			[]string{"d1"},
-			nilMap}},
+			Values:     []int16{9876, 5432},
+			Dimensions: []string{"d1"},
+			Attributes: nilMap}},
 		{"i32x1", api.Variable{
-			[]int32{12, 34},
-			[]string{"d1"},
-			nilMap}},
+			Values:     []int32{12, 34},
+			Dimensions: []string{"d1"},
+			Attributes: nilMap}},
 		// ncgen doesn't generate int64 properly for cdf v5, using double to get 8-byte
 		// scalars instead.
 		{"dx1", api.Variable{
-			[]float64{5.6e100, 7.8e100},
-			[]string{"d1"},
-			nilMap}},
+			Values:     []float64{5.6e100, 7.8e100},
+			Dimensions: []string{"d1"},
+			Attributes: nilMap}},
 	}
 	checkAll(t, nc, unlims)
 }
@@ -530,9 +532,9 @@ func TestUnlimitedEmpty(t *testing.T) {
 	defer nc.Close()
 	empty := keyValList{
 		{"a", api.Variable{
-			[]int32{},
-			[]string{"u"},
-			nilMap}},
+			Values:     []int32{},
+			Dimensions: []string{"u"},
+			Attributes: nilMap}},
 	}
 	checkAll(t, nc, empty)
 }
@@ -553,9 +555,9 @@ func TestUnlimitedOnlyBytes(t *testing.T) {
 	defer nc.Close()
 	unlims := keyValList{
 		{"i8x1", api.Variable{
-			[]int8{12, 56},
-			[]string{"d1"},
-			nilMap}},
+			Values:     []int8{12, 56},
+			Dimensions: []string{"d1"},
+			Attributes: nilMap}},
 	}
 	checkAll(t, nc, unlims)
 }
@@ -576,9 +578,9 @@ func TestUnlimitedOnlyShorts(t *testing.T) {
 	defer nc.Close()
 	unlims := keyValList{
 		{"i16x1", api.Variable{
-			[]int16{9876, 5432, 7734},
-			[]string{"d1"},
-			nilMap}},
+			Values:     []int16{9876, 5432, 7734},
+			Dimensions: []string{"d1"},
+			Attributes: nilMap}},
 	}
 	checkAll(t, nc, unlims)
 }

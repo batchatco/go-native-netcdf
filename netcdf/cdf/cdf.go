@@ -66,6 +66,7 @@ type CDF struct {
 	globalAttrs  *util.OrderedMap
 	vars         *util.OrderedMap
 	specialCase  bool
+	slowConvert  bool
 }
 
 const maxDimensions = 1024
@@ -632,7 +633,7 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 	thrower.ThrowIfError(err)
 	// TODO: it should be possible to avoid this conversion and use
 	// reflection inline.
-	converted, _ := convert(data, dimLengths, varFound.vType)
+	converted := cdf.convert(data, dimLengths, varFound.vType)
 	if converted == nil {
 		thrower.Throw(ErrInternal)
 	}
@@ -681,40 +682,210 @@ func emptySlice(v interface{}, dimLengths []uint64) interface{} {
 	return empty.Interface()
 }
 
-func convert(data interface{}, dimLengths []uint64, vType uint32) (interface{}, interface{}) {
+func (cdf *CDF) convert(data interface{}, dimLengths []uint64, vType uint32) interface{} {
+	// in case of unlimited, should read a record at a time, using cdf.recSize
+
+	// try fast conversions first
+	if !cdf.slowConvert && len(dimLengths) == 0 {
+		switch vType {
+		case typeByte:
+			v := data.([]int8)
+			return v[0]
+
+		case typeChar:
+			v := data.([]byte)
+			return string(v[0])
+
+		case typeShort:
+			v := data.([]int16)
+			return v[0]
+
+		case typeInt:
+			v := data.([]int32)
+			return v[0]
+
+		case typeFloat:
+			v := data.([]float32)
+			return v[0]
+
+		case typeDouble:
+			v := data.([]float64)
+			return v[0]
+
+		case typeUByte:
+			v := data.([]uint8)
+			return v[0]
+
+		case typeUShort:
+			v := data.([]uint16)
+			return v[0]
+
+		case typeUInt:
+			v := data.([]uint32)
+			return v[0]
+
+		case typeUInt64:
+			v := data.([]uint64)
+			return v[0]
+
+		case typeInt64:
+			v := data.([]int64)
+			return v[0]
+
+		default:
+			logger.Error("unknown type")
+			thrower.Throw(ErrUnknownType)
+		}
+	}
+	if !cdf.slowConvert && len(dimLengths) == 1 {
+		switch vType {
+		case typeChar:
+			return string(data.([]byte))
+		default:
+			return data
+		}
+	}
+	if !cdf.slowConvert && len(dimLengths) == 2 {
+		switch vType {
+		case typeByte:
+			v := data.([]int8)
+			ret := make([][]int8, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeChar:
+			v := data.([]byte)
+			ret := make([]string, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = string(v[:dimLengths[1]])
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeShort:
+			v := data.([]int16)
+			ret := make([][]int16, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeInt:
+			v := data.([]int32)
+			ret := make([][]int32, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeFloat:
+			v := data.([]float32)
+			ret := make([][]float32, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeDouble:
+			v := data.([]float64)
+			ret := make([][]float64, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeUByte:
+			v := data.([]uint8)
+			ret := make([][]uint8, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeUShort:
+			v := data.([]uint16)
+			ret := make([][]uint16, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeUInt:
+			v := data.([]uint32)
+			ret := make([][]uint32, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeUInt64:
+			v := data.([]uint64)
+			ret := make([][]uint64, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		case typeInt64:
+			v := data.([]int64)
+			ret := make([][]int64, dimLengths[0])
+			for i := 0; i < int(dimLengths[0]); i++ {
+				ret[i] = v[:dimLengths[1]]
+				v = v[dimLengths[1]:]
+			}
+			return ret
+
+		default:
+			logger.Error("unknown type")
+			thrower.Throw(ErrUnknownType)
+		}
+	}
+
 	v := reflect.ValueOf(data)
+	if v.Len() == 0 {
+		return emptySlice(data, dimLengths)
+	}
 	if len(dimLengths) == 0 {
-		// we parsed an array, convert to scalar
+		v := reflect.ValueOf(data)
 		elem := v.Index(0)
 		if vType == typeChar {
-			return string([]byte{elem.Interface().(byte)}), nil
+			return string([]byte{elem.Interface().(byte)})
 		}
-		return elem.Interface(), nil
-	}
-	if v.Len() == 0 {
-		return emptySlice(data, dimLengths), nil
+		return elem.Interface()
 	}
 	length := int(dimLengths[0])
 	if len(dimLengths) == 1 {
 		returnSlice := v.Slice(0, int(dimLengths[0])).Interface()
-		nextSlice := v.Slice(int(dimLengths[0]), v.Len()).Interface()
 		if vType == typeChar {
 			// convert to string
 			b := returnSlice.([]byte)
-			return string(b), nextSlice
+			return string(b)
 		}
-		return returnSlice, nextSlice
+		return returnSlice
 	}
 
-	ivalue, data := convert(data, dimLengths[1:], vType)
+	ivalue := cdf.convert(data, dimLengths[1:], vType)
 	t := reflect.TypeOf(ivalue)
 	val := reflect.MakeSlice(reflect.SliceOf(t), length, length)
 	val.Index(0).Set(reflect.ValueOf(ivalue))
 	for i := 1; i < length; i++ {
-		ivalue, data = convert(data, dimLengths[1:], vType)
+		nextSlice := v.Slice(i*int(dimLengths[1]), v.Len()).Interface()
+		data = nextSlice
+		ivalue = cdf.convert(data, dimLengths[1:], vType)
 		val.Index(i).Set(reflect.ValueOf(ivalue))
 	}
-	return val.Interface(), data
+	return val.Interface()
 }
 
 func makeFillValueShort(s int16) []byte {

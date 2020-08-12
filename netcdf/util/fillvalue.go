@@ -18,7 +18,7 @@ func (fvr *FillValueReader) Read(p []byte) (int, error) {
 	ri := fvr.repeatIndex
 	z := p
 	if ri == 0 {
-		for i := int64(0); i < int64(len(p)-rl+1); i += int64(rl) {
+		for i := 0; i < len(p)-rl+1; i += rl {
 			copy(z, fvr.repeat)
 			z = z[rl:]
 		}

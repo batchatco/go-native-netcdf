@@ -405,7 +405,6 @@ func (cdf *CDF) readHeader() (err error) {
 		return ErrUnknownVersion
 	}
 	cdf.version = version
-
 	// numrecs
 	numRecs := cdf.readNumber(bf)
 	if numRecs == 0xffffffffffffffff {
@@ -695,6 +694,7 @@ func convert(data interface{}, dimLengths []uint64, vType uint32) (interface{}, 
 	if v.Len() == 0 {
 		return emptySlice(data, dimLengths), nil
 	}
+	length := int(dimLengths[0])
 	if len(dimLengths) == 1 {
 		returnSlice := v.Slice(0, int(dimLengths[0])).Interface()
 		nextSlice := v.Slice(int(dimLengths[0]), v.Len()).Interface()
@@ -706,7 +706,6 @@ func convert(data interface{}, dimLengths []uint64, vType uint32) (interface{}, 
 		return returnSlice, nextSlice
 	}
 
-	length := int(dimLengths[0])
 	ivalue, data := convert(data, dimLengths[1:], vType)
 	t := reflect.TypeOf(ivalue)
 	val := reflect.MakeSlice(reflect.SliceOf(t), length, length)

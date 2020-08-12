@@ -14,9 +14,19 @@ func NewFillValueReader(repeat []byte) io.Reader {
 }
 
 func (fvr *FillValueReader) Read(p []byte) (int, error) {
-	for i := range p {
-		p[i] = fvr.repeat[fvr.repeatIndex]
-		fvr.repeatIndex = (fvr.repeatIndex + 1) % len(fvr.repeat)
+	rl := len(fvr.repeat)
+	ri := fvr.repeatIndex
+	z := p
+	if ri == 0 {
+		for i := int64(0); i < int64(len(p)-rl+1); i += int64(rl) {
+			copy(z, fvr.repeat)
+			z = z[rl:]
+		}
 	}
+	for i := 0; i < len(z); i++ {
+		z[i] = fvr.repeat[ri%rl]
+		ri++
+	}
+	fvr.repeatIndex = ri % rl
 	return len(p), nil
 }

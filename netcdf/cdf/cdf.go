@@ -57,7 +57,7 @@ type variable struct {
 
 type CDF struct {
 	fname        string
-	file         io.ReadSeeker
+	file         api.ReadSeekerCloser
 	fileRefCount int
 	version      uint8
 	numRecs      uint64 // 64-bits in V5
@@ -484,15 +484,14 @@ func (cdf *CDF) readHeader() (err error) {
 }
 
 // Close the CDF & release resources.
-//
-// Close will close the underlying reader if it implements io.Closer.
 func (cdf *CDF) Close() {
 	defer thrower.RecoverError(nil)
 	assert(cdf.fileRefCount > 0, "ref count off", ErrInternal)
 	cdf.fileRefCount--
 	if cdf.fileRefCount == 0 {
-		if f, ok := cdf.file.(io.Closer); ok {
-			f.Close()
+		err := cdf.file.Close()
+		if err != nil {
+			logger.Error("Error on close (ignored):", err)
 		}
 		cdf.file = nil
 	}
@@ -521,7 +520,7 @@ func Open(fname string) (api.Group, error) {
 	return c, err
 }
 
-func New(file io.ReadSeeker) (ag api.Group, err error) {
+func New(file api.ReadSeekerCloser) (ag api.Group, err error) {
 	defer thrower.RecoverError(&err)
 	c := &CDF{file: file, fileRefCount: 1}
 	err = c.readHeader()

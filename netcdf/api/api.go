@@ -1,5 +1,12 @@
 package api
 
+import "io"
+
+type ReadSeekerCloser interface {
+	io.ReadSeeker
+	io.Closer
+}
+
 type AttributeMap interface {
 	// Ordered list of keys
 	Keys() []string

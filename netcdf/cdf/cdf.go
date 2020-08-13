@@ -101,6 +101,18 @@ func SetLogLevel(level int) {
 	logger.SetLogLevel(level)
 }
 
+func fail(message string, err error) {
+	logger.Error(message)
+	thrower.Throw(err)
+}
+
+func assert(condition bool, message string, err error) {
+	if condition {
+		return
+	}
+	fail(message, err)
+}
+
 // Read up to nBytes
 func readBytes(r io.Reader, nBytes uint64) []byte {
 	b := make([]byte, nBytes)
@@ -144,10 +156,9 @@ func seekTo(f io.Seeker, offset int64) {
 
 // V5 only
 func (cdf *CDF) checkVersion(requiredVersion int) {
-	if cdf.version < uint8(requiredVersion) {
-		logger.Error("invalid type for this file version")
-		thrower.Throw(ErrCorruptedFile)
-	}
+	assert(cdf.version >= uint8(requiredVersion),
+		"invalid type for this file version",
+		ErrCorruptedFile)
 }
 
 // Rounds up to next int boundary
@@ -253,8 +264,8 @@ func (cdf *CDF) getAttr(bf io.Reader) (string, interface{}) {
 		nread += 8 * nvars
 
 	default:
-		logger.Error("corrupted file, unknown type:", vType)
-		thrower.Throw(ErrCorruptedFile)
+		fail(fmt.Sprintln("corrupted file, unknown type:", vType),
+			ErrCorruptedFile)
 	}
 	// padding
 	for nread&0x3 != 0 {
@@ -274,15 +285,15 @@ func (cdf *CDF) getNElems(bf io.Reader, expectedField uint32) uint64 {
 	nElems := cdf.readNumber(bf) // FYI: 64-bit in V5
 	switch fieldType {
 	case 0: // type absent
-		if nElems != 0 {
-			logger.Error("corrupted file, elems with absent field, expected:", expectedField, nElems)
-			thrower.Throw(ErrCorruptedFile)
-		}
+		assert(nElems == 0,
+			fmt.Sprintln("corrupted file, elems with absent field, expected:", expectedField, nElems),
+			ErrCorruptedFile)
+
 	case expectedField:
 		break
 	default:
-		logger.Error("corrupted file, unexpected field:", fieldType)
-		thrower.Throw(ErrCorruptedFile)
+		fail(fmt.Sprintln("corrupted file, unexpected field:", fieldType),
+			ErrCorruptedFile)
 	}
 	return nElems
 }
@@ -297,9 +308,7 @@ func (cdf *CDF) getAttrList(bf io.Reader) *util.OrderedMap {
 		keys = append(keys, name)
 	}
 	om, err := util.NewOrderedMap(keys, attrs)
-	if err != nil {
-		thrower.Throw(err)
-	}
+	thrower.ThrowIfError(err)
 	return om
 }
 
@@ -329,9 +338,9 @@ func (cdf *CDF) hasUnlimitedDimension(ids []uint64) bool {
 func (cdf *CDF) getVar(bf io.Reader) variable {
 	name := cdf.readName(bf)
 	nDims := cdf.readNumber(bf)
-	if nDims > maxDimensions {
-		thrower.Throw(ErrTooManyDimensions)
-	}
+	assert(nDims <= maxDimensions,
+		"too many dimensions",
+		ErrTooManyDimensions)
 	dimids := make([]uint64, nDims)
 	for i := uint64(0); i < nDims; i++ {
 		// dimid
@@ -392,33 +401,31 @@ func (cdf *CDF) readHeader() (err error) {
 
 	// magic
 	b := readBytes(bf, 4)
-	if string(b[:3]) != "CDF" {
-		logger.Warn("not cdf: ", fmt.Sprintf("%q", string(b[:3])))
-		return ErrNotCDF
-	}
+	assert(string(b[:3]) == "CDF",
+		fmt.Sprintf("not cdf: %q", string(b[:3])),
+		ErrNotCDF)
 	version := b[3]
 	switch version {
 	case 1, 2, 5: // classic, 64-bit offset, 64-bit types
 		break
 
 	default:
-		logger.Error("unknown version:", version)
-		return ErrUnknownVersion
+		fail(fmt.Sprintln("unknown version:", version),
+			ErrUnknownVersion)
 	}
 	cdf.version = version
 	// numrecs
 	numRecs := cdf.readNumber(bf)
-	if numRecs == 0xffffffffffffffff {
-		logger.Warn("streaming not supported")
-		return ErrNoStreamingDimensions
-	}
+	assert(numRecs != 0xffffffffffffffff,
+		"streaming not supported",
+		ErrNoStreamingDimensions)
 	cdf.numRecs = numRecs
 
 	// dimlist
 	nDims := cdf.getNElems(bf, fieldDimension)
-	if nDims > maxDimensions {
-		thrower.Throw(ErrTooManyDimensions)
-	}
+	assert(nDims <= maxDimensions,
+		"too many dimensions",
+		ErrTooManyDimensions)
 	if nDims > 0 {
 		cdf.dimensions = make([]dimension, nDims)
 		for i := uint64(0); i < nDims; i++ {
@@ -437,9 +444,7 @@ func (cdf *CDF) readHeader() (err error) {
 
 	nRecordVars := 0
 	cdf.vars, err = util.NewOrderedMap(nil, nil)
-	if err != nil {
-		thrower.Throw(err)
-	}
+	thrower.ThrowIfError(err)
 	var firstRecordVar *variable
 	for i := uint64(0); i < nVars; i++ {
 		v := cdf.getVar(bf)
@@ -457,10 +462,9 @@ func (cdf *CDF) readHeader() (err error) {
 	}
 	switch nRecordVars {
 	case 0:
-		if cdf.recSize != 0 {
-			logger.Error("No record variables, size should be zero", cdf.recSize)
-			thrower.Throw(ErrInternal)
-		}
+		assert(cdf.recSize == 0,
+			fmt.Sprintln("No record variables, size should be zero", cdf.recSize),
+			ErrInternal)
 	case 1:
 		firstLen := uint64(firstRecordVar.vsize)
 		switch firstRecordVar.vType {
@@ -485,9 +489,13 @@ func (cdf *CDF) readHeader() (err error) {
 //
 // Close will close the underlying reader if it implements io.Closer.
 func (cdf *CDF) Close() {
-	if cdf.fileRefCount <= 0 {
-		panic("refcount issue")
-	}
+	var err error
+	defer thrower.RecoverError(&err)
+
+	assert(cdf.fileRefCount > 0,
+		"ref count off",
+		ErrInternal)
+
 	cdf.fileRefCount--
 	if cdf.fileRefCount == 0 {
 		if f, ok := cdf.file.(io.Closer); ok {
@@ -500,6 +508,7 @@ func (cdf *CDF) Close() {
 // TODO: use hdf5 file refcounting
 // TODO: fake groups with "/" in names
 func (cdf *CDF) GetGroup(group string) (g api.Group, err error) {
+	defer thrower.RecoverError(&err)
 	if group != "" && group != "/" {
 		return nil, ErrNotFound
 	}
@@ -519,9 +528,10 @@ func Open(fname string) (api.Group, error) {
 	return c, err
 }
 
-func New(file io.ReadSeeker) (api.Group, error) {
+func New(file io.ReadSeeker) (ag api.Group, err error) {
+	defer thrower.RecoverError(&err)
 	c := &CDF{file: file, fileRefCount: 1}
-	err := c.readHeader()
+	err = c.readHeader()
 	if err != nil {
 		return nil, err
 	}
@@ -549,18 +559,17 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 	unlimited := false
 	for i := range dimLengths {
 		dimid := varFound.dimids[i]
-		if dimid >= uint64(len(cdf.dimensions)) {
-			logger.Error(name, "dimid", varFound.dimids[i], "not found")
-			thrower.Throw(ErrInternal)
-		}
+		assert(dimid < uint64(len(cdf.dimensions)),
+			fmt.Sprintln(name, "dimid", varFound.dimids[i], "not found"),
+			ErrInternal)
+
 		dim := cdf.dimensions[dimid]
 		dimLengths[i] = dim.dimLength
 		// Handle unlimited dimension.
 		if dimLengths[i] == 0 {
-			if !unlimited && i != 0 {
-				logger.Error("unlimited dimension must be first")
-				thrower.Throw(ErrCorruptedFile)
-			}
+			assert(unlimited || i == 0,
+				fmt.Sprintln("unlimited dimension must be first"),
+				ErrCorruptedFile)
 			unlimited = true
 			dimLengths[i] = cdf.numRecs
 		}
@@ -626,8 +635,7 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 		data = make([]int64, totalSize)
 
 	default:
-		logger.Error("unknown type")
-		thrower.Throw(ErrUnknownType)
+		fail("unknown type", ErrUnknownType)
 	}
 	err = binary.Read(bf, binary.BigEndian, data)
 	thrower.ThrowIfError(err)
@@ -733,8 +741,7 @@ func (cdf *CDF) convert(data interface{}, dimLengths []uint64, vType uint32) int
 			return v[0]
 
 		default:
-			logger.Error("unknown type")
-			thrower.Throw(ErrUnknownType)
+			fail("unknown type", ErrUnknownType)
 		}
 	}
 	if !cdf.slowConvert && len(dimLengths) == 1 {
@@ -847,8 +854,7 @@ func (cdf *CDF) convert(data interface{}, dimLengths []uint64, vType uint32) int
 			return ret
 
 		default:
-			logger.Error("unknown type")
-			thrower.Throw(ErrUnknownType)
+			fail("unknown type", ErrUnknownType)
 		}
 	}
 

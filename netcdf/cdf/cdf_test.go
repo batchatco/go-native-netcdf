@@ -539,6 +539,23 @@ func TestUnlimitedEmpty(t *testing.T) {
 	checkAll(t, nc, empty)
 }
 
+func TestNull(t *testing.T) {
+	fileName := "testnull" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	defer os.Remove(genName)
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	_ = nc.ListVariables()
+}
+
 func TestUnlimitedOnlyBytes(t *testing.T) {
 	fileName := "testbytesonly" // base filename without extension
 	genName := ncGen(t, fileName)

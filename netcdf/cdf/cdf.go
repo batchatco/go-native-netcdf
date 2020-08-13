@@ -439,9 +439,6 @@ func (cdf *CDF) readHeader() (err error) {
 
 	// var list
 	nVars := cdf.getNElems(bf, fieldVariable)
-	if nVars == 0 {
-		return nil
-	}
 
 	nRecordVars := 0
 	cdf.vars, err = util.NewOrderedMap(nil, nil)

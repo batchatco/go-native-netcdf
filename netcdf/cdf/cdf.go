@@ -489,13 +489,8 @@ func (cdf *CDF) readHeader() (err error) {
 //
 // Close will close the underlying reader if it implements io.Closer.
 func (cdf *CDF) Close() {
-	var err error
-	defer thrower.RecoverError(&err)
-
-	assert(cdf.fileRefCount > 0,
-		"ref count off",
-		ErrInternal)
-
+	defer thrower.RecoverError(nil)
+	assert(cdf.fileRefCount > 0, "ref count off", ErrInternal)
 	cdf.fileRefCount--
 	if cdf.fileRefCount == 0 {
 		if f, ok := cdf.file.(io.Closer); ok {

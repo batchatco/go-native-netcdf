@@ -644,13 +644,18 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 
 	case typeTime:
 		logger.Info("time, len(data)=", len(data))
+		bf := bytes.NewReader(properties)
+		var endian binary.ByteOrder
 		if bitFields == 0 {
+			endian = binary.LittleEndian
 			logger.Info("time little-endian")
 		} else {
-			logger.Info("time big-endian")
+			endian = binary.BigEndian
+			logger.Infof("time big-endian")
 		}
-		bf := bytes.NewReader(properties)
-		bp := read16(bf)
+		var bp int16
+		err := binary.Read(bf, endian, &bp)
+		thrower.ThrowIfError(err)
 		logger.Info("time bit precision=", bp)
 		if len(data) > 0 {
 			fail("time")
@@ -2999,12 +3004,15 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			switch attr.children[i].class {
 			case typeFixedPoint, typeFloatingPoint:
 				switch attr.children[i].length {
+				case 1: // no padding required
 				case 2:
 					pad = 1
 				case 4:
 					pad = 3
 				case 8:
 					pad = 7
+				default:
+					fail(fmt.Sprint("bad length: ", attr.children[0].length))
 				}
 			case typeVariableLength:
 				pad = 7
@@ -3749,6 +3757,7 @@ func (h5 *HDF5) getDataAttrCheck(bf io.Reader, attr attribute, check bool) inter
 			logger.Info(cbf.(*countedReader).Count(), "child length",
 				attr.children[0].length)
 			switch attr.children[0].length {
+			case 1: // no padding required
 			case 2:
 				pad = 1
 			case 4:

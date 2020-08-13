@@ -264,7 +264,7 @@ func (cdf *CDF) getAttr(bf io.Reader) (string, interface{}) {
 		nread += 8 * nvars
 
 	default:
-		fail(fmt.Sprintln("corrupted file, unknown type:", vType),
+		fail(fmt.Sprint("corrupted file, unknown type: ", vType),
 			ErrCorruptedFile)
 	}
 	// padding
@@ -286,13 +286,14 @@ func (cdf *CDF) getNElems(bf io.Reader, expectedField uint32) uint64 {
 	switch fieldType {
 	case 0: // type absent
 		assert(nElems == 0,
-			fmt.Sprintln("corrupted file, elems with absent field, expected:", expectedField, nElems),
+			fmt.Sprint("corrupted file, elems with absent field, expected: ",
+				expectedField, nElems),
 			ErrCorruptedFile)
 
 	case expectedField:
 		break
 	default:
-		fail(fmt.Sprintln("corrupted file, unexpected field:", fieldType),
+		fail(fmt.Sprint("corrupted file, unexpected field: ", fieldType),
 			ErrCorruptedFile)
 	}
 	return nElems
@@ -410,7 +411,7 @@ func (cdf *CDF) readHeader() (err error) {
 		break
 
 	default:
-		fail(fmt.Sprintln("unknown version:", version),
+		fail(fmt.Sprint("unknown version: ", version),
 			ErrUnknownVersion)
 	}
 	cdf.version = version
@@ -463,7 +464,7 @@ func (cdf *CDF) readHeader() (err error) {
 	switch nRecordVars {
 	case 0:
 		assert(cdf.recSize == 0,
-			fmt.Sprintln("No record variables, size should be zero", cdf.recSize),
+			fmt.Sprint("No record variables, size should be zero: ", cdf.recSize),
 			ErrInternal)
 	case 1:
 		firstLen := uint64(firstRecordVar.vsize)
@@ -555,7 +556,7 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 	for i := range dimLengths {
 		dimid := varFound.dimids[i]
 		assert(dimid < uint64(len(cdf.dimensions)),
-			fmt.Sprintln(name, "dimid", varFound.dimids[i], "not found"),
+			fmt.Sprint(name, " dimid: ", varFound.dimids[i], " not found"),
 			ErrInternal)
 
 		dim := cdf.dimensions[dimid]
@@ -563,7 +564,7 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 		// Handle unlimited dimension.
 		if dimLengths[i] == 0 {
 			assert(unlimited || i == 0,
-				fmt.Sprintln("unlimited dimension must be first"),
+				"unlimited dimension must be first",
 				ErrCorruptedFile)
 			unlimited = true
 			dimLengths[i] = cdf.numRecs

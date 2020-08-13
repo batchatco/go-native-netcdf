@@ -7,13 +7,15 @@ This is a work in progress.
 ## Introduction
 
 
-This is a native implementation of NetCDF in the Go language.  It only supports the CDF
-file format at the current time. HDF5 support may be available sometime in the future.
+This is a native implementation of NetCDF in the Go language.  It supports the CDF
+file format fully, and has limited support for the HDF5 format.
 
 The API is mainly intended for reading files, though there is support for writing CDF files.
-To read files, please use the generic *Open* and *New()* interface, rather than any lower layer interfaces.
+To read files, please use the generic *Open* and *New()* interface, rather than any lower
+layer interfaces.
 
-The goal of the API is to be easy to use, and some functionality may be compromised.
+The goal of the API is to be easy to use, and some functionality may be compromised because
+of that.
 
 ## Mapping of Types
 
@@ -49,7 +51,7 @@ to NetCDF.  *int32* should be used instead.
 
 ## Examples
 
-### Reading a NetCDF file
+### Reading a NetCDF file (CDF format)
 ```go
 package main
 
@@ -61,6 +63,51 @@ import (
 func main() {
     // Open the file
     nc, err := netcdf.Open("data.nc")
+    if err != nil {
+        panic(err)
+    }
+    defer nc.Close()
+
+    // Read the NetCDF variable from the file
+    vr, _ := nc.GetVariable("latitude")
+    if vr == nil {
+        panic("latitude variable not found")
+    }
+
+    // Cast the data into a Go type we can use
+    lats, has := vr.Values.([]float32)
+    if !has {
+        panic("latitude data not found")
+    }
+    for i, lat := range lats {
+        fmt.Println(i, lat)
+    }
+}
+
+```
+
+### Reading a NetCDF file (HDF5 format)
+It is similar, but a specific group needs to be opened also.
+
+```go
+package main
+
+import (
+    "fmt"
+
+    "github.com/batchatco/go-native-netcdf/netcdf"
+)
+func main() {
+    // Open the file
+    ncf, err := netcdf.Open("data.nc")
+    if err != nil {
+        panic(err)
+    }
+    defer ncf.Close()
+
+    // This is the only thing different about HDF5
+    // An additional step to get the group
+    nc, err := ncf.GetGroup("/")
     if err != nil {
         panic(err)
     }

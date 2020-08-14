@@ -4,7 +4,10 @@
 
 
 This is a native implementation of NetCDF in the Go language.  It supports the CDF
-file format fully, and has limited support for the HDF5 format.
+file format fully, and has limited support for the HDF5 format.  It's not a wrapper.
+There's no C or C++ code underneath this. It is pure Go code.  It benefits from the
+the sandboxing and garbage collection that Go provides, so is safer to use in a production
+environment.
 
 The API is mainly intended for reading files, though there is support for writing CDF files.
 To read files, please use the generic *Open* and *New()* interface, rather than any lower

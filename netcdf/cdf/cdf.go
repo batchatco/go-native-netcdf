@@ -631,8 +631,6 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 	}
 	err = binary.Read(bf, binary.BigEndian, data)
 	thrower.ThrowIfError(err)
-	// TODO: it should be possible to avoid this conversion and use
-	// reflection inline.
 	converted := cdf.convert(data, dimLengths, varFound.vType)
 	if converted == nil {
 		thrower.Throw(ErrInternal)

@@ -100,17 +100,3 @@ func (rcf *refCountedFile) dereference() error {
 	}
 	return err
 }
-
-// Refcounted file
-type rcFile struct {
-	io.Reader
-	io.Closer
-}
-
-func (f *rcFile) Read(p []byte) (int, error) {
-	return f.Reader.Read(p)
-}
-
-func (f *rcFile) Close() error {
-	return f.Closer.Close()
-}

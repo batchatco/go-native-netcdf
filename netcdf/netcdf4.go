@@ -65,6 +65,6 @@ func getKind(file io.ReadSeeker) (byte, error) {
 	if n == 0 {
 		return 0, err
 	}
-	_, err = file.Seek(0, os.SEEK_SET)
+	_, err = file.Seek(0, io.SeekStart)
 	return b[0], err
 }

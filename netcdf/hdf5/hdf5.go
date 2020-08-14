@@ -125,11 +125,9 @@ type attribute struct {
 	dimensionality uint8       // for compound
 	layout         []uint32
 	dimensions     []uint64 // for compound
-	nmembers       uint32
 	endian         binary.ByteOrder
 	dtversion      uint8
 	creationOrder  uint64
-	isSorted       bool
 }
 
 type compoundField interface{}
@@ -212,6 +210,10 @@ var (
 	logger = util.NewLogger()
 	log    = "don't use the log package" // prevents usage of standard log package
 )
+
+func init() {
+	_ = log // silence warning
+}
 
 func assert(condition bool, msg string) {
 	if condition {
@@ -2876,8 +2878,7 @@ func allocOpaque(bf io.Reader, dimLengths []uint64, length uint32) interface{} {
 		return b
 	}
 	thisDim := dimLengths[0]
-	var ty reflect.Type
-	ty = reflect.TypeOf([]byte{})
+	ty := reflect.TypeOf([]byte{})
 	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocOpaque(bf, dimLengths[1:], length)))

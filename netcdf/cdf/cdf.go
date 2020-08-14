@@ -150,7 +150,7 @@ func read64(r io.Reader) uint64 {
 }
 
 func seekTo(f io.Seeker, offset int64) {
-	_, err := f.Seek(offset, os.SEEK_SET)
+	_, err := f.Seek(offset, io.SeekStart)
 	thrower.ThrowIfError(err)
 }
 

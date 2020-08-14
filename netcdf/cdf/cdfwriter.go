@@ -45,8 +45,6 @@ type CDFWriter struct {
 	version     int8
 }
 
-type char byte
-
 var (
 	ErrUnlimitedMustBeFirst = errors.New("unlimited dimension must be first")
 	ErrEmptySlice           = errors.New("empty slice encountered")
@@ -441,108 +439,121 @@ func (cw *CDFWriter) writeAttributes(attrs api.AttributeMap) {
 	for _, k := range attrs.Keys() {
 		v, _ := attrs.Get(k)
 		cw.writeName(k)
-		switch v.(type) {
+		switch val := v.(type) {
 		case string:
 			write32(cw.bf, typeChar)
-			vals := v.(string)
-			cw.writeNumber(int64(len(vals)))
-			writeBytes(cw.bf, []byte(vals))
+			cw.writeNumber(int64(len([]byte(val))))
+			writeBytes(cw.bf, []byte(val))
 			cw.pad()
 
-		case []int8, int8:
+		case int8:
 			write32(cw.bf, typeByte)
-			vals, ok := v.([]int8)
-			if !ok {
-				vals = []int8{v.(int8)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
 			cw.pad()
 
-		case []int16, int16:
+		case []int8:
+			write32(cw.bf, typeByte)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
+			cw.pad()
+
+		case int16:
 			write32(cw.bf, typeShort)
-			vals, ok := v.([]int16)
-			if !ok {
-				vals = []int16{v.(int16)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
 			cw.pad()
 
-		case []int32, int32:
+		case []int16:
+			write32(cw.bf, typeShort)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
+			cw.pad()
+
+		case int32:
 			write32(cw.bf, typeInt)
-			vals, ok := v.([]int32)
-			if !ok {
-				vals = []int32{v.(int32)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
 
-		case []float32, float32:
+		case []int32:
+			write32(cw.bf, typeInt)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
+
+		case float32:
 			write32(cw.bf, typeFloat)
-			vals, ok := v.([]float32)
-			if !ok {
-				vals = []float32{v.(float32)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
 
-		case []float64, float64:
+		case []float32:
+			write32(cw.bf, typeFloat)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
+
+		case float64:
 			write32(cw.bf, typeDouble)
-			vals, ok := v.([]float64)
-			if !ok {
-				vals = []float64{v.(float64)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
+
+		case []float64:
+			write32(cw.bf, typeDouble)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
 
 			// v5
-		case []uint8, uint8: // []uint8 and []byte are the same thing
+		case uint8: // []uint8 and []byte are the same thing
 			write32(cw.bf, typeUByte)
-			vals, ok := v.([]uint8)
-			if !ok {
-				vals = []uint8{v.(uint8)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
 			cw.pad()
 
-		case []uint16, uint16:
+		case []uint8: // []uint8 and []byte are the same thing
+			write32(cw.bf, typeUByte)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
+			cw.pad()
+
+		case uint16:
 			write32(cw.bf, typeUShort)
-			vals, ok := v.([]uint16)
-			if !ok {
-				vals = []uint16{v.(uint16)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
 			cw.pad()
 
-		case []uint32, uint32:
+		case []uint16:
+			write32(cw.bf, typeUShort)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
+			cw.pad()
+
+		case uint32:
 			write32(cw.bf, typeUInt)
-			vals, ok := v.([]uint32)
-			if !ok {
-				vals = []uint32{v.(uint32)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
 
-		case []int64, int64:
+		case []uint32:
+			write32(cw.bf, typeUInt)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
+
+		case int64:
 			write32(cw.bf, typeInt64)
-			vals, ok := v.([]int64)
-			if !ok {
-				vals = []int64{v.(int64)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
 
-		case []uint64, uint64:
+		case []int64:
+			write32(cw.bf, typeInt64)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
+
+		case uint64:
 			write32(cw.bf, typeUInt64)
-			vals, ok := v.([]uint64)
-			if !ok {
-				vals = []uint64{v.(uint64)}
-			}
-			cw.writeNumber(int64(len(vals)))
-			writeAny(cw.bf, vals)
+			cw.writeNumber(1)
+			writeAny(cw.bf, val)
+
+		case []uint64:
+			write32(cw.bf, typeUInt64)
+			cw.writeNumber(int64(len(val)))
+			writeAny(cw.bf, val)
 
 		default:
 			logger.Warnf("Unknown type %T, %#v=%#v", v, k, v)
@@ -663,16 +674,16 @@ func (cw *CDFWriter) writeData(saved savedVar) {
 	thrower.ThrowIfError(err)
 
 	// save current
-	current, err := cw.file.Seek(0, os.SEEK_CUR)
+	current, err := cw.file.Seek(0, io.SeekCurrent)
 	thrower.ThrowIfError(err)
 
 	// patch
-	_, err = cw.file.Seek(int64(saved.offset), os.SEEK_SET)
+	_, err = cw.file.Seek(int64(saved.offset), io.SeekStart)
 	thrower.ThrowIfError(err)
 	write64(cw.file, offset)
 
 	// reset to current
-	_, err = cw.file.Seek(current, os.SEEK_SET)
+	_, err = cw.file.Seek(current, io.SeekStart)
 	thrower.ThrowIfError(err)
 }
 

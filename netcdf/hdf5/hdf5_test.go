@@ -776,22 +776,20 @@ func TestCompound(t *testing.T) {
 		t.Error(err)
 	}
 	vals := []compound{
-		{
-			compound{
-				int8('0'),
-				int16(1),
-				int32(2),
-				float32(3.0),
-				float64(4.0)},
+		{compound{
+			int8('0'),
+			int16(1),
+			int32(2),
+			float32(3.0),
+			float64(4.0)},
 			"a",
 		},
-		{
-			compound{
-				int8('1'),
-				int16(2),
-				int32(3),
-				float32(4.0),
-				float64(5.0)},
+		{compound{
+			int8('1'),
+			int16(2),
+			int32(3),
+			float32(4.0),
+			float64(5.0)},
 			"b",
 		},
 	}
@@ -888,6 +886,22 @@ func TestUnlimitedEmpty(t *testing.T) {
 		{"a", api.Variable{
 			Values:     []int32{},
 			Dimensions: []string{"u"},
+			Attributes: nilMap}},
+		{"b", api.Variable{
+			Values:     opaque{val: []uint8{}},
+			Dimensions: []string{"u"},
+			Attributes: nilMap}},
+		{"c", api.Variable{
+			Values:     []compound{},
+			Dimensions: []string{"u"},
+			Attributes: nilMap}},
+		{"d", api.Variable{
+			Values:     [][]compound{},
+			Dimensions: []string{"u", "u"},
+			Attributes: nilMap}},
+		{"e", api.Variable{
+			Values:     [][][]compound{},
+			Dimensions: []string{"u", "u", "u"},
 			Attributes: nilMap}},
 	}
 	checkAll(t, nc, empty)
@@ -1034,24 +1048,6 @@ func TestOpaque(t *testing.T) {
 			Attributes: nilMap}},
 	}
 	checkAll(t, nc, opaque)
-}
-
-func TestLots(t *testing.T) {
-	fileName := "testlots" // base filename without extension
-	genName := ncGen(t, fileName)
-	if genName == "" {
-		t.Error(errorNcGen)
-		return
-	}
-	nc, err := Open(genName)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	defer nc.Close()
-	for _, vr := range nc.ListVariables() {
-		_, _ = nc.GetVariable(vr)
-	}
 }
 
 func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {

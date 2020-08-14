@@ -44,15 +44,21 @@ const (
 )
 
 var (
-	ErrBadMagic           = errors.New("bad magic number")
-	ErrUnsupportedFilter  = errors.New("unsupported filter found")
-	ErrUnknownCompression = errors.New("unknown compression")
-	ErrInternal           = errors.New("internal error")
-	ErrNotFound           = errors.New("not found")
-	ErrFletcherChecksum   = errors.New("fletcher checksum failure")
-	ErrVersion            = errors.New("version not supported")
-	ErrLinkType           = errors.New("link type not unsupported")
-	ErrVirtualStorage     = errors.New("virtual storage not supported")
+	ErrBadMagic                = errors.New("bad magic number")
+	ErrUnsupportedFilter       = errors.New("unsupported filter found")
+	ErrUnknownCompression      = errors.New("unknown compression")
+	ErrInternal                = errors.New("internal error")
+	ErrNotFound                = errors.New("not found")
+	ErrFletcherChecksum        = errors.New("fletcher checksum failure")
+	ErrVersion                 = errors.New("version not supported")
+	ErrLinkType                = errors.New("link type not unsupported")
+	ErrVirtualStorage          = errors.New("virtual storage not supported")
+	ErrTruncated               = errors.New("file is too small, may be truncated")
+	ErrOffsetSize              = errors.New("only 64-bit offsets are supported")
+	ErrDimensionality          = errors.New("invalid dimensionality")
+	ErrDataObjectHeaderVersion = errors.New("data object header version not supported")
+	ErrDataspaceVersion        = errors.New("dataspace version not supported")
+	ErrCorrupted               = errors.New("corrupted file")
 )
 
 const (
@@ -222,15 +228,23 @@ func assert(condition bool, msg string) {
 	fail(msg)
 }
 
+func warn(condition bool, msg string) {
+	if condition {
+		return
+	}
+	logger.Error(msg)
+}
+
 func fail(msg string) {
 	logger.Error(msg)
 	thrower.Throw(ErrInternal)
 }
 
-func assertError(condition bool, err error) {
+func assertError(condition bool, err error, msg string) {
 	if condition {
 		return
 	}
+	logger.Error(msg)
 	thrower.Throw(err)
 }
 
@@ -358,7 +372,7 @@ func (h5 *HDF5) readSuperblock() {
 	}
 	b := read8(bf)
 	logger.Info("size of offsets=", b)
-	checkVal(8, b, "only accept 64-bit offsets")
+	assertError(b == 8, ErrOffsetSize, "only accept 64-bit offsets")
 
 	b = read8(bf)
 	logger.Info("size of lengths=", b)
@@ -413,7 +427,7 @@ func (h5 *HDF5) readSuperblock() {
 	logger.Infof("end of file address=%x", eofAddr)
 	if uint64(h5.fileSize) < eofAddr {
 		logger.Error("File may be truncated. size=", h5.fileSize, "expected=", eofAddr)
-		thrower.Throw(ErrInternal)
+		thrower.Throw(ErrTruncated)
 	}
 	if uint64(h5.fileSize) > eofAddr {
 		logger.Error("Junk at end of file ignored. size=", h5.fileSize, "expected=", eofAddr)
@@ -462,7 +476,7 @@ func checkMagic(bf io.Reader, len int, magic string) {
 	if badMagic {
 		logger.Error("bad magic=", printableFound)
 	}
-	assertError(!badMagic, ErrBadMagic)
+	assertError(!badMagic, ErrBadMagic, "bad magic")
 }
 
 func getString(b []byte) string {
@@ -690,24 +704,18 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 			logger.Warn("No properties for opaque")
 			break
 		}
+		plen := len(properties[:])
 		bf := bytes.NewReader(properties[:])
-		namelen := read8(bf)
-		logger.Info("namelen=", namelen)
-		name := make([]byte, namelen)
+		name := make([]byte, plen)
 		read(bf, name)
-		logger.Info("tag=", string(name))
-		namelenpadded := int(namelen)
-		if namelen > 0 {
-			namelenpadded = (int(namelen) + 7) & ^7
+		stringName := getString(name)
+		logger.Info("name=", stringName)
+		namelen := len(stringName)
+		for i := namelen; i < plen; i++ {
+			checkVal(0, name[i],
+				fmt.Sprint("reserved byte should be zero: ", i))
 		}
-		extra := namelenpadded - int(namelen)
-		if extra > 0 {
-			var b [7]byte
-			read(bf, b[:extra])
-			for _, v := range b {
-				checkVal(0, v, "reserved byte should be zero")
-			}
-		}
+		attr.value = stringName
 
 	case typeCompound: // compound
 		logger.Info("* compound")
@@ -1904,6 +1912,19 @@ func (h5 *HDF5) isMagic(magic string, addr uint64) bool {
 	}
 	var b [4]byte
 	_, err := h5.file.ReadAt(b[:], int64(addr))
+	if err != nil {
+		pErr, has := err.(*os.PathError)
+		if has {
+			logger.Error("Extracted path error", pErr.Error())
+			err = pErr.Unwrap()
+		}
+		logger.Error("ReadAt error: ", err.Error())
+		if err.Error() != os.ErrInvalid.Error() {
+			logger.Errorf("Weird invalid error: (%#v) (%#v)", os.ErrInvalid.Error(), err.Error())
+			thrower.Throw(ErrInternal)
+		}
+		thrower.Throw(ErrCorrupted)
+	}
 	thrower.ThrowIfError(err)
 	bs := string(b[:])
 	return bs == magic
@@ -2013,7 +2034,8 @@ func headerTypeToString(ty int) string {
 func (h5 *HDF5) readDataspace(bf io.Reader) ([]uint64, int64) {
 	version := read8(bf)
 	logger.Info("dataspace message version=", version)
-	assert(version == 1 || version == 2,
+	assertError(version == 1 || version == 2,
+		ErrDataspaceVersion,
 		fmt.Sprint("dataspace version not supported: ", version))
 	d := read8(bf)
 	logger.Info("dataspace dimensionality=", d)
@@ -2169,10 +2191,9 @@ func (h5 *HDF5) readDataLayout(parent *object, bf io.Reader, size uint16) {
 		address := read64(bf)
 		logger.Infof("layout dimensionality=%d address=0x%x", dimensionality, address)
 		numberOfElements := uint64(1)
-		if dimensionality < 2 {
-			logger.Error("Invalid dimensionality", dimensionality)
-			thrower.Throw(ErrInternal)
-		}
+		assertError(dimensionality >= 2,
+			ErrDimensionality,
+			fmt.Sprint("Invalid dimensionality ", dimensionality))
 
 		layout := make([]uint32, int(dimensionality)-1)
 		for i := 0; i < int(dimensionality)-1; i++ {
@@ -2595,7 +2616,8 @@ func (h5 *HDF5) readDataObjectHeaderV1(addr uint64) *object {
 	version := read8(bf)
 	nRead++
 	logger.Info("v1 object header version=", version)
-	checkVal(1, version, fmt.Sprint("only handle version 1, got: ", version))
+	assertError(version == 1, ErrDataObjectHeaderVersion,
+		fmt.Sprint("only handle version 1, got: ", version))
 
 	reserved := read8(bf)
 	nRead++
@@ -2959,8 +2981,13 @@ func padBytesCheck(bf io.Reader, pad32 int, check bool) {
 		b := make([]byte, extra)
 		read(cbf, b)
 		for i := 0; i < int(extra); i++ {
-			assert(b[i] == 0,
-				fmt.Sprintf("Reserved not zero %d/%d %x", i, extra, b[i]))
+			if check {
+				assert(b[i] == 0,
+					fmt.Sprintf("Reserved not zero %d/%d %x %v", i, extra, b[i], b))
+			} else {
+				warn(b[i] == 0,
+					fmt.Sprintf("Reserved not zero %d/%d %x %v", i, extra, b[i], b))
+			}
 		}
 	}
 }
@@ -3022,17 +3049,12 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 		}
 		return compound(varray)
 	}
+	var x compound
+	t := reflect.TypeOf(x)
+	vals2 := makeSlices(t, dimLengths)
 	thisDim := dimLengths[0]
-
-	logger.Info("alloc dim size", thisDim)
-	vals := make([]interface{}, thisDim)
 	for i := uint64(0); i < thisDim; i++ {
-		vals[i] = h5.allocCompounds(bf, dimLengths[1:], attr)
-	}
-	t := reflect.ValueOf(vals[0]).Type()
-	vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))
-	for i := 0; i < int(thisDim); i++ {
-		vals2.Index(i).Set(reflect.ValueOf(vals[i]))
+		vals2.Index(int(i)).Set(reflect.ValueOf(h5.allocCompounds(bf, dimLengths[1:], attr)))
 	}
 	logger.Infof("Return val type %T", vals2.Interface())
 	return vals2.Interface()
@@ -4010,7 +4032,7 @@ func (h5 *HDF5) ListSubgroups() []string {
 			// Is a subgroup.  Get the basename of this child.
 			tail := group[len(h5.groupName):]
 			tail = tail[:len(tail)-1] // trim trailing slash
-			assertError(!strings.Contains(tail, "/"), ErrInternal)
+			assertError(!strings.Contains(tail, "/"), ErrInternal, "trailing slash")
 			ret = append(ret, tail)
 			return
 		}

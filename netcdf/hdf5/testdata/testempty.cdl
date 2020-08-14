@@ -1,6 +1,21 @@
 netcdf tst_mslp {
+types:
+  opaque(5) opaque5;
+  compound alltypes {
+    byte b;
+    short s;
+    int i;
+    float f;
+    double d;
+  };
+
 dimensions:
-	u = UNLIMITED ; // (0 currently)
+        u = UNLIMITED ; // (0 currently)
 variables:
-	int a(u);
+        int a(u);
+        opaque5 b(u);
+        alltypes c(u);
+        alltypes d(u,u);
+        alltypes e(u,u,u);
+data:
 }

@@ -3,12 +3,11 @@ package netcdf
 import (
 	"os"
 	"testing"
-
-	"github.com/batchatco/go-native-netcdf/netcdf/hdf5"
 )
 
 var filenames = []string{"empty", "bogus", "cdf.nc", "hdf5.nc"}
-var errs = []error{ErrUnknown, ErrUnknown, nil, hdf5.ErrNotImplemented}
+
+var errs = []error{ErrUnknown, ErrUnknown, nil, nil}
 
 func TestNew(t *testing.T) {
 	for i, name := range filenames {

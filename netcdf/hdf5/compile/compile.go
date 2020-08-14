@@ -11,8 +11,6 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
-const dir = "/home/bat/netcdf/"
-
 func getFiles(path string, suffix string) []string {
 	names := make([]string, 0)
 	files, err := ioutil.ReadDir(path)

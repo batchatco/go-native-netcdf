@@ -1,0 +1,6 @@
+netcdf tst_mslp {
+dimensions:
+	u = UNLIMITED ; // (0 currently)
+variables:
+	int a(u);
+}

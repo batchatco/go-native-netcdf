@@ -1,0 +1,15 @@
+netcdf testunlimited {
+dimensions:
+	d1 = UNLIMITED;
+	d2 = 1;
+variables:
+	byte i8x1(d1, d2);
+	short i16x1(d1);
+	int i32x1(d1);
+	int64 i64x1(d1);
+data:
+  i8x1 = 12, 56;
+  i16x1 = 9876, 5432;
+  i32x1 = 12, 34;
+  i64x1 = 56100, 78100;
+}

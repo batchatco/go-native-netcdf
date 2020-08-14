@@ -1,0 +1,13 @@
+netcdf testopaque {
+types:
+  opaque(5) opaque5;
+
+dimensions:
+  dim = 5;
+
+variables:
+  opaque5 v(dim);
+
+data:
+  v = 0xdeadbeef01,0xdeadbeef02,0xdeadbeef03,0xdeadbeef04,0xdeadbeef05;
+}

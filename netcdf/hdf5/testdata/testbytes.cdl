@@ -1,0 +1,27 @@
+netcdf x {
+dimensions:
+  d1 = 1;
+  d2 = 2;
+  
+variables:
+  byte b;
+  ubyte ub;
+  byte ba(d1);
+  ubyte uba(d1);
+  string s;
+  string s2;
+  char c;
+  char c2(d1);
+  char c3(d2);
+  
+data:
+  b = 1;
+  ub = 2;
+  ba = 3;
+  uba = 4;
+  s = "5";
+  s2 = "67";
+  c = '8';
+  c2 = '9';
+  c3 = 'a', 'b';
+}

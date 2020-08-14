@@ -1,0 +1,22 @@
+netcdf testcompounds {
+types:
+  compound alltypes {
+    byte b;
+    short s;
+    int i;
+    float f;
+    double d;
+  };
+  compound includes {
+    alltypes a;
+    string s;
+  };
+dimensions:
+  dim = 2;
+variables:
+   includes v(dim);
+data:
+
+v =   {{'0', 1, 2, 3.0, 4.0}, "a"},
+      {{'1', 2, 3, 4.0, 5.0}, "b"};
+}

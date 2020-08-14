@@ -1,0 +1,94 @@
+netcdf testtypes {
+ dimensions:
+  dim = 1;
+  d1 = 2;
+  d2 = 2;
+
+ variables:
+  string str;
+  string strx1(dim);
+  string strx2(d1, d2);
+  float f32;
+  float f32x1(dim);
+  float f32x2(d1, d2);
+  double f64;
+  double f64x1(dim);
+  double f64x2(d1, d2);
+
+  byte i8;
+  byte i8x1(dim);
+  byte i8x2(d1, d2);
+
+  ubyte ui8;
+  ubyte ui8x1(dim);
+  ubyte ui8x2(d1, d2);
+
+  short i16;
+  short i16x1(dim);
+  short i16x2(d1, d2);
+
+  ushort ui16;
+  ushort ui16x1(dim);
+  ushort ui16x2(d1, d2);
+
+  int i32;
+  int i32x1(dim);
+  int i32x2(d1, d2);
+
+  uint ui32;
+  uint ui32x1(dim);
+  uint ui32x2(d1, d2);
+
+  int64 i64;
+  int64 i64x1(dim);
+  int64 i64x2(d1, d2);
+
+  uint64 ui64;
+  uint64 ui64x1(dim);
+  uint64 ui64x2(d1, d2);
+
+ data:
+  str = "a";
+  strx1 = "a";
+  strx2 = "ab", "cd", "ef", "gh";
+  f32 = -10.1;
+  f32x1 = -10.1;
+  f32x2 = -10.1, 10.1, -20.2, 20.2;
+
+  f64 = -10.1;
+  f64x1 = -10.1;
+  f64x2 = -10.1, 10.1, -20.2, 20.2;
+
+  i8 = -10;
+  i8x1 = -10;
+  i8x2 = -10, 10, -20, 20;
+
+  ui8 = 10;
+  ui8x1 = 10;
+  ui8x2 = 10, 20, 20, 30;
+
+  i16 = -10000;
+  i16x1 = -10000;
+  i16x2 = -10000, 10000, -20000, 20000;
+
+  ui16 = 10000;
+  ui16x1 = 10000;
+  ui16x2 = 10000, 20000, 20000, 30000;
+
+  i32 = -10000000;
+  i32x1 = -10000000;
+  i32x2 = -10000000, 10000000, -20000000, 20000000;
+
+  ui32 = 10000000;
+  ui32x1 = 10000000;
+  ui32x2 = 10000000, 20000000, 20000000, 30000000;
+
+  i64 = -10000000000;
+  i64x1 = -10000000000;
+  i64x2 = -10000000000, 10000000000, -20000000000, 20000000000;
+
+  ui64 = 10000000000;
+  ui64x1 = 10000000000;
+  ui64x2 = 10000000000, 20000000000, 20000000000, 30000000000;
+
+}

@@ -1,0 +1,8 @@
+netcdf onedim {
+dimensions:
+	d1 = 1;
+variables:
+	char c(d1);
+data:
+  c = "a";
+}

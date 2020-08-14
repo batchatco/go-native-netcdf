@@ -232,7 +232,7 @@ func warn(condition bool, msg string) {
 	if condition {
 		return
 	}
-	logger.Error(msg)
+	logger.Warn(msg)
 }
 
 func fail(msg string) {

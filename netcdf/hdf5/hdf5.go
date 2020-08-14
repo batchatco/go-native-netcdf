@@ -608,9 +608,8 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 		logger.Info("* mantissa:", mantissa)
 		sign := (bitFields >> 8) & 0xff
 		logger.Info("* sign: ", sign)
-		if len(properties) < 12 {
-			fail(fmt.Sprint("Properties need to be at least 12 bytes, was ", len(properties)))
-		}
+		assert(len(properties) >= 12,
+			fmt.Sprint("Properties need to be at least 12 bytes, was ", len(properties)))
 		bf := bytes.NewReader(properties)
 		bitOffset := read16(bf)
 		bitPrecision := read16(bf)
@@ -643,6 +642,7 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 		dlen += int64(dtlength) * objCount
 
 	case typeTime:
+		logger.Warn("time code has never been execute and does nothing")
 		logger.Info("time, len(data)=", len(data))
 		bf := bytes.NewReader(properties)
 		var endian binary.ByteOrder
@@ -1147,7 +1147,7 @@ func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOr
 		logger.Infof("shared addr=0x%x", addr)
 		sharedAttr, has := h5.sharedAttrs[addr]
 		if !has {
-			logger.Error("shared attr not found")
+			logger.Error("shared attr not found", addr)
 		} else {
 			bff := bytes.NewReader(data)
 			logger.Info(sharedAttr, bff)
@@ -2011,7 +2011,8 @@ func headerTypeToString(ty int) string {
 func (h5 *HDF5) readDataspace(bf io.Reader) ([]uint64, int64) {
 	version := read8(bf)
 	logger.Info("dataspace message version=", version)
-	assert(version == 1 || version == 2, "dataspace version")
+	assert(version == 1 || version == 2,
+		fmt.Sprint("dataspace version not supported: ", version))
 	d := read8(bf)
 	logger.Info("dataspace dimensionality=", d)
 	flags := read8(bf)
@@ -2170,6 +2171,7 @@ func (h5 *HDF5) readDataLayout(parent *object, bf io.Reader, size uint16) {
 			logger.Error("Invalid dimensionality", dimensionality)
 			thrower.Throw(ErrInternal)
 		}
+
 		layout := make([]uint32, int(dimensionality)-1)
 		for i := 0; i < int(dimensionality)-1; i++ {
 			size := read32(bf)
@@ -2178,6 +2180,7 @@ func (h5 *HDF5) readDataLayout(parent *object, bf io.Reader, size uint16) {
 			logger.Info("layout", i, "size", size)
 		}
 		parent.objAttr.layout = layout
+
 		size := read32(bf)
 		logger.Infof("layout data element size=%d, number of elements=%d", size,
 			numberOfElements)
@@ -2340,9 +2343,8 @@ func (h5 *HDF5) readCommon(obj *object, bf io.Reader, version uint8, ohFlags byt
 		if version > 1 {
 			nReadSave = nRead
 		}
-		if uint64(size) > (chunkSize - nReadSave) {
-			fail(fmt.Sprint("too big: ", size, chunkSize, nReadSave))
-		}
+		assert(uint64(size) <= (chunkSize-nReadSave),
+			fmt.Sprint("too big: ", size, chunkSize, nReadSave))
 		if hasFlag8(hFlags, 1) {
 			//var d = make([]byte, size)
 			//read(bf, d)
@@ -2423,9 +2425,9 @@ func (h5 *HDF5) readCommon(obj *object, bf io.Reader, version uint8, ohFlags byt
 			h5.readDataLayout(obj, f, size)
 
 		case typeBogus:
-			// TODO data object header says what action to take
-			bogus := read8(bf)
-			logger.Warn("Bogus read, value should be 0xdeadbeef:", bogus)
+			// for testing only
+			bogus := read32(bf)
+			assert(bogus == 0xdeadbeef, "bogus")
 
 		case typeGroupInfo:
 			h5.readGroupInfo(f, size)
@@ -2467,9 +2469,7 @@ func (h5 *HDF5) readCommon(obj *object, bf io.Reader, version uint8, ohFlags byt
 			logger.Info("seconds since 1970:", time)
 
 		case typeAttributeInfo:
-			if obj.attr != nil {
-				fail("already have attr info")
-			}
+			assert(obj.attr == nil, "already have attr info")
 			obj.attr = h5.readAttributeInfo(f)
 
 		case typeBtreeKValues:
@@ -2485,7 +2485,7 @@ func (h5 *HDF5) readCommon(obj *object, bf io.Reader, version uint8, ohFlags byt
 			logger.Info("Reference count:", refCount)
 
 		default:
-			logger.Infof("UNHANDLED header type: %s", headerTypeToString(int(headerType)))
+			fail(fmt.Sprintf("UNHANDLED header type: %s", headerTypeToString(int(headerType))))
 		}
 		nRead += uint64(size)
 		logger.Info("chunksize", chunkSize, "nRead", nRead, "rem", chunkSize-nRead)
@@ -2539,9 +2539,7 @@ func (h5 *HDF5) readDataObjectHeader(addr uint64) *object {
 		logger.Info("access, mod, change and birth times are stored")
 		timePresent = true
 	}
-	if ohFlags&0xc0 > 0 {
-		fail("reserved fields should not be present")
-	}
+	assert(ohFlags&0xc0 == 0, "reserved fields should not be present")
 
 	if timePresent {
 		i := read32(bf)
@@ -2595,7 +2593,7 @@ func (h5 *HDF5) readDataObjectHeaderV1(addr uint64) *object {
 	version := read8(bf)
 	nRead++
 	logger.Info("v1 object header version=", version)
-	checkVal(1, version, "only handle version 1")
+	checkVal(1, version, fmt.Sprint("only handle version 1, got: ", version))
 
 	reserved := read8(bf)
 	nRead++
@@ -2656,10 +2654,7 @@ func (h5 *HDF5) GetGroup(group string) (g api.Group, err error) {
 	}
 
 	o := sgDescend(h5.rootObject, "/")
-	if o == nil {
-		logger.Infof("Did not find group %s in %s\n", group, h5.groupName)
-		thrower.Throw(ErrNotFound)
-	}
+	assert(o != nil, fmt.Sprintf("Did not find group %s in %s", group, h5.groupName))
 
 	hg := *h5
 	hg.groupName = groupName
@@ -2688,7 +2683,8 @@ func Open(fname string) (nc api.Group, err error) {
 	return c, err
 }
 
-func New(file io.ReadSeeker) (nc api.Group, err error) {
+func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
+	defer thrower.RecoverError(&err)
 	fileSize := fileSize(file)
 	var fname string
 	if f, ok := file.(*os.File); ok {
@@ -2962,13 +2958,8 @@ func padBytesCheck(bf io.Reader, pad32 int, check bool) {
 		b := make([]byte, extra)
 		read(cbf, b)
 		for i := 0; i < int(extra); i++ {
-			if b[i] != 0 {
-				if check {
-					checkVal(0, b[i], "postpad extra")
-				} else {
-					logger.Infof("Reserved not zero %d/%d %x", i, extra, b[i])
-				}
-			}
+			assert(b[i] == 0,
+				fmt.Sprintf("Reserved not zero %d/%d %x", i, extra, b[i]))
 		}
 	}
 }
@@ -2980,9 +2971,6 @@ func padBytes(bf io.Reader, pad32 int) {
 func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute) interface{} {
 	cbf := (bf).(*countedReader)
 	class := fmt.Sprint("class=", attr.class)
-	if attr.class == typeFloatingPoint {
-		class = "FLOAT"
-	}
 
 	logger.Info(cbf.Count(), "Alloc compounds", dimLengths, class)
 	dtlen := uint32(0)
@@ -3492,20 +3480,22 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			readers = append(readers, newNullReader(r, segments[i].length))
 			continue
 		}
-		if segments[i].offset > off && segments[i].extra == 0 {
-			readers = append(readers,
-				io.LimitReader(makeFillValueReader(obj, nil), int64(segments[i].offset-off)))
-			logger.Info("Fill value at offset", off, "length", segments[i].offset-off)
-		}
+		assert(!(segments[i].offset > off && segments[i].extra == 0), "this never happens")
+		/* if it did though
+		readers = append(readers,
+			io.LimitReader(makeFillValueReader(obj, nil), int64(segments[i].offset-off)))
+		logger.Info("Fill value at offset", off, "length", segments[i].offset-off)
+		*/
 		logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
 		off = segments[i].offset + segments[i].length
 		readers = append(readers, io.LimitReader(r, int64(segments[i].length)))
 	}
-	if off < size {
-		readers = append(readers,
-			io.LimitReader(makeFillValueReader(obj, nil), int64(size-off)))
-		logger.Info("Fill value at offset", off, "length", size-off)
-	}
+	assert(off >= size, "this never happens")
+	/* if it did though
+	readers = append(readers,
+		io.LimitReader(makeFillValueReader(obj, nil), int64(size-off)))
+	logger.Info("Fill value at offset", off, "length", size-off)
+	*/
 	return io.Reader(io.MultiReader(readers...)), size
 }
 
@@ -3785,6 +3775,7 @@ func (h5 *HDF5) getDataAttrCheck(bf io.Reader, attr attribute, check bool) inter
 	default:
 		logger.Fatal("unhandled type, getDataAttr", attr.class)
 	}
+	fail("we should have converted everything already")
 	return convert(values) // must convert: TODO, remove this
 }
 
@@ -3904,13 +3895,6 @@ func lookupDimId(obj *object, searchGroup string, dimid int32, group string) str
 					}
 				}
 			}
-		}
-		return ""
-	}
-	for _, o := range obj.children {
-		dim := lookupDimId(o, prefix+o.name, dimid, group)
-		if dim != "" {
-			return dim
 		}
 	}
 	return ""
@@ -4148,9 +4132,6 @@ func undoInterfaces(v interface{}) reflect.Value {
 
 func convert(v interface{}) interface{} {
 	val := undoInterfaces(v)
-	if val.IsValid() {
-		return val.Interface()
-	}
-	logger.Infof("Conversion failed on %v", v)
-	return v
+	assert(val.IsValid(), "invalid conversion")
+	return val.Interface()
 }

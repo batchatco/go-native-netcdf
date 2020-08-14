@@ -1,9 +1,5 @@
 # go-native-netcdf
 
-## Note
-
-This is a work in progress.
-
 ## Introduction
 
 
@@ -180,14 +176,14 @@ slower than the alternative.
 It's working well enough that I feel it is okay to publish it now. I'll continue to work
 on it. I can clean up the code and make it run faster, for example.  Feedback is welcome.
 
-Some of the exotic HDF5 types are actually implemented, but the interface to them
-is not hidden completely. Variables of these types will get parsed and returned in
-an unsupported format.  If you want to play with it, fine.  If there's enough demand,
+Some of the exotic HDF5 types are actually implemented, but the interfaces to them
+mostly hidden. Variables of these types will get parsed and returned in
+an unsupported format.  If you want to play with it, fine. If there's enough demand,
 I can expose the interfaces.
 
 If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically,
 the *ncgen* command to compile the *cdl* files. It's available as an Ubuntu package.
 
-```
-sudo apt-get install netcdf-bin
+```console
+$ sudo apt-get install netcdf-bin
 ```

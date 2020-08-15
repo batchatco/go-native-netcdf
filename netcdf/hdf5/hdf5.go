@@ -50,7 +50,7 @@ var (
 	ErrInternal                = errors.New("internal error")
 	ErrNotFound                = errors.New("not found")
 	ErrFletcherChecksum        = errors.New("fletcher checksum failure")
-	ErrVersion                 = errors.New("version not supported")
+	ErrVersion                 = errors.New("hdf5 version not supported")
 	ErrLinkType                = errors.New("link type not unsupported")
 	ErrVirtualStorage          = errors.New("virtual storage not supported")
 	ErrTruncated               = errors.New("file is too small, may be truncated")
@@ -59,6 +59,7 @@ var (
 	ErrDataObjectHeaderVersion = errors.New("data object header version not supported")
 	ErrDataspaceVersion        = errors.New("dataspace version not supported")
 	ErrCorrupted               = errors.New("corrupted file")
+	ErrLayout                  = errors.New("data layout version not supported")
 )
 
 const (
@@ -118,6 +119,14 @@ const (
 	typeObjectReferenceCount
 )
 
+// types of data layout classes
+const (
+	classCompact = iota
+	classContiguous
+	classChunked
+	classVirtual
+)
+
 type attribute struct {
 	name           string
 	value          interface{}
@@ -129,7 +138,7 @@ type attribute struct {
 	addr           uint64      // for reference
 	length         uint32      // datatype length
 	dimensionality uint8       // for compound
-	layout         []uint32
+	layout         []uint64
 	dimensions     []uint64 // for compound
 	endian         binary.ByteOrder
 	dtversion      uint8
@@ -278,11 +287,31 @@ func read16(r io.Reader) uint16 {
 	return data
 }
 
+func readOdd(r io.Reader, n int) uint64 {
+	// for reading oddball n-byte integers, just pad to 8 bytes with zeroes first.
+	b := make([]byte, 8)
+	_, err := r.Read(b[:n])
+	thrower.ThrowIfError(err)
+	sr := bytes.NewReader(b[:])
+	var data uint64
+	err = binary.Read(sr, binary.LittleEndian, &data)
+	thrower.ThrowIfError(err)
+	return data
+}
+
+func read24(r io.Reader) uint64 {
+	return readOdd(r, 3)
+}
+
 func read32(r io.Reader) uint32 {
 	var data uint32
 	err := binary.Read(r, binary.LittleEndian, &data)
 	thrower.ThrowIfError(err)
 	return data
+}
+
+func read40(r io.Reader) uint64 {
+	return readOdd(r, 5)
 }
 
 func read64(r io.Reader) uint64 {
@@ -2162,21 +2191,26 @@ func (h5 *HDF5) readFilterPipeline(obj *object, bf io.Reader, size uint16) {
 	}
 }
 
-func (h5 *HDF5) readDataLayout(parent *object, bf io.Reader, size uint16) {
-	logger.Infof("layout size=%d", size)
+func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader, layoutSize uint16) {
+	logger.Infof("layout size=%d", layoutSize)
+	bf := newCountedReader(obf).(*countedReader)
 	version := read8(bf)
 	// V4 is quite complex and not supported yet
-	assert(version == 3 || version == 4, "unsupported data layout")
+	switch version {
+	case 3, 4:
+	default:
+		thrower.Throw(ErrLayout)
+	}
 	class := read8(bf)
 	logger.Infof("layout version=%d class=%d", version, class)
 	switch class {
-	case 0:
+	case classCompact:
 		size := read16(bf)
 		logger.Infof("layout compact size=%d", size)
 		fail("compact not supported")
 		// We need the address passed in
 		//parent.dataBlocks = append(parent.dataBlocks, dataBlock{address, uint64(size)})
-	case 1:
+	case classContiguous:
 		address := read64(bf)
 		size := read64(bf)
 		logger.Infof("layout contiguous address=0x%x size=%d", address, size)
@@ -2185,34 +2219,119 @@ func (h5 *HDF5) readDataLayout(parent *object, bf io.Reader, size uint16) {
 			parent.dataBlocks = append(parent.dataBlocks,
 				dataBlock{address, uint64(size), 0, uint64(size), 0, nil})
 		}
-	case 2:
+	case classChunked:
 		// seems to be one more dimension here
 		dimensionality := read8(bf)
-		address := read64(bf)
-		logger.Infof("layout dimensionality=%d address=0x%x", dimensionality, address)
-		numberOfElements := uint64(1)
-		assertError(dimensionality >= 2,
-			ErrDimensionality,
-			fmt.Sprint("Invalid dimensionality ", dimensionality))
+		switch version {
+		case 3:
+			address := read64(bf)
+			logger.Infof("layout dimensionality=%d address=0x%x", dimensionality, address)
+			numberOfElements := uint64(1)
+			assertError(dimensionality >= 2,
+				ErrDimensionality,
+				fmt.Sprint("Invalid dimensionality ", dimensionality))
 
-		layout := make([]uint32, int(dimensionality)-1)
-		for i := 0; i < int(dimensionality)-1; i++ {
+			layout := make([]uint64, int(dimensionality)-1)
+			for i := 0; i < int(dimensionality)-1; i++ {
+				size := read32(bf)
+				numberOfElements *= uint64(size)
+				layout[i] = uint64(size)
+				logger.Info("layout", i, "size", size)
+			}
+			parent.objAttr.layout = layout
+
 			size := read32(bf)
-			numberOfElements *= uint64(size)
-			layout[i] = size
-			logger.Info("layout", i, "size", size)
-		}
-		parent.objAttr.layout = layout
+			logger.Infof("layout data element size=%d, number of elements=%d", size,
+				numberOfElements)
+			if address != invalidAddress {
+				h5.readBTreeNode(parent, address, uint64(size), numberOfElements, dimensionality)
+			} else {
+				logger.Info("layout specified invalid address")
+			}
 
-		size := read32(bf)
-		logger.Infof("layout data element size=%d, number of elements=%d", size,
-			numberOfElements)
-		if address != invalidAddress {
-			h5.readBTreeNode(parent, address, uint64(size), numberOfElements, dimensionality)
-		} else {
-			logger.Info("layout specified invalid address")
+		case 4:
+			flags := read8(bf)
+			if hasFlag8(flags, 0) {
+				logger.Info("do not apply filter to partial edge trunk flag")
+			}
+			if hasFlag8(flags, 1) {
+				logger.Info("filtered chunk for single chunk indexing")
+			}
+			dimensionality := read8(bf)
+			logger.Info("v4 dimensionality", dimensionality)
+			encodedLen := read8(bf)
+			logger.Info("encoded length", encodedLen)
+			assert(encodedLen != 0, "invalid encoded length")
+			assert(encodedLen <= 5,
+				fmt.Sprint("do not support encoded lengths > 4: ", encodedLen))
+			layout := make([]uint64, int(dimensionality)-1)
+			numberOfElements := uint64(1)
+			for i := 0; i < int(dimensionality)-1; i++ {
+				var size uint64
+				switch encodedLen {
+				case 1:
+					size = uint64(read8(bf))
+				case 2:
+					size = uint64(read16(bf))
+				case 3:
+					size = read24(bf)
+				case 4:
+					size = uint64(read32(bf))
+				case 5:
+					size = read40(bf)
+				}
+				numberOfElements *= uint64(size)
+				layout[i] = size
+				logger.Info("layout", i, "size", size)
+			}
+			parent.objAttr.layout = layout
+			cit := read8(bf)
+			logger.Info("chunk indexing type", cit)
+			assert(cit >= 1 && cit <= 5, "bad value for chunk indexing type")
+			switch cit {
+			case 1:
+				fchunksize := read64(bf)
+				filters := read32(bf)
+				logger.Info("single chunk", fchunksize, filters)
+			case 2:
+				logger.Info("implicit indexing")
+			case 3:
+				pageBits := read8(bf)
+				logger.Info("fixed array", pageBits)
+			case 4:
+				maxbits := read8(bf)
+				indexElements := read8(bf)
+				minPointers := read8(bf)
+				minElements := read8(bf)
+				pageBits := read8(bf)
+				logger.Info("extensible array", maxbits, indexElements, minPointers, minElements, pageBits)
+			case 5:
+				splitPercent := read8(bf)
+				mergePercent := read8(bf)
+				logger.Info("b-tree indexing", splitPercent, mergePercent)
+			}
+			logger.Info("about to read address, remaing data=", int64(layoutSize)-bf.Count())
+			rem := int64(layoutSize) - bf.Count()
+			var address uint64
+			switch {
+			case rem == 3:
+				logger.Info("Expected an 8-byte address, got a 3-byte one")
+				address = uint64(read24(bf))
+			case rem == 4:
+				logger.Info("Expected an 8-byte address, got a 4-byte one")
+				address = uint64(read32(bf))
+			case rem == 5:
+				logger.Info("Expected an 8-byte address, got a 5-byte one")
+				address = uint64(read40(bf))
+			case rem >= 8:
+				address = read64(bf)
+			default:
+				logger.Error("unsupported v4 address size", rem)
+			}
+			logger.Infof("v4 layout dimensionality=%d address=0x%x", dimensionality, address)
+			thrower.Throw(ErrLayout)
 		}
-	case 3:
+	case classVirtual:
 		logger.Error("Virtual storage not supported")
 		thrower.Throw(ErrVirtualStorage)
 	default:
@@ -3384,7 +3503,7 @@ func (s ByOffset) Less(i, j int) bool {
 	return s.Segments[i].extra < s.Segments[j].extra
 }
 
-func getSegs(offset uint64, offsets []uint64, segs []*segment, dims []uint64, layout []uint32,
+func getSegs(offset uint64, offsets []uint64, segs []*segment, dims []uint64, layout []uint64,
 	dtlen uint32) []*segment {
 	if len(layout) == 1 {
 		offset += offsets[0] * uint64(dtlen)

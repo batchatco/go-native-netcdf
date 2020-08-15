@@ -2267,19 +2267,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader, layoutSize uint16)
 			layout := make([]uint64, int(dimensionality)-1)
 			numberOfElements := uint64(1)
 			for i := 0; i < int(dimensionality)-1; i++ {
-				var size uint64
-				switch encodedLen {
-				case 1:
-					size = uint64(read8(bf))
-				case 2:
-					size = uint64(read16(bf))
-				case 3:
-					size = read24(bf)
-				case 4:
-					size = uint64(read32(bf))
-				case 5:
-					size = read40(bf)
-				}
+				size := readEnc(bf, encodedLen)
 				numberOfElements *= uint64(size)
 				layout[i] = size
 				logger.Info("layout", i, "size", size)

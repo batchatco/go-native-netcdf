@@ -812,10 +812,6 @@ func TestCompound(t *testing.T) {
 	}
 	//SetLogLevel(util.LevelInfo)
 	defer nc.Close()
-	ncg, err := nc.GetGroup("/")
-	if err != nil {
-		t.Error(err)
-	}
 
 	vals := []compound{
 		{compound{
@@ -853,22 +849,7 @@ func TestCompound(t *testing.T) {
 				Attributes: nilMap},
 		},
 	}
-	vr, err := ncg.GetVariable("v")
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	if !values.check(t, "v", *vr) {
-		t.Error("check")
-	}
-	vr, err = ncg.GetVariable("same")
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	if !values.check(t, "same", *vr) {
-		t.Error("check")
-	}
+	checkAll(t, nc, values)
 }
 
 func TestOneDim(t *testing.T) {
@@ -1139,6 +1120,10 @@ func TestEnum(t *testing.T) {
 		{"c", api.Variable{
 			Values:     enumerated{[]int8{0, 1, 2, 3, 4, 5}},
 			Dimensions: []string{"dim"},
+			Attributes: nilMap}},
+		{"nodim", api.Variable{
+			Values:     enumerated{int8(2)},
+			Dimensions: nil,
 			Attributes: nilMap}},
 	}
 	checkAll(t, nc, enum)

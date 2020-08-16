@@ -149,12 +149,10 @@ type compoundField interface{}
 type compound []compoundField
 
 type enumerated struct {
-	val interface{}
+	values interface{}
 }
 
-type opaque struct {
-	val interface{}
-}
+type opaque []byte
 
 type variableLength struct {
 	values interface{} // is a slice of something
@@ -2973,13 +2971,14 @@ func allocOpaque(bf io.Reader, dimLengths []uint64, length uint32) interface{} {
 	if len(dimLengths) == 0 {
 		b := make([]byte, length)
 		read(bf, b)
-		return b
+		return opaque(b)
 	}
 	thisDim := dimLengths[0]
-	ty := reflect.TypeOf([]byte{})
+	ty := reflect.TypeOf(opaque{})
 	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocOpaque(bf, dimLengths[1:], length)))
+		val := allocOpaque(bf, dimLengths[1:], length)
+		vals.Index(int(i)).Set(reflect.ValueOf(val))
 	}
 	return vals.Interface()
 }
@@ -3170,7 +3169,8 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 			logger.Info("Alloc inner", i, "of", thisDim)
 			vals[i] = h5.allocVariable(bf, dimLengths[1:], attr)
 		}
-		// TODO: vals[0] may not exist, need to figure out other way to find type
+		// TODO: vals[0] may not exist, need to figure out another way to find the type.
+		// This never happens in NETCDF4 though.
 		if vals[0] == nil {
 			return nil
 		}
@@ -3869,13 +3869,13 @@ func (h5 *HDF5) getDataAttrCheck(bf io.Reader, attr attribute, check bool) inter
 	case typeOpaque:
 		values = allocOpaque(bf, attr.dimensions, attr.length)
 		logger.Infof("values=0x%x", values)
-		return opaque{val: convert(values)}
+		return values
 
 	default:
 		logger.Fatal("unhandled type, getDataAttr", attr.class)
 	}
 	fail("we should have converted everything already")
-	return convert(values) // must convert: TODO, remove this
+	panic("silence warning")
 }
 
 func (h5 *HDF5) Attributes() api.AttributeMap {
@@ -3980,7 +3980,7 @@ func findDim(obj *object, oaddr uint64, group string) string {
 }
 
 // TODO: make this smarter by finding the group first
-func lookupDimId(obj *object, searchGroup string, dimid int32, group string) string {
+func lookupDimID(obj *object, searchGroup string, dimid int32, group string) string {
 	prefix := ""
 	if len(searchGroup) > 0 {
 		prefix = searchGroup + "/"
@@ -4008,7 +4008,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 			coordFound = true
 			for _, dimid := range a.value.([]int32) {
 				// TODO: remove root
-				name := lookupDimId(h5.rootObject, "", dimid, h5.groupName)
+				name := lookupDimID(h5.rootObject, "", dimid, h5.groupName)
 				if name != "" {
 					dimNames = append(dimNames, name)
 				} else {

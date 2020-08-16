@@ -11,12 +11,22 @@ types:
     alltypes a;
     string s;
   };
-dimensions:
-  dim = 2;
-variables:
-   includes v(dim);
-data:
+  compound sametypes {
+    int a;
+    int b;
+    int c;
+  };
 
-v =   {{'0', 1, 2, 3.0, 4.0}, "a"},
-      {{'1', 2, 3, 4.0, 5.0}, "b"};
+dimensions:
+  dim = UNLIMITED;
+
+variables:
+  includes v(dim);
+  sametypes same(dim);
+
+data:
+  v = {{'0', 1, 2, 3.0, 4.0}, "a"},
+    {{'1', 2, 3, 4.0, 5.0}, "b"};
+
+  same = {0,1,2},{3,4,5};
 }

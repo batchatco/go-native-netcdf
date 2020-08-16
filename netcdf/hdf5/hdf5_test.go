@@ -817,10 +817,6 @@ func TestCompound(t *testing.T) {
 		t.Error(err)
 	}
 
-	vr, err := ncg.GetVariable("v")
-	if err != nil {
-		t.Error(err)
-	}
 	vals := []compound{
 		{compound{
 			int8('0'),
@@ -839,6 +835,10 @@ func TestCompound(t *testing.T) {
 			"b",
 		},
 	}
+	samevals := []compound{
+		{int32(0), int32(1), int32(2)},
+		{int32(3), int32(4), int32(5)},
+	}
 	values := keyValList{
 		keyVal{"v",
 			api.Variable{
@@ -846,8 +846,27 @@ func TestCompound(t *testing.T) {
 				Dimensions: []string{"dim"},
 				Attributes: nilMap},
 		},
+		keyVal{"same",
+			api.Variable{
+				Values:     samevals,
+				Dimensions: []string{"dim"},
+				Attributes: nilMap},
+		},
+	}
+	vr, err := ncg.GetVariable("v")
+	if err != nil {
+		t.Error(err)
+		return
 	}
 	if !values.check(t, "v", *vr) {
+		t.Error("check")
+	}
+	vr, err = ncg.GetVariable("same")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if !values.check(t, "same", *vr) {
 		t.Error("check")
 	}
 }
@@ -934,7 +953,7 @@ func TestUnlimitedEmpty(t *testing.T) {
 			Dimensions: []string{"u"},
 			Attributes: nilMap}},
 		{"b", api.Variable{
-			Values:     opaque{val: []uint8{}},
+			Values:     []opaque{},
 			Dimensions: []string{"u"},
 			Attributes: nilMap}},
 		{"c", api.Variable{
@@ -950,11 +969,11 @@ func TestUnlimitedEmpty(t *testing.T) {
 			Dimensions: []string{"u", "u", "u"},
 			Attributes: nilMap}},
 		{"f", api.Variable{
-			Values:     opaque{val: [][]uint8{}},
+			Values:     [][]opaque{},
 			Dimensions: []string{"u", "u"},
 			Attributes: nilMap}},
 		{"g", api.Variable{
-			Values:     opaque{val: [][][]uint8{}},
+			Values:     [][][]opaque{},
 			Dimensions: []string{"u", "u", "u"},
 			Attributes: nilMap}},
 	}
@@ -1024,7 +1043,6 @@ func TestFletcher32(t *testing.T) {
 	testFilters(t, []string{"FLET"}, "-f")
 }
 
-//go:generate go run compile/compile.go -r SHUF
 func TestShuffle(t *testing.T) {
 	testFilters(t, []string{"SHUF"}, "-s")
 }
@@ -1092,12 +1110,12 @@ func TestOpaque(t *testing.T) {
 	defer nc.Close()
 	opaque := keyValList{
 		{"v", api.Variable{
-			Values: opaque{[][]uint8{
+			Values: []opaque{
 				{0xde, 0xad, 0xbe, 0xef, 0x01},
 				{0xde, 0xad, 0xbe, 0xef, 0x02},
 				{0xde, 0xad, 0xbe, 0xef, 0x03},
 				{0xde, 0xad, 0xbe, 0xef, 0x04},
-				{0xde, 0xad, 0xbe, 0xef, 0x05}}},
+				{0xde, 0xad, 0xbe, 0xef, 0x05}},
 			Dimensions: []string{"dim"},
 			Attributes: nilMap}},
 	}

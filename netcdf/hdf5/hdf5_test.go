@@ -1,17 +1,17 @@
 package hdf5
 
 import (
+	"io/ioutil"
 	"math"
 	"os"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
 )
-
-//go:generate go run compile/compile.go
 
 const errorNcGen = "Error running ncgen command from netcdf package"
 const errorNcFilter = "Error running h5repack command from hdf5 package"
@@ -131,7 +131,7 @@ var values = keyValList{
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
 	{"ui32x2", api.Variable{
-		Values:     [][]uint32{[]uint32{10000000, 20000000}, []uint32{20000000, 30000000}},
+		Values:     [][]uint32{{10000000, 20000000}, {20000000, 30000000}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
 	{"i64", api.Variable{
@@ -281,7 +281,8 @@ var fills = keyValList{
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
 	{"i64x2", api.Variable{
-		Values: [][]int64{{-9223372036854775806, -9223372036854775806},
+		Values: [][]int64{
+			{-9223372036854775806, -9223372036854775806},
 			{-9223372036854775806, -9223372036854775806}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
@@ -294,7 +295,8 @@ var fills = keyValList{
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
 	{"ui64x2", api.Variable{
-		Values: [][]uint64{{18446744073709551614, 18446744073709551614},
+		Values: [][]uint64{
+			{18446744073709551614, 18446744073709551614},
 			{18446744073709551614, 18446744073709551614}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
@@ -407,8 +409,7 @@ var fills2 = keyValList{
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
 	{"ui32x2", api.Variable{
-		Values: [][]uint32{{0, 0},
-			{0, 0}},
+		Values:     [][]uint32{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
 	{"i64", api.Variable{
@@ -465,23 +466,68 @@ func ncGen(t *testing.T, fileNameNoExt string) string {
 	return genName
 }
 
-func ncFilter(t *testing.T, fileNameNoExt string, filters []string) string {
+func validate(t *testing.T, fname string, filters []string) {
+	cmdString := []string{"-H", "-p", fname}
+	cmd := exec.Command("h5dump", cmdString...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	err = cmd.Start()
+	defer cmd.Wait()
+	if err != nil {
+		s := strings.Join(cmdString, " ")
+		t.Error("h5dump", s, ":", err)
+		return
+	}
+	out, err := ioutil.ReadAll(stdout)
+	if err != nil {
+		t.Error("ReadAll", err)
+		return
+	}
+	filtMap := map[string]string{
+		"SHUF":   "PREPROCESSING SHUFFLE",
+		"FLET":   "CHECKSUM FLETCHER32",
+		"GZIP=1": "COMPRESSION DEFLATE { LEVEL 1 }",
+		"GZIP=5": "COMPRESSION DEFLATE { LEVEL 5 }",
+		"GZIP=9": "COMPRESSION DEFLATE { LEVEL 9 }",
+	}
+	for _, f := range filters {
+		if !strings.Contains(string(out), filtMap[f]) {
+
+			t.Error(fname, "missing", f)
+			t.Log(string(out))
+			os.Remove(fname)
+		}
+	}
+}
+
+func ncFilter(t *testing.T, fileNameNoExt string, filters []string,
+	extension string) string {
 	t.Helper()
-	genName := "testdata/" + fileNameNoExt + "-filt.nc"
+	genName := "testdata/" + fileNameNoExt + extension + ".nc"
+	srcName := "testdata/" + fileNameNoExt + ".nc"
+	if genIsNewer(genName, srcName) {
+		return genName
+	}
+
 	// version 2 (latest) uses V4 data layout which is not supported yet
 	// So use version 1.
-	cmdString := []string{"--low=1", "--high=1"}
+	//cmdString := []string{"--low=1", "--high=1"}
+	cmdString := []string{}
 	for i := range filters {
 		cmdString = append(cmdString, "-f", filters[i])
 	}
-	cmdString = append(cmdString, "testdata/"+fileNameNoExt+".nc", genName)
+	cmdString = append(cmdString, srcName, genName)
 	cmd := exec.Command("h5repack", cmdString...)
 	err := cmd.Run()
 	if err != nil {
-		t.Log("command", "h5repack", cmdString)
-		t.Log(err)
+		s := strings.Join(cmdString, " ")
+		t.Error("h5repack", s, ":", err)
 		return ""
 	}
+	validate(t, genName, filters)
 	return genName
 }
 
@@ -903,6 +949,14 @@ func TestUnlimitedEmpty(t *testing.T) {
 			Values:     [][][]compound{},
 			Dimensions: []string{"u", "u", "u"},
 			Attributes: nilMap}},
+		{"f", api.Variable{
+			Values:     opaque{val: [][]uint8{}},
+			Dimensions: []string{"u", "u"},
+			Attributes: nilMap}},
+		{"g", api.Variable{
+			Values:     opaque{val: [][][]uint8{}},
+			Dimensions: []string{"u", "u", "u"},
+			Attributes: nilMap}},
 	}
 	checkAll(t, nc, empty)
 }
@@ -929,7 +983,7 @@ func TestUnlimitedOnlyBytes(t *testing.T) {
 	checkAll(t, nc, unlims)
 }
 
-func testFilters(t *testing.T, filters []string) {
+func testFilters(t *testing.T, filters []string, extension string) {
 	t.Helper()
 	fileName := "testfilters" // base filename without extension
 	genName := ncGen(t, fileName)
@@ -937,12 +991,11 @@ func testFilters(t *testing.T, filters []string) {
 		t.Error(errorNcGen)
 		return
 	}
-	filtName := ncFilter(t, fileName, filters)
+	filtName := ncFilter(t, fileName, filters, extension)
 	if filtName == "" {
 		t.Error(errorNcFilter)
 		return
 	}
-	defer os.Remove(filtName)
 	nc, err := Open(filtName)
 	if err != nil {
 		t.Error(err)
@@ -968,27 +1021,28 @@ func testFilters(t *testing.T, filters []string) {
 }
 
 func TestFletcher32(t *testing.T) {
-	testFilters(t, []string{"FLET"})
+	testFilters(t, []string{"FLET"}, "-f")
 }
 
+//go:generate go run compile/compile.go -r SHUF
 func TestShuffle(t *testing.T) {
-	testFilters(t, []string{"SHUF"})
+	testFilters(t, []string{"SHUF"}, "-s")
 }
 
 func TestGzip(t *testing.T) {
-	testFilters(t, []string{"GZIP=1"})
-	testFilters(t, []string{"GZIP=5"})
-	testFilters(t, []string{"GZIP=9"})
+	testFilters(t, []string{"GZIP=1"}, "-g1")
+	testFilters(t, []string{"GZIP=5"}, "-g5")
+	testFilters(t, []string{"GZIP=9"}, "-g9")
 }
 
 func TestAll(t *testing.T) {
 	// FLET, if present, must always be last.
 	// If GZIP is present, SHUF may appear only before it.
-	testFilters(t, []string{"SHUF", "FLET"})
-	testFilters(t, []string{"SHUF", "GZIP=5"})
-	testFilters(t, []string{"GZIP=5", "FLET"})
+	testFilters(t, []string{"SHUF", "FLET"}, "-sf")
+	testFilters(t, []string{"SHUF", "GZIP=5"}, "-sg5")
+	testFilters(t, []string{"GZIP=5", "FLET"}, "-g5f")
 	// This should be okay
-	testFilters(t, []string{"SHUF", "GZIP=5", "FLET"})
+	testFilters(t, []string{"SHUF", "GZIP=5", "FLET"}, "-sg5f")
 }
 
 func TestBadMagic(t *testing.T) {
@@ -1048,6 +1102,28 @@ func TestOpaque(t *testing.T) {
 			Attributes: nilMap}},
 	}
 	checkAll(t, nc, opaque)
+}
+
+func TestEnum(t *testing.T) {
+	fileName := "testenum" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	enum := keyValList{
+		{"c", api.Variable{
+			Values:     enumerated{[]int8{0, 1, 2, 3, 4, 5}},
+			Dimensions: []string{"dim"},
+			Attributes: nilMap}},
+	}
+	checkAll(t, nc, enum)
 }
 
 func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {

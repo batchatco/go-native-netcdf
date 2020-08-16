@@ -343,9 +343,7 @@ func (h5 *HDF5) checkChecksum(addr uint64, blen int) {
 	hash := computeChecksumStream(bf, blen)
 	sum := read32(bf)
 	logger.Infof("found 0x%x (expected 0x%x) length=%d", hash, sum, blen)
-	if hash != sum {
-		fail("checksum mismatch")
-	}
+	assert(hash == sum, "checksum mismatch")
 }
 
 func computeChecksumStream(bf io.Reader, blen int) uint32 {
@@ -866,6 +864,7 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 			logger.Info("* rtype=", rType)
 		}
 		checkVal(0, rType, "rtype must be zero")
+		checkVal(0, bitFields, "reserved must be zero")
 		if data == nil {
 			logger.Infof("no data")
 			break
@@ -1031,25 +1030,20 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOrder uint64) {
 	sizeRem := int(size)
 	logger.Info("size=", sizeRem)
-	decrement := func(amount int) bool {
+	decrement := func(amount int) {
 		if amount > sizeRem {
 			logger.Error("Cannot decrement", amount, "from", sizeRem)
-			return false
+			thrower.Throw(ErrCorrupted)
 		}
 		sizeRem -= amount
 		logger.Info("sizeRem=", sizeRem)
-		return true
 	}
 	version := read8(bf)
-	if !decrement(1) {
-		return
-	}
+	decrement(1)
 	logger.Infof("* attr version=%d", version)
 	assert(version >= 1 && version <= 3, "not an Attribute")
 	flags := read8(bf) // reserved in version 1
-	if !decrement(1) {
-		return
-	}
+	decrement(1)
 	shared := false
 	switch version {
 	case 1:
@@ -1066,19 +1060,13 @@ func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOr
 		logger.Infof("* attr flags=0x%x (%s)", flags, binaryToString(uint64(flags)))
 	}
 	nameSize := read16(bf)
-	if !decrement(2) {
-		return
-	}
+	decrement(2)
 	logger.Infof("* name size: %d", nameSize)
 	datatypeSize := read16(bf)
-	if !decrement(2) {
-		return
-	}
+	decrement(2)
 	logger.Infof("* datatype size: %d", datatypeSize)
 	dataspaceSize := read16(bf)
-	if !decrement(2) {
-		return
-	}
+	decrement(2)
 	logger.Infof("* dataspace size: %d", dataspaceSize)
 	if version == 3 {
 		enc := read8(bf)
@@ -1091,9 +1079,7 @@ func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOr
 	}
 	b := make([]byte, nameSize)
 	read(bf, b)
-	if !decrement(int(nameSize)) {
-		return
-	}
+	decrement(int(nameSize))
 	if version == 1 {
 		roundup := (nameSize + 7) & ^uint16(7)
 		pad := roundup - nameSize
@@ -1103,9 +1089,7 @@ func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOr
 			checkVal(0, z, "zero pad")
 		}
 		if pad > 0 {
-			if !decrement(int(pad)) {
-				return
-			}
+			decrement(int(pad))
 		}
 	}
 	// save name
@@ -1116,9 +1100,7 @@ func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOr
 	attr.creationOrder = creationOrder
 	dtb := make([]byte, datatypeSize)
 	read(bf, dtb)
-	if !decrement(int(datatypeSize)) {
-		return
-	}
+	decrement(int(datatypeSize))
 	logger.Infof("** orig datatype=0x%x", dtb)
 
 	if version == 1 {
@@ -1129,9 +1111,7 @@ func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOr
 			checkVal(0, z, "zero pad")
 		}
 		if pad > 0 {
-			if !decrement(int(pad)) {
-				return
-			}
+			decrement(int(pad))
 		}
 	}
 
@@ -1146,9 +1126,7 @@ func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOr
 			checkVal(0, z, "zero pad")
 		}
 		if pad > 0 {
-			if !decrement(int(pad)) {
-				return
-			}
+			decrement(int(pad))
 		}
 	}
 	logger.Infof("** orig dataspace=0x%x", b)
@@ -1160,9 +1138,7 @@ func (h5 *HDF5) readAttribute(obj *object, bf io.Reader, size uint16, creationOr
 	logger.Info("sizeRem=", sizeRem, "readAll")
 	data := make([]byte, sizeRem)
 	read(bf, data)
-	if !decrement(sizeRem) {
-		return
-	}
+	decrement(sizeRem)
 	if !shared {
 		_, _ = h5.printDatatype(obj, dtb, data, count, attr, false /*isCompound*/)
 	} else {
@@ -1508,9 +1484,7 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 		dtSize,
 		nodeType, nodeLevel, entriesUsed, leftAddress, rightAddress)
 	if leftAddress != invalidAddress || rightAddress != invalidAddress {
-		if isTop {
-			fail("Siblings unexpected")
-		}
+		assert(!isTop, "Siblings unexpected")
 	}
 	if nodeLevel > 0 {
 		logger.Infof("Start level %d", nodeLevel)
@@ -1618,9 +1592,7 @@ func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
 	bff := bytes.NewReader(b)
 	hash := computeChecksumStream(bff, int(blockSize))
 	logger.Infof("checksum=0x%x (expect=0x%x)", hash, checksum)
-	if checksum != hash {
-		fail("checksum mismatch")
-	}
+	assert(checksum == hash, "checksum mismatch")
 	//h5.readHeap(heapHeaderAddr)
 }
 
@@ -2196,11 +2168,8 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader, layoutSize uint16)
 	bf := newCountedReader(obf).(*countedReader)
 	version := read8(bf)
 	// V4 is quite complex and not supported yet
-	switch version {
-	case 3, 4:
-	default:
-		thrower.Throw(ErrLayout)
-	}
+	assertError(version == 3 || version == 4,
+		ErrLayout, fmt.Sprint("unsupported layout version: ", version))
 	class := read8(bf)
 	logger.Infof("layout version=%d class=%d", version, class)
 	switch class {

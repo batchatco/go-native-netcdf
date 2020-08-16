@@ -1,4 +1,4 @@
-netcdf tst_mslp {
+netcdf testempty {
 types:
   opaque(5) opaque5;
   compound alltypes {
@@ -17,5 +17,7 @@ variables:
         alltypes c(u);
         alltypes d(u,u);
         alltypes e(u,u,u);
+        opaque5 f(u,u);
+        opaque5 g(u,u,u);
 data:
 }

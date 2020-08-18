@@ -2665,31 +2665,27 @@ func (h5 *HDF5) readDataObjectHeader(addr uint64) *object {
 }
 
 func (h5 *HDF5) readDataObjectHeaderV1(addr uint64) *object {
-	bf := h5.newSeek(addr)
-	nRead := 0
+	sbf := h5.newSeek(addr)
+	bf := newCountedReader(sbf)
 	version := read8(bf)
-	nRead++
 	logger.Info("v1 object header version=", version)
 	assertError(version == 1, ErrDataObjectHeaderVersion,
 		fmt.Sprint("only handle version 1, got: ", version))
 
 	reserved := read8(bf)
-	nRead++
 	checkVal(0, reserved, "reserved")
 
 	numMessages := read16(bf)
-	nRead += 2
 	referenceCount := read32(bf)
-	nRead += 4
 	headerSize := read32(bf)
-	nRead += 4
 	logger.Info("Num messages", numMessages, "reference count", referenceCount,
 		"header size", headerSize)
 
 	// Read fields that object header and continuation blocks have in common
 	var obj object
 	obj.addr = addr
-	h5.readCommon(&obj, bf, version, 0, addr+uint64(nRead), uint64(headerSize))
+	h5.readCommon(&obj, bf, version, 0, addr+uint64(bf.Count()),
+		uint64(headerSize))
 	logger.Info("done reading chunks")
 	return &obj
 }

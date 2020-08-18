@@ -1,8 +1,20 @@
 package hdf5
 
 import (
+	"bytes"
 	"io"
+	"sync"
 )
+
+func newResetReader(file io.Reader, size int64) io.Reader {
+	slow := true
+	if slow {
+		b := make([]byte, size)
+		read(file, b)
+		return bytes.NewReader(b)
+	}
+	return file // this doesn't work for some reason
+}
 
 // Random access file: can do random seeks
 type raFile struct {
@@ -11,10 +23,9 @@ type raFile struct {
 }
 
 func newRaFile(file io.ReadSeeker) *raFile {
-	var f raFile
-	f.rcFile = newRefCountedFile(file)
-	f.seekPointer = 0
-	return &f
+	return &raFile{
+		rcFile:      newRefCountedFile(file),
+		seekPointer: 0}
 }
 
 func (f *raFile) Close() error {
@@ -22,18 +33,26 @@ func (f *raFile) Close() error {
 }
 
 func (f *raFile) seekAt(offset int64) *raFile {
-	r := *f
-	r.seekPointer = offset
-	return &r
+	return &raFile{
+		rcFile:      f.rcFile,
+		seekPointer: offset}
 }
 
 func (f *raFile) dup() *raFile {
-	r := *f
-	r.rcFile.reference()
-	return &r
+	f.rcFile.reference()
+	return &raFile{
+		rcFile:      f.rcFile,
+		seekPointer: f.seekPointer}
 }
 
 func (f *raFile) Read(p []byte) (int, error) {
+	// Do read
+	f.rcFile.Lock()
+	defer f.rcFile.Unlock()
+	return f.readNoLock(p)
+}
+
+func (f *raFile) readNoLock(p []byte) (int, error) {
 	// Do read
 	thisLen := len(p)
 	_, err := f.rcFile.file.Seek(f.seekPointer, io.SeekStart)
@@ -53,39 +72,45 @@ func (f *raFile) Read(p []byte) (int, error) {
 }
 
 func (f *raFile) ReadAt(b []byte, offset int64) (int, error) {
+	f.rcFile.Lock()
+	defer f.rcFile.Unlock()
+	save := f.seekPointer
 	_, err := f.rcFile.file.Seek(offset, io.SeekStart)
 	if err != nil {
 		logger.Error("Seek error in ReadAt", err, offset, io.SeekStart)
 		return 0, err
 	}
-	n, retErr := f.rcFile.file.Read(b)
-	if retErr != nil {
-		logger.Error("Read error in ReadAt", err, offset, io.SeekStart)
-	}
-	_, err = f.rcFile.file.Seek(f.seekPointer, io.SeekStart)
-	if err != nil {
-		logger.Error("Seek error in ReadAt (reset)", err, offset, io.SeekStart)
-		if retErr == nil {
-			retErr = err
-		}
-	}
+	f.seekPointer = offset
+	n, retErr := f.readNoLock(b)
+	f.seekPointer = save
 	return n, retErr
 }
 
 type refCountedFile struct {
 	file     io.ReadSeeker
 	refCount int
+	lock     sync.Mutex
 }
 
 func newRefCountedFile(file io.ReadSeeker) *refCountedFile {
-	return &refCountedFile{file, 1}
+	return &refCountedFile{file, 1, sync.Mutex{}}
 }
 
 func (rcf *refCountedFile) reference() {
 	rcf.refCount++
 }
 
+func (rcf *refCountedFile) Lock() {
+	rcf.lock.Lock()
+}
+
+func (rcf *refCountedFile) Unlock() {
+	rcf.lock.Unlock()
+}
+
 func (rcf *refCountedFile) dereference() error {
+	rcf.lock.Lock()
+	defer rcf.lock.Unlock()
 	var err error
 	rcf.refCount--
 	switch {

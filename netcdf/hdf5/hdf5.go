@@ -226,6 +226,7 @@ var (
 
 func init() {
 	_ = log // silence warning
+	//SetLogLevel(util.LevelInfo)
 }
 
 func assert(condition bool, msg string) {
@@ -255,8 +256,8 @@ func assertError(condition bool, err error, msg string) {
 	thrower.Throw(err)
 }
 
-func SetLogLevel(level int) {
-	logger.SetLogLevel(level)
+func SetLogLevel(level int) int {
+	return logger.SetLogLevel(level)
 }
 
 func (h5 *HDF5) newSeek(addr uint64) io.Reader {
@@ -589,11 +590,12 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 			attr.endian = binary.LittleEndian
 		}
 		checkVal(0, paddingType, "padding must be zero")
+		logger.Info("len properties", len(properties))
 		bff := bytes.NewReader(properties)
 		bitOffset := read16(bff)
 		bitPrecision := read16(bff)
 		blen += 4
-		logger.Infof("bitOffset=%d bitPrecision=%d", bitOffset, bitPrecision)
+		logger.Infof("bitOffset=%d bitPrecision=%d blen=%d", bitOffset, bitPrecision, blen)
 		if data == nil {
 			logger.Infof("no data")
 			break
@@ -722,6 +724,8 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 		attr.value = stringName
 
 	case typeCompound: // compound
+		//old := SetLogLevel(util.LevelInfo)
+		//defer SetLogLevel(old)
 		logger.Info("* compound")
 		logger.Info("dtversion", dtversion)
 		assert(dtversion >= 1 && dtversion <= 3, "compound version")
@@ -830,6 +834,7 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 			dlen = int64(len(data)) // assume we read it all
 		}
 		//logger.Infof("rem=0x%x", properties[poff:])
+		logger.Info("Finish compound")
 
 	case typeReference:
 		logger.Info("* reference")
@@ -914,7 +919,8 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 		}
 
 	case typeVariableLength:
-		logger.Info("* variable-length, dtlength=", dtlength)
+		logger.Info("* variable-length, dtlength=", dtlength,
+			"proplen=", len(properties))
 		//checkVal(1, dtversion, "Only support version 1 of variable-length")
 		vtType = uint8(bitFields & 0xf) // XXX: we will need other bits too for decoding
 		vtPad := (bitFields >> 4) & 0xf
@@ -1000,7 +1006,9 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 	default:
 		fail(fmt.Sprint("bogus type not handled: ", dtclass))
 	}
+	//old := SetLogLevel(util.LevelInfo)
 	logger.Info("blen, dlen: ", blen, dlen)
+	//SetLogLevel(old)
 	return blen, dlen
 }
 
@@ -2350,6 +2358,8 @@ func (h5 *HDF5) readDatatype(obj *object, bf io.Reader, size uint16) attribute {
 }
 
 func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags byte, origAddr uint64, chunkSize uint64) {
+	//thrower.DisableCatching()
+	//lf := io.LimitReader(obf, int64(chunkSize))
 	bf := newCountedReader(obf)
 	logger.Info("chunksize", chunkSize, "nRead", bf.Count())
 	for int64(chunkSize)-int64(bf.Count()) >= 3 {
@@ -2417,6 +2427,9 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		if version > 1 {
 			nReadSave = bf.Count()
 		}
+		if version == 1 {
+			logger.Info("rem=%v size=%v", (int64(chunkSize) - bf.Count()), size)
+		}
 		assert(uint64(size) <= (chunkSize-uint64(nReadSave)),
 			fmt.Sprint("too big: ", size, chunkSize, nReadSave))
 		if hasFlag8(hFlags, 1) {
@@ -2435,9 +2448,10 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			// TODO: what else might we need to copy? dimensions?
 			continue
 		}
-		var d = make([]byte, size)
-		read(bf, d)
-		f := io.LimitReader(bytes.NewReader(d), int64(size))
+		if version == 1 {
+			logger.Info("About to read,v=", version)
+		}
+		f := io.LimitReader(newResetReader(bf, int64(size)), int64(size))
 		switch headerType {
 		case typeNIL:
 			logger.Info("nil -- do nothing")
@@ -3126,7 +3140,7 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 		thrower.ThrowIfError(err)
 		logger.Infof("length %d addr 0x%x index %d\n", length, addr, index)
 		if length == 0 {
-			return nil
+			return variableLength{}
 		}
 		s := h5.readGlobalHeap(addr, index)
 		logger.Infof("value = 0x%x", s)
@@ -3145,11 +3159,7 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 			logger.Info("Alloc inner", i, "of", thisDim)
 			vals[i] = h5.allocVariable(bf, dimLengths[1:], attr)
 		}
-		// TODO: vals[0] may not exist, need to figure out another way to find the type.
-		// This never happens in NETCDF4 though.
-		if vals[0] == nil {
-			return nil
-		}
+		assert(vals[0] != nil, "we never return nil")
 		t := reflect.ValueOf(vals[0]).Type()
 		vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))
 		for i := 0; i < int(thisDim); i++ {

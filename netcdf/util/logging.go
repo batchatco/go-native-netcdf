@@ -48,11 +48,14 @@ func (l *Logger) LogLevel() int {
 	return l.logLevel
 }
 
-func (l *Logger) SetLogLevel(level int) {
+// SetLogLevel returns the old level
+func (l *Logger) SetLogLevel(level int) int {
 	if level < levelMin || level > levelMax {
 		panic("trying to set invalid log level")
 	}
+	old := l.logLevel
 	l.logLevel = level
+	return old
 }
 
 func (l *Logger) output(level int, f func(...interface{}), v ...interface{}) {

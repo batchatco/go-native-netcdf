@@ -11,7 +11,6 @@ package hdf5
 // TODO: get rid of v1 object header hack checking magic number
 // TODO: don't hardcode doubling table width
 import (
-	"bufio"
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
@@ -264,7 +263,7 @@ func (h5 *HDF5) newSeek(addr uint64) io.Reader {
 	assert(int64(addr) <= h5.fileSize, "bad seek")
 	r := h5.file.seekAt(int64(addr))
 	// bufio is faster, but can mask errors
-	return bufio.NewReader(r)
+	return newResetReader(r, h5.fileSize-int64(addr))
 }
 
 func read(r io.Reader, data interface{}) {

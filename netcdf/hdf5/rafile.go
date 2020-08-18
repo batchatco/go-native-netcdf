@@ -6,6 +6,18 @@ import (
 	"sync"
 )
 
+type refCountedFile struct {
+	file     io.ReadSeeker
+	refCount int
+	lock     sync.Mutex // TODO: do we need this lock?
+}
+
+// Random access file: can do random seeks
+type raFile struct {
+	rcFile      *refCountedFile // ref counted file
+	seekPointer int64
+}
+
 func newResetReader(file io.Reader, size int64) io.Reader {
 	slow := true
 	if slow {
@@ -14,12 +26,6 @@ func newResetReader(file io.Reader, size int64) io.Reader {
 		return bytes.NewReader(b)
 	}
 	return file // this doesn't work for some reason
-}
-
-// Random access file: can do random seeks
-type raFile struct {
-	rcFile      *refCountedFile // ref counted file
-	seekPointer int64
 }
 
 func newRaFile(file io.ReadSeeker) *raFile {
@@ -84,12 +90,6 @@ func (f *raFile) ReadAt(b []byte, offset int64) (int, error) {
 	n, retErr := f.readNoLock(b)
 	f.seekPointer = save
 	return n, retErr
-}
-
-type refCountedFile struct {
-	file     io.ReadSeeker
-	refCount int
-	lock     sync.Mutex
 }
 
 func newRefCountedFile(file io.ReadSeeker) *refCountedFile {

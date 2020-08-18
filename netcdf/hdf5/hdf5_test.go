@@ -809,6 +809,7 @@ func TestCompound(t *testing.T) {
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
+		return
 	}
 	//SetLogLevel(util.LevelInfo)
 	defer nc.Close()

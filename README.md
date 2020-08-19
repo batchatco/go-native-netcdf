@@ -184,9 +184,10 @@ mostly hidden. Variables of these types will get parsed and returned in
 an unsupported format.  If you want to play with it, fine. If there's enough demand,
 I can expose the interfaces.
 
-If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically,
-the *ncgen* command to compile the *cdl* files. It's available as an Ubuntu package.
+If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically, the *ncgen* command to compile the *cdl* files.  You will also need the HDF5 package, and specifically the *h5dump* and *h5repack*.
+These are both available as an Ubuntu packages.
 
 ```console
 $ sudo apt-get install netcdf-bin
+$ sudo apt-get install hdf5-tools
 ```

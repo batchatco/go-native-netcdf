@@ -88,7 +88,7 @@ func (l *Logger) Infof(format string, v ...interface{}) {
 }
 
 func (l *Logger) Warn(v ...interface{}) {
-	l.output(LevelInfo, l.logger.Println, v...)
+	l.output(LevelWarn, l.logger.Println, v...)
 }
 
 func (l *Logger) Warnf(format string, v ...interface{}) {

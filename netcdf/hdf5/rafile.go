@@ -18,14 +18,38 @@ type raFile struct {
 	seekPointer int64
 }
 
-func newResetReader(file io.Reader, size int64) io.Reader {
-	slow := true
-	if slow {
+type resetReader struct {
+	lr   *io.LimitedReader
+	size int64
+}
+
+func (r *resetReader) Rem() int64 {
+	return r.lr.N
+}
+
+func (r *resetReader) Count() int64 {
+	return r.size - r.lr.N
+}
+
+func (r *resetReader) Read(p []byte) (int, error) {
+	return r.lr.Read(p)
+}
+
+func newResetReader(file io.Reader, size int64) *resetReader {
+	var f io.Reader
+	if size < 0 {
+		if size < 0 {
+			size = -size
+		}
 		b := make([]byte, size)
 		read(file, b)
-		return bytes.NewReader(b)
+		f = bytes.NewReader(b)
+	} else {
+		f = file
 	}
-	return file // this doesn't work for some reason
+	return &resetReader{
+		lr:   &io.LimitedReader{R: f, N: size},
+		size: size}
 }
 
 func newRaFile(file io.ReadSeeker) *raFile {
@@ -59,7 +83,6 @@ func (f *raFile) Read(p []byte) (int, error) {
 }
 
 func (f *raFile) readNoLock(p []byte) (int, error) {
-	// Do read
 	thisLen := len(p)
 	_, err := f.rcFile.file.Seek(f.seekPointer, io.SeekStart)
 	if err != nil {

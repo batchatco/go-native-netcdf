@@ -1,0 +1,24 @@
+netcdf testenum {
+types:
+  byte enum color {
+    RED = 0,
+    YELLOW = 1,
+    GREEN = 2,
+    CYAN = 3,
+    BLUE = 4,
+    MAGENTA = 5
+  };
+
+dimensions:
+  dim = 6;
+
+variables:
+  color nodim;
+  color c(dim);
+
+data:
+  nodim = GREEN;
+
+  c = RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA;
+
+}

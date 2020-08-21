@@ -129,11 +129,11 @@ const (
 	typeSymbolTableMessage
 	typeObjectModificationTime
 	typeBtreeKValues
-        // 20-24
+	// 20-24
 	typeDriverInfo
 	typeAttributeInfo
 	typeObjectReferenceCount
-	_typeUndocumented23
+	_typeUndocumented23  // used in undocumented superblock extension
 )
 
 var htts = []string{
@@ -1103,9 +1103,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 	b := make([]byte, nameSize)
 	read(bf, b)
 	if version == 1 {
-		roundup := (nameSize + 7) & ^uint16(7)
-		pad := roundup - nameSize
-		checkZeroes(bf, int(pad))
+		padBytes(bf, 7)
 	}
 	// save name
 	name := getString(b)
@@ -1129,9 +1127,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 	b = make([]byte, dataspaceSize)
 	read(bf, b)
 	if version == 1 {
-		pad := ((dataspaceSize + 7) & ^uint16(7)) - dataspaceSize
-		logger.Info("dataspace pad", pad, dataspaceSize)
-		checkZeroes(bf, int(pad))
+		padBytes(bf, 7)
 	}
 	logger.Infof("** orig dataspace=0x%x", b)
 
@@ -3053,10 +3049,10 @@ func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) in
 // zero them for opaque types.
 func padBytesCheck(obf io.Reader, pad32 int, round bool, warn bool) bool {
 	cbf := obf.(remReader)
-	pad64 := int64(pad32)
 	success := true
 	var extra int
 	if round {
+		pad64 := int64(pad32)
 		rounded := (cbf.Count() + pad64) & ^pad64
 		extra = int(rounded) - int(cbf.Count())
 	} else {
@@ -3070,12 +3066,14 @@ func padBytesCheck(obf io.Reader, pad32 int, round bool, warn bool) bool {
 		for i := 0; i < int(extra); i++ {
 			if b[i] != 0 {
 				success = false
-				if warn {
-					logger.Warnf("Reserved not zero %d/%d %x %v", i, extra, b[i], b)
-				} else {
-					fail(
-						fmt.Sprintf("Reserved not zero %d/%d %x %v", i, extra, b[i], b))
-				}
+			}
+		}
+		if !success {
+			if warn {
+				logger.Warnf("Reserved not zero len=%d 0x%x", extra, b)
+			} else {
+				fail(
+					fmt.Sprintf("Reserved not zero len=%d 0x%x", extra, b))
 			}
 		}
 	}
@@ -3128,7 +3126,7 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			if pad > 0 && !packed {
 				// With compression, there can be junk in the padding
 				if !padBytesCheck(cbf, pad, true /*round*/, true /*warn only*/) {
-					logger.Error("padbytes failed 1, file:", h5.fname)
+					logger.Warn("padbytes failed, file:", h5.fname)
 				}
 				if pad > maxPad {
 					maxPad = pad
@@ -3141,9 +3139,7 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			// TODO: we compute maxPad, but don't use it (just any pad causes a tail pad of 7).
 			// TODO: figure out if this is correct.
 			logger.Info("maxpad", maxPad, "count=", cbf.Count())
-			if !padBytesCheck(cbf, maxPad, true /*round*/, true /*warn only*/) {
-				logger.Error("padbytes failed 2, file:", h5.fname)
-			}
+			padBytes(cbf, maxPad)
 		}
 		return compound(varray)
 	}
@@ -3176,7 +3172,6 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 			return variableLength{}
 		}
 		s := h5.readGlobalHeap(addr, index)
-		logger.Infof("value = 0x%x", s)
 		bff := newResetReaderFromBytes(s)
 		values := make([]interface{}, length)
 		for i := 0; i < int(length); i++ {
@@ -3868,9 +3863,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		}
 		logger.Info(cbf.Count(), "may pad array")
 		if pad > 0 {
-			if !padBytesCheck(cbf, pad, true /*round*/, true /* warn only*/) {
-				logger.Error("padbytes failed 3, file:", h5.fname)
-			}
+			padBytes(cbf, pad)
 		}
 		logger.Info(cbf.Count(), "array", "class", a.class)
 		return h5.getDataAttr(cbf, a)

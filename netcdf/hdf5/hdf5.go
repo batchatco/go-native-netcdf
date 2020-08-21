@@ -129,6 +129,7 @@ const (
 	typeSymbolTableMessage
 	typeObjectModificationTime
 	typeBtreeKValues
+        // 20-24
 	typeDriverInfo
 	typeAttributeInfo
 	typeObjectReferenceCount
@@ -1554,7 +1555,7 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
 	blockSize uint64) {
 	logger.Infof("heap direct block=0x%x size=%d", addr, blockSize)
-	bf := h5.newSeek(addr, 0) // TODO: figure out length
+	bf := h5.newSeek(addr, int64(blockSize))
 	checkMagic(bf, 4, "FHDB")
 	version := read8(bf)
 	logger.Info("heap direct version=", version)
@@ -3706,7 +3707,7 @@ func makeFillValueReader(obj *object, bf io.Reader) io.Reader {
 	}
 	return newResetReader(
 		io.MultiReader(bf, util.NewFillValueReader(objFillValue)),
-		0) // TODO: figur eout length for this
+		0) // TODO: figure out length for this
 }
 
 // for alignment

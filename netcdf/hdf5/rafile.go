@@ -20,72 +20,34 @@ type raFile struct {
 }
 
 type resetReader struct {
-	io.Reader
+	remReader
 	lr   *io.LimitedReader
 	size int64
-	zr   io.Reader // zero reader, when don't have lr
-	n    int64     // nread for zero reader
 }
 
 func (r *resetReader) Rem() int64 {
-	if r.zr != nil {
-		return r.n
-	}
 	return r.lr.N
 }
 
 func (r *resetReader) Count() int64 {
-	if r.zr != nil {
-		return r.size - r.n
-	}
 	return r.size - r.lr.N
 }
 
 func (r *resetReader) Read(p []byte) (int, error) {
-	if r.zr != nil {
-		n, err := r.zr.Read(p)
-		if err != nil {
-			//panic("unexpected error 1")
-			return n, err
-		}
-		r.n += int64(n)
-		return n, nil
-	}
-	n, err := r.lr.Read(p)
-	if err != nil {
-		//panic("unexpected error 2")
-		return n, err
-	}
-	return n, nil
+	return r.lr.Read(p)
 }
 
-func newResetReaderFromBytes(b []byte) *resetReader {
+func newResetReaderFromBytes(b []byte) remReader {
 	return newResetReader(bytes.NewReader(b), int64(len(b)))
 }
 
-func newResetReader(file io.Reader, size int64) *resetReader {
+func newResetReader(file io.Reader, size int64) remReader {
 	if size == 0 {
-		return &resetReader{
-			lr:   nil,
-			zr:   file,
-			size: math.MaxInt32}
-	}
-	var f io.Reader
-	if size < 0 {
-		if size < 0 {
-			size = -size
-		}
-		b := make([]byte, size)
-		read(file, b)
-		f = bytes.NewReader(b)
-	} else {
-		f = file
+		size = math.MaxInt32
 	}
 	return &resetReader{
-		lr:   &io.LimitedReader{R: f, N: size},
-		size: size,
-		zr:   nil,
-		n:    0}
+		lr:   &io.LimitedReader{R: file, N: size},
+		size: size}
 }
 
 func newRaFile(file io.ReadSeeker) *raFile {

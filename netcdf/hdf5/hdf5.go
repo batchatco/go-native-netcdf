@@ -307,7 +307,7 @@ func SetLogLevel(level int) int {
 	return logger.SetLogLevel(level)
 }
 
-func (h5 *HDF5) newSeek(addr uint64, size int64) *resetReader {
+func (h5 *HDF5) newSeek(addr uint64, size int64) remReader {
 	assert(int64(addr) <= h5.fileSize, "bad seek")
 	r := h5.file.seekAt(int64(addr))
 	if size == 0 {
@@ -535,13 +535,9 @@ func checkMagic(bf io.Reader, len int, magic string) {
 	b := make([]byte, len)
 	read(bf, b)
 	found := string(b)
-	badMagic := found != magic
 	printableFound := fmt.Sprintf("%q", found)
-	logger.Info("magic=", printableFound)
-	if badMagic {
-		logger.Error("bad magic=", printableFound)
-	}
-	assertError(!badMagic, ErrBadMagic, "bad magic")
+	assertError(found == magic, ErrBadMagic,
+		fmt.Sprint("bad magic=", printableFound))
 }
 
 func getString(b []byte) string {
@@ -1306,7 +1302,12 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, recordSize uint16, depth uint16, nodeSize uint32) {
 	nr := numRec // should work
 	len := 4 + 2 + nr*uint64(recordSize)
-	bf := h5.newSeek(bta, int64(len)+int64(nr+1)*int64(recordSize))
+	sub := 0
+	if depth <= 1 {
+		sub = 2
+	}
+	bsize := int64(4+2) + (2*int64(nr)+1)*int64(recordSize) - int64(nr+1)*int64(sub)
+	bf := h5.newSeek(bta, bsize)
 	checkMagic(bf, 4, "BTIN")
 	version := read8(bf)
 	checkVal(0, version, "version")
@@ -1344,6 +1345,7 @@ func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, rec
 			logger.Infof("tnr=0x%x", tnr)
 		}
 	}
+	assert(int64(len) == bsize, "problem")
 	h5.checkChecksum(bta, int(len))
 }
 
@@ -2003,7 +2005,7 @@ func headerTypeToString(ty int) string {
 }
 
 func (h5 *HDF5) readDataspace(obf io.Reader) ([]uint64, int64) {
-	bf := obf.(*resetReader)
+	bf := obf.(remReader)
 	version := read8(bf)
 	logger.Info("dataspace message version=", version)
 	assertError(version == 1 || version == 2,
@@ -2136,7 +2138,7 @@ func (h5 *HDF5) readFilterPipeline(obj *object, bf io.Reader, size uint16) {
 
 func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader, layoutSize uint16) {
 	logger.Infof("layout size=%d", layoutSize)
-	bf := obf.(*resetReader)
+	bf := obf.(remReader)
 	version := read8(bf)
 	// V4 is quite complex and not supported yet, but we parse some of it
 	assertError(version == 3 || version == 4,
@@ -2573,8 +2575,13 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			bf.Rem())
 		rem := f.Rem()
 		if rem > 0 {
-			logger.Warn("junk bytes at end of record: ", rem,
-				"header type=", headerTypeToString(int(headerType)))
+			switch headerType {
+			case typeLinkInfo, typeDataLayout:
+				// expected
+			default:
+				logger.Warn("junk bytes at end of record, n=", rem,
+					"header type=", headerTypeToString(int(headerType)))
+			}
 			checkZeroes(f, int(rem))
 		}
 	}
@@ -3044,7 +3051,7 @@ func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) in
 // are supposed to be zero, but software exists out there that does not
 // zero them for opaque types.
 func padBytesCheck(obf io.Reader, pad32 int, round bool, warn bool) bool {
-	cbf := obf.(*resetReader)
+	cbf := obf.(remReader)
 	pad64 := int64(pad32)
 	success := true
 	var extra int
@@ -3349,7 +3356,7 @@ type unshuffleReader struct {
 	shuffleParam uint32
 }
 
-func newUnshuffleReader(r io.Reader, size uint64, shuffleParam uint32) *resetReader {
+func newUnshuffleReader(r io.Reader, size uint64, shuffleParam uint32) remReader {
 	return newResetReader(&unshuffleReader{r, nil, size, shuffleParam}, int64(size))
 }
 
@@ -3368,29 +3375,10 @@ func unshuffle(val []byte, n uint32) {
 	copy(val, tmp)
 }
 
-type countedReader struct {
-	r    *io.LimitedReader
-	size int64
-}
-
-func newCountedReader(bf io.Reader, size int64) *countedReader {
-	if size == 0 {
-		size = math.MaxInt32
-	}
-	return &countedReader{
-		r:    &io.LimitedReader{R: bf, N: size},
-		size: size}
-}
-
-func (r *countedReader) Count() int64 {
-	return r.size - r.r.N
-}
-func (r *countedReader) Rem() int64 {
-	return r.r.N
-}
-
-func (r *countedReader) Read(p []byte) (int, error) {
-	return r.r.Read(p)
+type remReader interface {
+	io.Reader
+	Count() int64
+	Rem() int64
 }
 
 func (r *unshuffleReader) Read(p []byte) (int, error) {
@@ -3421,7 +3409,7 @@ func (r *unshuffleReader) Read(p []byte) (int, error) {
 	return int(thisLen), err
 }
 
-func newFletcher32Reader(r io.Reader, size uint64) *resetReader {
+func newFletcher32Reader(r io.Reader, size uint64) remReader {
 	assert(size >= 4, "bad size for fletcher")
 	assert(size%2 != 1, "bad mod for fletcher")
 	b := make([]byte, size-4)
@@ -3561,7 +3549,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 				logger.Error(ErrUnknownCompression)
 				return nil, 0
 			}
-			bf = newResetReader(zbf, 0)  // TODO: figure out length for this
+			bf = newResetReader(zbf, 0) // TODO: figure out length for this
 		}
 		if shuffleFound {
 			logger.Info("using shuffle", dsLength)
@@ -3722,8 +3710,8 @@ func makeFillValueReader(obj *object, bf io.Reader) io.Reader {
 }
 
 // for alignment
-func getCountedReader(bf io.Reader, size int64) *resetReader {
-	cbf, ok := bf.(*resetReader)
+func getCountedReader(bf io.Reader, size int64) remReader {
+	cbf, ok := bf.(remReader)
 	if !ok {
 		return newResetReader(bf, size)
 	}
@@ -3769,7 +3757,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 	}
 	var values interface{}
 	logger.Info("getDataAttr, class", typeNames[attr.class],
-		"length", attr.length, "rem", bf.(*resetReader).Rem())
+		"length", attr.length, "rem", bf.(remReader).Rem())
 	switch attr.class {
 	case typeFixedPoint: // fixed-point
 		switch attr.length {
@@ -3858,7 +3846,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		a := attr.children[0]
 		a.dimensionality = attr.dimensionality
 		a.dimensions = attr.dimensions
-		cbf := bf.(*resetReader)
+		cbf := bf.(remReader)
 		pad := 0
 		switch attr.children[0].class {
 		case typeFixedPoint, typeFloatingPoint:

@@ -3,6 +3,7 @@ package hdf5
 import (
 	"bytes"
 	"io"
+	"math"
 	"sync"
 )
 
@@ -19,23 +20,56 @@ type raFile struct {
 }
 
 type resetReader struct {
+	io.Reader
 	lr   *io.LimitedReader
 	size int64
+	zr   io.Reader // zero reader, when don't have lr
+	n    int64     // nread for zero reader
 }
 
 func (r *resetReader) Rem() int64 {
+	if r.zr != nil {
+		return r.n
+	}
 	return r.lr.N
 }
 
 func (r *resetReader) Count() int64 {
+	if r.zr != nil {
+		return r.size - r.n
+	}
 	return r.size - r.lr.N
 }
 
 func (r *resetReader) Read(p []byte) (int, error) {
-	return r.lr.Read(p)
+	if r.zr != nil {
+		n, err := r.zr.Read(p)
+		if err != nil {
+			//panic("unexpected error 1")
+			return n, err
+		}
+		r.n += int64(n)
+		return n, nil
+	}
+	n, err := r.lr.Read(p)
+	if err != nil {
+		//panic("unexpected error 2")
+		return n, err
+	}
+	return n, nil
+}
+
+func newResetReaderFromBytes(b []byte) *resetReader {
+	return newResetReader(bytes.NewReader(b), int64(len(b)))
 }
 
 func newResetReader(file io.Reader, size int64) *resetReader {
+	if size == 0 {
+		return &resetReader{
+			lr:   nil,
+			zr:   file,
+			size: math.MaxInt32}
+	}
 	var f io.Reader
 	if size < 0 {
 		if size < 0 {
@@ -49,7 +83,9 @@ func newResetReader(file io.Reader, size int64) *resetReader {
 	}
 	return &resetReader{
 		lr:   &io.LimitedReader{R: f, N: size},
-		size: size}
+		size: size,
+		zr:   nil,
+		n:    0}
 }
 
 func newRaFile(file io.ReadSeeker) *raFile {

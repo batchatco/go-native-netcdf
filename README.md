@@ -2,10 +2,9 @@
 
 ## Introduction
 
-
-This is a native implementation of NetCDF in the Go language.  It supports the CDF
-file format fully, and has limited support for the HDF5 format.  It's not a wrapper.
-There's no C or C++ code underneath this. It is pure Go code.  It benefits from the
+This is a native implementation of NetCDF in the Go language. It supports the CDF
+file format fully, and has limited support for the HDF5 format. It's not a wrapper.
+There's no C or C++ code underneath this. It is pure Go code. It benefits from the
 the sandboxing and garbage collection that Go provides, so is safer to use in a production
 environment.
 
@@ -19,18 +18,18 @@ of that.
 ## Mapping of Types
 
 Most types are what you what you would expect and map one-to-one to Go language types.
-The only tricky ones are *bytes, unsigned bytes and strings*.  The NetCDF *byte* type is
+The only tricky ones are *bytes, unsigned bytes and strings*. The NetCDF *byte* type is
 signed and the Go language *byte* type is unsigned, so the proper mapping is for NetCDF *bytes*
-to become Go *int8s*.  Conversely, the NetCDF *ubyte* becomes the Go *uint8*.
+to become Go *int8s*. Conversely, the NetCDF *ubyte* becomes the Go *uint8*.
 
 The *char* type in NetCDF is meant for strings, but *char* is a scalar in NetCDF and Go has
-no scalar character type, just a *string* type to represent character strings.  So, the
-mapping of NetCDF char is to Go string as the closest fit.  Scalar characters in NetCDF
-will be returned as strings of length one.   Scalar characters cannot be written to NetCDF
+no scalar character type, just a *string* type to represent character strings. So, the
+mapping of NetCDF char is to Go string as the closest fit. Scalar characters in NetCDF
+will be returned as strings of length one.  Scalar characters cannot be written to NetCDF
 with this API; they will always be written as strings of length one.
 
 Also note, that while it is normal to use the *int* type in Go, this type cannot be written
-to NetCDF.  *int32* should be used instead.
+to NetCDF. *int32* should be used instead.
 
 
 | NetCDF type      | Go type |
@@ -174,9 +173,11 @@ func main() {
 ## Limitations on the CDF writer
 Unlimited data types are not supported. The only exception is
 that a one dimensional empty slice will be written out as unlimited, but
-currently zero length. For dimensions greater than one, extra information
-would need to be passed in to know the sizes of the other dimensions,
-because they cannot be guessed based upon the information in the slice.
+currently zero length. For writing out variables with dimensions greater than
+one to work, extra information would need to be passed in to know the sizes of
+the other dimensions, because they cannot be guessed based upon the information
+in the slice. This doesn't seem like all that important of a feature though,
+and it would clutter the UI, so it is not implemented.
 
 ## Some notes about the HDF5 code
 The HDF5 code is quite hacky, but it has run though several unit tests, with good coverage,
@@ -184,15 +185,16 @@ and should be pretty solid. Performance has not been looked at yet though, so it
 slower than the alternative.
 
 It's working well enough that I feel it is okay to publish it now. I'll continue to work
-on it. I can clean up the code and make it run faster, for example.  Feedback is welcome.
+on it. I can clean up the code and make it run faster, for example. Feedback is welcome.
 
 Some of the exotic HDF5 types are actually implemented, but the interfaces to them
 mostly hidden. Variables of these types will get parsed and returned in
-an unsupported format.  If you want to play with it, fine. If there's enough demand,
+an unsupported format. If you want to play with it, fine. If there's enough demand,
 I can expose the interfaces.
 
-If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically, the *ncdump* and *ncgen* commands.  You will also need the HDF5 package, and specifically the *h5dump* and *h5repack* commands.
-These are both available as an Ubuntu packages.
+If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically,
+the *ncdump* and *ncgen* commands. You will also need the HDF5 package, and specifically the
+*h5dump* and *h5repack* commands. These are both available as an Ubuntu packages.
 
 ```console
 $ sudo apt-get install netcdf-bin

@@ -273,7 +273,7 @@ var (
 
 func init() {
 	_ = log // silence warning
-	//	SetLogLevel(util.LevelInfo)
+	//SetLogLevel(util.LevelInfo)
 	//thrower.DisableCatching()
 }
 
@@ -1124,14 +1124,10 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 		}
 	}
 
-	b = make([]byte, dataspaceSize)
-	read(bf, b)
+	dims, count := h5.readDataspace(newResetReader(bf, int64(dataspaceSize)))
 	if version == 1 {
 		padBytes(bf, 7)
 	}
-	logger.Infof("** orig dataspace=0x%x", b)
-
-	dims, count := h5.readDataspace(newResetReaderFromBytes(b))
 	attr.dimensions = dims
 	logger.Info("dimensions are", dims)
 	logger.Info("count objects=", count)

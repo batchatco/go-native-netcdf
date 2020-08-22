@@ -50,6 +50,7 @@ var (
 	ErrEmptySlice           = errors.New("empty slice encountered")
 	ErrDimensionSize        = errors.New("dimension doesn't match size")
 	ErrInvalidName          = errors.New("invalid name")
+	ErrAttribute            = errors.New("invalid attribute")
 )
 
 func (c *countedWriter) Count() int64 {
@@ -396,6 +397,10 @@ func (cw *CDFWriter) AddVar(name string, vr api.Variable) (err error) {
 	// TODO: check name for validity
 	cw.checkV5Attributes(vr.Attributes)
 	dimLengths, ty := cw.getDimLengths(vr.Values, vr.Dimensions)
+	switch ty {
+	case typeUByte, typeUShort, typeUInt, typeUInt64, typeInt64:
+		cw.version = 5
+	}
 	for i := 0; i < len(dimLengths); i++ {
 		var dimName string
 		if i < len(vr.Dimensions) {
@@ -569,11 +574,16 @@ func (cw *CDFWriter) checkV5Attributes(attrs api.AttributeMap) {
 	for _, k := range attrs.Keys() {
 		v, _ := attrs.Get(k)
 		switch v.(type) {
-		case string:
-			return
+		case string, int8, int16, int32, float32, float64,
+			[]int8, []int16, []int32, []float32, []float64:
 
 		case []uint64, uint64, []int64, int64, []uint8, uint8, []uint16, uint16, []uint32, uint32:
 			cw.version = 5
+			return
+
+		default:
+			logger.Errorf("invalid attribute %#v", v)
+			thrower.Throw(ErrAttribute)
 		}
 	}
 }
@@ -766,6 +776,7 @@ func (cw *CDFWriter) writeAll() {
 		write32(cw.bf, 0)        // dimensions: absent
 		cw.writeNumber(int64(0)) // dimensions: absent
 	}
+	cw.checkV5Attributes(cw.globalAttrs)
 	cw.writeAttributes(cw.globalAttrs)
 	if len(cw.vars) > 0 {
 		write32(cw.bf, fieldVariable)

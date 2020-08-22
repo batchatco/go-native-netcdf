@@ -303,7 +303,7 @@ func closeCW(t *testing.T, cw **CDFWriter) {
 }
 
 func TestTypes(t *testing.T) {
-	fileName := "testdata.nc"
+	fileName := "testdata/testdata.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
@@ -365,11 +365,12 @@ func checkAll(t *testing.T, nc api.Group, values keyValList) {
 
 func ncGen(t *testing.T, fileNameNoExt string) string {
 	t.Helper()
-	cmd := exec.Command("ncgen", "-b", "-5", "testdata/"+fileNameNoExt+".cdl")
+	cmd := exec.Command("ncgen", "-b", "-5", fileNameNoExt+".cdl",
+		"-o", fileNameNoExt+".nc")
 	genName := fileNameNoExt + ".nc"
 	err := cmd.Run()
 	if err != nil {
-		t.Log(err)
+		t.Log(err, "ncgen", "-b", "-5", fileNameNoExt+".cdl")
 		return ""
 	}
 	return genName
@@ -379,12 +380,13 @@ const errorNcGen = "Error running ncgen command from netcdf package"
 
 func TestOneDim(t *testing.T) {
 	// Set up
-	fileName := "testonedim" // base filename without extension
+	fileName := "testdata/testonedim" // base filename without extension
 	genName := ncGen(t, fileName)
 	if genName == "" {
 		t.Error(errorNcGen)
 		return
 	}
+	t.Log("TEST:", genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -479,7 +481,7 @@ func TestOneDim(t *testing.T) {
 }
 
 func TestUnlimited(t *testing.T) {
-	fileName := "testunlimited" // base filename without extension
+	fileName := "testdata/testunlimited" // base filename without extension
 	genName := ncGen(t, fileName)
 	if genName == "" {
 		t.Error(errorNcGen)
@@ -517,7 +519,7 @@ func TestUnlimited(t *testing.T) {
 }
 
 func TestUnlimitedEmpty(t *testing.T) {
-	fileName := "testempty" // base filename without extension
+	fileName := "testdata/testempty" // base filename without extension
 	genName := ncGen(t, fileName)
 	if genName == "" {
 		t.Error(errorNcGen)
@@ -540,7 +542,7 @@ func TestUnlimitedEmpty(t *testing.T) {
 }
 
 func TestNull(t *testing.T) {
-	fileName := "testnull" // base filename without extension
+	fileName := "testdata/testnull" // base filename without extension
 	genName := ncGen(t, fileName)
 	if genName == "" {
 		t.Error(errorNcGen)
@@ -557,7 +559,7 @@ func TestNull(t *testing.T) {
 }
 
 func TestUnlimitedOnlyBytes(t *testing.T) {
-	fileName := "testbytesonly" // base filename without extension
+	fileName := "testdata/testbytesonly" // base filename without extension
 	genName := ncGen(t, fileName)
 	if genName == "" {
 		t.Error(errorNcGen)
@@ -580,7 +582,7 @@ func TestUnlimitedOnlyBytes(t *testing.T) {
 }
 
 func TestUnlimitedOnlyShorts(t *testing.T) {
-	fileName := "testshortsonly" // base filename without extension
+	fileName := "testdata/testshortsonly" // base filename without extension
 	genName := ncGen(t, fileName)
 	if genName == "" {
 		t.Error(errorNcGen)
@@ -603,7 +605,7 @@ func TestUnlimitedOnlyShorts(t *testing.T) {
 }
 
 func TestFill(t *testing.T) {
-	fileName := "testfill.nc"
+	fileName := "testdata/testfill.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
@@ -647,7 +649,7 @@ func TestFill(t *testing.T) {
 }
 
 func TestGlobalAttributes(t *testing.T) {
-	fileName := "testgattr.nc"
+	fileName := "testdata/testgattr.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
@@ -696,7 +698,7 @@ func TestGlobalAttributes(t *testing.T) {
 }
 
 func TestGroup(t *testing.T) {
-	fileName := "testgroup.nc"
+	fileName := "testdata/testgroup.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
@@ -750,7 +752,7 @@ func TestGroup(t *testing.T) {
 }
 
 func TestEmpty(t *testing.T) {
-	fileName := "testempty.nc"
+	fileName := "testdata/testempty.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
@@ -791,7 +793,7 @@ func getString(s string) string {
 }
 
 func TestString(t *testing.T) {
-	fileName := "teststring.nc"
+	fileName := "testdata/teststring.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
@@ -834,7 +836,7 @@ func TestString(t *testing.T) {
 }
 
 func TestMakeDim(t *testing.T) {
-	fileName := "testdim.nc"
+	fileName := "testdata/testdim.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
@@ -877,7 +879,7 @@ func TestMakeDim(t *testing.T) {
 }
 
 func TestInvalidName(t *testing.T) {
-	fileName := "testinvalidname.nc"
+	fileName := "testdata/testinvalidname.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)

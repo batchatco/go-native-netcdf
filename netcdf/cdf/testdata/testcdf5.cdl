@@ -1,0 +1,16 @@
+netcdf testunlimited {
+dimensions:
+  d2 = 1;
+variables:
+  ubyte ub(d2);
+  ushort u16(d2);
+  uint u32(d2);
+  uint64 u64(d2);
+  int64 i64(d2);
+data:
+  ub = 1;
+  u16 = 2;
+  u32 = 3;
+  u64 = 4;
+  i64 = 5;
+}

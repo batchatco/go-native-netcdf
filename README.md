@@ -171,6 +171,13 @@ func main() {
 }
 ```
 
+## Limitations on the CDF writer
+Unlimited data types are not supported. The only exception is
+that a one dimensional empty slice will be written out as unlimited, but
+currently zero length. For dimensions greater than one, extra information
+would need to be passed in to know the sizes of the other dimensions,
+because they cannot be guessed based upon the information in the slice.
+
 ## Some notes about the HDF5 code
 The HDF5 code is quite hacky, but it has run though several unit tests, with good coverage,
 and should be pretty solid. Performance has not been looked at yet though, so it is likely
@@ -184,7 +191,7 @@ mostly hidden. Variables of these types will get parsed and returned in
 an unsupported format.  If you want to play with it, fine. If there's enough demand,
 I can expose the interfaces.
 
-If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically, the *ncgen* command to compile the *cdl* files.  You will also need the HDF5 package, and specifically the *h5dump* and *h5repack*.
+If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically, the *ncdump* and *ncgen* commands.  You will also need the HDF5 package, and specifically the *h5dump* and *h5repack* commands.
 These are both available as an Ubuntu packages.
 
 ```console

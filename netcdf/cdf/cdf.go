@@ -69,6 +69,12 @@ type CDF struct {
 	slowConvert  bool
 }
 
+// constants for slowconvert
+const (
+	fast = false
+	slow = true
+)
+
 const maxDimensions = 1024
 
 var (

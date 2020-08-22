@@ -47,17 +47,17 @@ func common(b testing.TB, num int, slow bool) {
 }
 
 func BenchmarkFast(b *testing.B) {
-	common(b, 1000, false)
+	common(b, 1000, fast)
 }
 
 func BenchmarkSlow(b *testing.B) {
-	common(b, 1000, true)
+	common(b, 1000, slow)
 }
 
 func TestPerf(t *testing.T) {
-	common(t, 1, false)
+	common(t, 1, fast)
 }
 
 func TestSlow(t *testing.T) {
-	common(t, 1, true)
+	common(t, 1, slow)
 }

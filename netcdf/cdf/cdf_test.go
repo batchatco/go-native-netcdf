@@ -378,7 +378,8 @@ func ncGen(t *testing.T, fileNameNoExt string) string {
 
 const errorNcGen = "Error running ncgen command from netcdf package"
 
-func TestOneDim(t *testing.T) {
+func commonOneDim(t *testing.T, slow bool) {
+	t.Helper()
 	// Set up
 	fileName := "testdata/testonedim" // base filename without extension
 	genName := ncGen(t, fileName)
@@ -392,6 +393,7 @@ func TestOneDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	nc.(*CDF).slowConvert = slow
 	defer nc.Close()
 
 	// Test reading what ncgen wrote
@@ -480,6 +482,14 @@ func TestOneDim(t *testing.T) {
 	}
 }
 
+func TestOneDim(t *testing.T) {
+	commonOneDim(t, fast)
+}
+
+func TestOneDimSlow(t *testing.T) {
+	commonOneDim(t, slow)
+}
+
 func TestUnlimited(t *testing.T) {
 	fileName := "testdata/testunlimited" // base filename without extension
 	genName := ncGen(t, fileName)
@@ -518,7 +528,8 @@ func TestUnlimited(t *testing.T) {
 	checkAll(t, nc, unlims)
 }
 
-func TestUnlimitedEmpty(t *testing.T) {
+func commonUnlimitedEmpty(t *testing.T, slow bool) {
+	t.Helper()
 	fileName := "testdata/testempty" // base filename without extension
 	genName := ncGen(t, fileName)
 	if genName == "" {
@@ -531,6 +542,7 @@ func TestUnlimitedEmpty(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	nc.(*CDF).slowConvert = slow
 	defer nc.Close()
 	empty := keyValList{
 		{"a", api.Variable{
@@ -539,6 +551,14 @@ func TestUnlimitedEmpty(t *testing.T) {
 			Attributes: nilMap}},
 	}
 	checkAll(t, nc, empty)
+}
+
+func TestUnlimitedEmpty(t *testing.T) {
+	commonUnlimitedEmpty(t, fast)
+}
+
+func TestUnlimitedEmptySlow(t *testing.T) {
+	commonUnlimitedEmpty(t, slow)
 }
 
 func TestNull(t *testing.T) {

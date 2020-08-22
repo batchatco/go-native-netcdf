@@ -43,6 +43,8 @@ const (
 	dtversionPacked
 )
 
+const neverHappens = false
+
 var (
 	ErrBadMagic                = errors.New("bad magic number")
 	ErrUnsupportedFilter       = errors.New("unsupported filter found")
@@ -129,7 +131,7 @@ const (
 	typeSymbolTableMessage
 	typeObjectModificationTime
 	typeBtreeKValues
-	// 20-24
+	// 20-23
 	typeDriverInfo
 	typeAttributeInfo
 	typeObjectReferenceCount
@@ -158,8 +160,8 @@ var htts = []string{
 	"Object Header Continuation",
 	"Symbol Table Message",
 	"Object Modification Time",
-	// 20-23
 	"B-tree ‘K’ Values",
+	// 20-23
 	"Driver Info",
 	"Attribute Info",
 	"Object Reference Count",
@@ -728,7 +730,7 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 	case typeTime:
 		logger.Fatal("time code has never been executed before and does nothing")
 		// uncomment the following to enable
-		/*
+		if neverHappens {
 			logger.Info("time, len(data)=", len(data))
 			bf := bytes.NewReader(properties)
 			var endian binary.ByteOrder
@@ -747,7 +749,7 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 				fail("time")
 			}
 			blen += 2
-		*/
+		}
 	case typeString:
 		logger.Info("string")
 		checkVal(1, dtversion, "Only support version 1 of string")
@@ -914,15 +916,6 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, data []byte, objCount int64
 		addr := read64(bf)
 		dlen += 8
 		assert(dtlength <= 8, "weird dtlength")
-		/*
-			dataType := read32(bf) // ??
-			pad := read32(bf)      // ??
-			if pad != 0 {
-				logger.Error("pad not zero", pad)
-			}
-			dlen += 8
-			logger.Infof("reference type=%d, pad=%d", dataType, pad)
-		}*/
 		logger.Infof("reference addr=0x%x", addr)
 		logger.Infof("Setting attr %s to reference", attr.name)
 		attr.value = addr
@@ -1367,8 +1360,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 
 		case 6: // creation order for indexed group
 			logger.Fatal("creation order code has never been executed before")
-			// uncomment the following code to enable
-			/*
+			if neverHappens {
 				logger.Info("Creation order for indexed groups")
 				co := read64(bf)
 				versionAndType := read8(bf)
@@ -1382,7 +1374,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 				logger.Infof("offset=0x%x length=%d", offset, length)
 				// XXX: TODO: don't downcast creationOrder
 				h5.readLinkData(obj, offset, length, co)
-			*/
+			}
 
 		case 8: // for indexing the ‘name’ field for indexed attributes.
 			logger.Info("Name field for indexed attributes")
@@ -1410,7 +1402,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 		case 9:
 			logger.Fatal("creation order code has never been executed before")
 			// uncomment the following to enable
-			/*
+			if neverHappens {
 				logger.Info("Creation order for indexed attributes")
 				// byte 1 of heap id
 				versionAndType := read8(bf)
@@ -1433,7 +1425,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 					versionAndType,
 					offset, length, mflags, co)
 				h5.readAttributeData(obj, obj.attr, offset, length, 0)
-			*/
+			}
 		default:
 			fail(fmt.Sprintf("unhandled type: %d", ty))
 		}
@@ -3244,7 +3236,7 @@ func (h5 *HDF5) allocReferences(bf io.Reader, dimLengths []uint64) interface{} {
 	}
 	logger.Fatal("this reference code has never been executed before")
 	// uncomment the following to enable
-	/*
+	if neverHappens {
 		thisDim := dimLengths[0]
 		if len(dimLengths) == 1 {
 			values := make([]int64, thisDim)
@@ -3262,7 +3254,7 @@ func (h5 *HDF5) allocReferences(bf io.Reader, dimLengths []uint64) interface{} {
 			vals.Index(int(i)).Set(reflect.ValueOf(h5.allocReferences(bf, dimLengths[1:])))
 		}
 		return vals.Interface()
-	*/
+	}
 	panic("should not get here")
 }
 
@@ -3582,21 +3574,21 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			continue
 		}
 		assert(!(segments[i].offset > off && segments[i].extra == 0), "this never happens")
-		/* if it did though
-		readers = append(readers,
-			io.LimitReader(makeFillValueReader(obj, nil), int64(segments[i].offset-off)))
-		logger.Info("Fill value at offset", off, "length", segments[i].offset-off)
-		*/
+		if neverHappens {
+			readers = append(readers,
+				io.LimitReader(makeFillValueReader(obj, nil), int64(segments[i].offset-off)))
+			logger.Info("Fill value at offset", off, "length", segments[i].offset-off)
+		}
 		logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
 		off = segments[i].offset + segments[i].length
 		readers = append(readers, newResetReader(r, int64(segments[i].length)))
 	}
 	assert(off >= size, "this never happens")
-	/* if it did though
-	readers = append(readers,
-		io.LimitReader(makeFillValueReader(obj, nil), int64(size-off)))
-	logger.Info("Fill value at offset", off, "length", size-off)
-	*/
+	if neverHappens {
+		readers = append(readers,
+			io.LimitReader(makeFillValueReader(obj, nil), int64(size-off)))
+		logger.Info("Fill value at offset", off, "length", size-off)
+	}
 	return newResetReader(io.MultiReader(readers...), int64(size)), size
 }
 
@@ -4186,24 +4178,27 @@ func (h5 *HDF5) ListVariables() []string {
 }
 
 func emptySlice(v interface{}) reflect.Value {
-	logger.Warn("this empty slice code has never been executed before")
-	// It actually has been executed before, but we no longer use it.
-	// Perhaps delete.
-	top := reflect.ValueOf(v)
-	elemType := top.Type().Elem()
-	slices := 0
-	// count how many slices we need to make
-	for elemType.Kind() == reflect.Slice {
-		elemType = elemType.Elem()
-		slices++
+	fail("this empty slice code has never been executed before")
+	if neverHappens {
+		// It actually has been executed before, but we no longer use it.
+		// Perhaps delete.
+		top := reflect.ValueOf(v)
+		elemType := top.Type().Elem()
+		slices := 0
+		// count how many slices we need to make
+		for elemType.Kind() == reflect.Slice {
+			elemType = elemType.Elem()
+			slices++
+		}
+		// here's one slice
+		empty := reflect.MakeSlice(reflect.SliceOf(elemType), 0, 0)
+		// here are the rest
+		for i := 1; i < slices; i++ {
+			empty = reflect.MakeSlice(reflect.SliceOf(empty.Type()), 0, 0)
+		}
+		return empty
 	}
-	// here's one slice
-	empty := reflect.MakeSlice(reflect.SliceOf(elemType), 0, 0)
-	// here are the rest
-	for i := 1; i < slices; i++ {
-		empty = reflect.MakeSlice(reflect.SliceOf(empty.Type()), 0, 0)
-	}
-	return empty
+	panic("never happens")
 }
 
 func undoInterfaces(v interface{}) reflect.Value {

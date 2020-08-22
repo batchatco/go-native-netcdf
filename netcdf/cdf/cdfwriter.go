@@ -47,10 +47,10 @@ type CDFWriter struct {
 
 var (
 	ErrUnlimitedMustBeFirst = errors.New("unlimited dimension must be first")
-	ErrEmptySlice           = errors.New("empty slice encountered")
 	ErrDimensionSize        = errors.New("dimension doesn't match size")
 	ErrInvalidName          = errors.New("invalid name")
 	ErrAttribute            = errors.New("invalid attribute")
+	ErrEmptySlice           = errors.New("empty slice encountered")
 )
 
 func (c *countedWriter) Count() int64 {
@@ -281,9 +281,6 @@ func (cw *CDFWriter) getDimLengthsHelper(
 		return dims, kind
 	}
 	vLen := int64(rv.Len())
-	if vLen == 0 {
-		thrower.Throw(ErrEmptySlice)
-	}
 	dims = append(dims, vLen)
 	switch t.Kind() {
 	case reflect.Array, reflect.Slice:
@@ -300,6 +297,15 @@ func (cw *CDFWriter) getDimLengthsHelper(
 			}
 			dims = append(dims, maxLen)
 			return dims, typeChar
+		}
+		if vLen == 0 {
+                        // minimal support for unlimited, when it is the only dimension.
+			kind = cw.scalarKind(t.Elem().Kind())
+			for kind == 0 {
+                                // there are other dimensions and we can't tell the size of them.
+				thrower.Throw(ErrEmptySlice)
+			}
+			return dims, kind
 		}
 		return cw.getDimLengthsHelper(rv.Index(0), dims, dimNames)
 

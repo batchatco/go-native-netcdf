@@ -766,16 +766,16 @@ func TestEmpty(t *testing.T) {
 		Values:     empty,
 		Dimensions: []string{"d1"},
 		Attributes: nil})
-	if err != ErrEmptySlice {
-		t.Error("empty slices are not allowed", err)
+	if err != nil {
+		t.Error(err)
 		return
 	}
 	err = cw.AddVar("emptystring", api.Variable{
 		Values:     "",
 		Dimensions: []string{"d1"},
 		Attributes: nil})
-	if err != ErrEmptySlice {
-		t.Error("empty slices are not allowed", err)
+	if err != nil {
+		t.Error(err)
 		return
 	}
 }

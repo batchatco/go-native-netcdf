@@ -86,20 +86,10 @@ func ncDump(t *testing.T, fname string) (success bool) {
 	return true
 }
 
-// slices of zero length are not supported currently.
-// should use the UNLIMITED dimension to support this.
-// TODO: make this work
-var skipFiles = map[string]bool{
-	"testdata/testempty.cdl": true,
-}
-
 func TestCompat(t *testing.T) {
 	fileNames := getFiles(t, "testdata", ".cdl")
 gettingfiles:
 	for fileName := range fileNames {
-		if skipFiles[fileName] {
-			continue
-		}
 		baseName := fileName[:len(fileName)-4]
 		genName := ncGen(t, baseName)
 		if genName == "" {

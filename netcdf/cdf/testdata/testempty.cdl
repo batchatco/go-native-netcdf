@@ -1,6 +1,6 @@
-netcdf tst_mslp {
+netcdf testempty {
 dimensions:
-	u = UNLIMITED ; // (0 currently)
+  u = UNLIMITED ; // (0 currently)
 variables:
-	int a(u);
+  int a(u);
 }

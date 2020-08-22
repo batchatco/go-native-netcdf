@@ -133,7 +133,7 @@ const (
 	typeDriverInfo
 	typeAttributeInfo
 	typeObjectReferenceCount
-	_typeUndocumented23  // used in undocumented superblock extension
+	_typeUndocumented23 // used in undocumented superblock extension
 )
 
 var htts = []string{
@@ -273,7 +273,7 @@ var (
 
 func init() {
 	_ = log // silence warning
-	//SetLogLevel(util.LevelInfo)
+	//	SetLogLevel(util.LevelInfo)
 	//thrower.DisableCatching()
 }
 
@@ -3088,7 +3088,8 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 	cbf := getCountedReader(bf, 0)
 	class := typeNames[attr.class]
 
-	logger.Info(cbf.Count(), "Alloc compounds", dimLengths, class)
+	logger.Info(cbf.Count(), "Alloc compounds", dimLengths, class,
+		"nchildren=", len(attr.children))
 	dtlen := uint32(0)
 	length := attr.length
 	for i := range attr.children {
@@ -3126,7 +3127,7 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			if pad > 0 && !packed {
 				// With compression, there can be junk in the padding
 				if !padBytesCheck(cbf, pad, true /*round*/, true /*warn only*/) {
-					logger.Warn("padbytes failed, file:", h5.fname)
+					logger.Warn("padbytes failed, file:", h5.fname, "pad=", pad)
 				}
 				if pad > maxPad {
 					maxPad = pad
@@ -3792,7 +3793,8 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 			logger.Info("variable-length string", len(attr.dimensions))
 			return h5.allocStrings(bf, attr.dimensions) // already converted
 		}
-		logger.Info("variable-length other", attr.children[0].class)
+		logger.Info("variable-length type",
+			typeNames[int(attr.children[0].class)])
 		logger.Info("dimensions=", attr.dimensions)
 		values = h5.allocVariable(bf, attr.dimensions, attr.children[0])
 		logger.Infof("vl kind %T", values)

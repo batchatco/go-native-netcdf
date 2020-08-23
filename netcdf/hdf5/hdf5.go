@@ -44,7 +44,19 @@ const (
 )
 
 // For disabling code
+
+// For general things that don't happen
 const neverHappens = false
+
+// for some specific things
+const (
+	parseSBExtension                = false
+	parseHeapDirectBlock            = false
+	createEmptySlice                = false
+	parseTime                       = false
+	parseCreationOrder              = false
+	parseMultiDimensionalReferences = false
+)
 
 var (
 	ErrBadMagic                = errors.New("bad magic number")
@@ -520,7 +532,6 @@ func (h5 *HDF5) readSuperblock() {
 	}
 	if sbExtension != invalidAddress {
 		logger.Warn("superblock extension not supported")
-		parseSBExtension := false
 		if parseSBExtension {
 			if h5.isMagic("OHDR", sbExtension) {
 				_ = h5.readDataObjectHeader(sbExtension)
@@ -729,7 +740,7 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 	case typeTime:
 		logger.Fatal("time code has never been executed before and does nothing")
 		// uncomment the following to enable
-		if neverHappens {
+		if parseTime {
 			logger.Info("time, len(data)=", bf.Rem())
 			bff := bytes.NewReader(properties)
 			var endian binary.ByteOrder
@@ -1373,7 +1384,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 
 		case 6: // creation order for indexed group
 			logger.Fatal("creation order code has never been executed before")
-			if neverHappens {
+			if parseCreationOrder {
 				logger.Info("Creation order for indexed groups")
 				co := read64(bf)
 				versionAndType := read8(bf)
@@ -1415,7 +1426,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 		case 9:
 			logger.Fatal("creation order code has never been executed before")
 			// uncomment the following to enable
-			if neverHappens {
+			if parseCreationOrder {
 				logger.Info("Creation order for indexed attributes")
 				// byte 1 of heap id
 				versionAndType := read8(bf)
@@ -1551,7 +1562,7 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 
 func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
 	blockSize uint64) {
-	if false { // we don't need this code
+	if parseHeapDirectBlock { // we don't need this code
 		logger.Infof("heap direct block=0x%x size=%d", addr, blockSize)
 		bf := h5.newSeek(addr, int64(blockSize))
 		checkMagic(bf, 4, "FHDB")
@@ -3260,7 +3271,7 @@ func (h5 *HDF5) allocReferences(bf io.Reader, dimLengths []uint64) interface{} {
 	}
 	logger.Fatal("this reference code has never been executed before")
 	// uncomment the following to enable
-	if neverHappens {
+	if parseMultiDimensionalReferences {
 		thisDim := dimLengths[0]
 		if len(dimLengths) == 1 {
 			values := make([]int64, thisDim)
@@ -3666,10 +3677,12 @@ func makeFillValueReader(obj *object, bf io.Reader, length int64) io.Reader {
 	if obj.fillValue == nil {
 		objFillValue = obj.fillValueOld
 	}
-	if objFillValue != nil && &objFillValue[0] == &fillValueUndefined[0] {
-		logger.Info("Using the undefined fill value")
-		undefinedFillValue = true
-		objFillValue = nil
+	if objFillValue != nil {
+		if &objFillValue[0] == &fillValueUndefined[0] {
+			logger.Info("Using the undefined fill value")
+			undefinedFillValue = true
+			objFillValue = nil
+		}
 	}
 	if objFillValue == nil {
 		// Set reasonable defaults, then have the individual types override
@@ -4248,7 +4261,7 @@ func (h5 *HDF5) ListVariables() []string {
 
 func emptySlice(v interface{}) reflect.Value {
 	fail("this empty slice code has never been executed before")
-	if neverHappens {
+	if createEmptySlice {
 		// It actually has been executed before, but we no longer use it.
 		// Perhaps delete.
 		top := reflect.ValueOf(v)

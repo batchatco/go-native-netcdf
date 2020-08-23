@@ -342,6 +342,12 @@ func read(r io.Reader, data interface{}) {
 	thrower.ThrowIfError(err)
 }
 
+func skip(r io.Reader, length int64) {
+	data := make([]byte, length)
+	err := binary.Read(r, binary.LittleEndian, data)
+	thrower.ThrowIfError(err)
+}
+
 func read8(r io.Reader) byte {
 	var data byte
 	err := binary.Read(r, binary.LittleEndian, &data)
@@ -914,7 +920,7 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 			logger.Info("compound alloced", dlen, bf.Rem()+bf.Count())
 			bff := makeFillValueReader(obj, bf, calcAttrSize(attr))
 			attr.value = h5.getDataAttr(bff, *attr)
-			logger.Warn("rem=", bf.Rem(), "nread=", bff.(remReader).Count())
+			logger.Info("rem=", bf.Rem(), "nread=", bff.(remReader).Count())
 			dlen = bf.Rem() + bf.Count() // assume we read it all
 		}
 		//logger.Infof("rem=0x%x", properties[poff:])
@@ -1081,8 +1087,10 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		fail(fmt.Sprint("bogus type not handled: ", dtclass))
 	}
 	if bf != nil && bf.Rem() > 0 {
-		logger.Warn("did not read all data", bf.Rem(), typeNames[dtclass])
-		checkZeroes(bf, int(bf.Rem()))
+		// It is normal for there to be extra data, not sure why yet.
+		// It does not break any unit tests, so the extra data seems unnecessary.
+		logger.Info("did not read all data", bf.Rem(), typeNames[dtclass])
+		skip(bf, bf.Rem())
 	}
 	logger.Info("blen, dlen: ", blen, dlen)
 	return blen, dlen
@@ -2595,7 +2603,8 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		if rem > 0 {
 			switch headerType {
 			case typeLinkInfo, typeDataLayout, typeAttribute: // ** fix these
-				// expected
+				logger.Info("junk bytes at end of record, n=", rem,
+					"header type=", headerTypeToString(int(headerType)))
 			default:
 				logger.Warn("junk bytes at end of record, n=", rem,
 					"header type=", headerTypeToString(int(headerType)))
@@ -3096,7 +3105,7 @@ func padBytesCheck(obf io.Reader, pad32 int, round bool, warn bool) bool {
 		}
 		if !success {
 			if warn {
-				logger.Warnf("Reserved not zero len=%d 0x%x", extra, b)
+				logger.Infof("Reserved not zero len=%d 0x%x", extra, b)
 			} else {
 				fail(
 					fmt.Sprintf("Reserved not zero len=%d 0x%x", extra, b))
@@ -3158,7 +3167,7 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			if pad > 0 && !packed {
 				// With compression, there can be junk in the padding
 				if !padBytesCheck(cbf, pad, true /*round*/, true /*warn only*/) {
-					logger.Warn("padbytes error, file:", h5.fname, "pad=", pad)
+					logger.Info("padbytes error, file:", h5.fname, "pad=", pad)
 				}
 				if pad > maxPad {
 					maxPad = pad
@@ -3825,7 +3834,15 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 	if obj.sharedAttr != nil {
 		logger.Info("using shared attr")
 	}
-	return h5.getDataAttr(bf, obj.objAttr)
+	attr := &obj.objAttr
+	if obj.sharedAttr != nil {
+		logger.Warn("using shared attr")
+		attr = obj.sharedAttr
+	}
+	sz := calcAttrSize(attr)
+	logger.Info("about to getdataattr rem=", bf.(remReader).Rem(), "size=", sz)
+	bff := newResetReader(bf, sz)
+	return h5.getDataAttr(bff, *attr)
 }
 
 func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {

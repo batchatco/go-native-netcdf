@@ -3,7 +3,6 @@ package hdf5
 import (
 	"bytes"
 	"io"
-	"math"
 	"sync"
 )
 
@@ -42,9 +41,6 @@ func newResetReaderFromBytes(b []byte) remReader {
 }
 
 func newResetReader(file io.Reader, size int64) remReader {
-	if size == 0 {
-		size = math.MaxInt32
-	}
 	return &resetReader{
 		lr:   &io.LimitedReader{R: file, N: size},
 		size: size}

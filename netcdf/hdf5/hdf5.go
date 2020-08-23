@@ -1,15 +1,5 @@
 package hdf5
 
-// TODO: wrongly parses identifier_product_doi global attribute as []string in OCO2 files
-// TODO: don't call things we don't need to call. May not need to traverse all
-// of BTree.
-// TODO: encode returned strings propertly, not UTF-8 when should be sometimes
-// TODO: review layout code, it is so hacky
-// TODO: only read data if "constant message" is set, don't rely on length of data
-// TODO: structure data (attributes can refer to other attributes for compound and variable-length). Do something better with compound conversion.  Maybe something like this:
-//   [[name, value], [name, value]]...
-// TODO: get rid of v1 object header hack checking magic number
-// TODO: don't hardcode doubling table width
 import (
 	"bufio"
 	"bytes"
@@ -3763,12 +3753,9 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 	if bf == nil {
 		return nil
 	}
-	if obj.sharedAttr != nil {
-		logger.Info("using shared attr")
-	}
 	attr := &obj.objAttr
 	if obj.sharedAttr != nil {
-		logger.Warn("using shared attr")
+		logger.Info("using shared attr")
 		attr = obj.sharedAttr
 	}
 	sz := calcAttrSize(attr)
@@ -3817,6 +3804,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		return h5.allocRegularStrings(bf, attr.dimensions) // already converted
 
 	case typeVariableLength:
+		logger.Info("dimensions=", attr.dimensions)
 		if attr.vtType == 1 {
 			// It's a string
 			// TODO: use the padding and character set information
@@ -3981,7 +3969,88 @@ func getAttributes(unfiltered []attribute) api.AttributeMap {
 					}
 				*/
 			} else {
-				filtered[val.name] = val.value
+				// A scalar attribute can be stored as a single-length array
+				// This code undoes that.
+
+				fixit := func(value interface{}) interface{} {
+					switch v := value.(type) {
+					case string:
+					case variableLength:
+					case float64:
+					case float32:
+					case int64:
+					case int32:
+					case int16:
+					case int8:
+					case uint64:
+					case uint32:
+					case uint16:
+					case uint8:
+						break
+					case []enumerated:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []compound:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []string:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []float64:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []float32:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []uint64:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []uint32:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []uint16:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []uint8:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []int64:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []int32:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []int16:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					case []int8:
+						if len(v) == 1 {
+							value = v[0]
+						}
+					default:
+						logger.Infof("Strange attribute type %T", value)
+					}
+					return value
+				}
+				value := fixit(val.value)
+				e, has := value.(enumerated)
+				if has {
+					e.values = fixit(e.values)
+					value = e
+				}
+				filtered[val.name] = value
 			}
 			keys = append(keys, val.name)
 		}

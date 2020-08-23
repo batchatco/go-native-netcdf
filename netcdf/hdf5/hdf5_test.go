@@ -460,6 +460,7 @@ func ncGen(t *testing.T, fileNameNoExt string) string {
 	cmd := exec.Command("ncgen", "-b", "-k", "hdf5", "-o", genName, "testdata/"+fileNameNoExt+".cdl")
 	err := cmd.Run()
 	if err != nil {
+		t.Log("ncgen", "-b", "-k", "hdf5", "-o", genName, "testdata/"+fileNameNoExt+".cdl")
 		t.Log(err)
 		return ""
 	}
@@ -544,6 +545,56 @@ func TestTypes(t *testing.T) {
 	}
 	defer nc.Close()
 	checkAll(t, nc, values)
+}
+
+func TestGlobalAttrs(t *testing.T) {
+	genName := ncGen(t, "testattrs")
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	values, err := util.NewOrderedMap(
+		[]string{"str", "f32", "f64", "i8", "ui8", "i16", "ui16", "i32", "ui32", "i64", "ui64",
+			"col", "all"},
+		map[string]interface{}{
+			"str":  "hello",
+			"f32":  float32(1),
+			"f64":  float64(2),
+			"i8":   int8(3),
+			"ui8":  uint8(4),
+			"i16":  int16(5),
+			"ui16": uint16(6),
+			"i32":  int32(7),
+			"ui32": uint32(8),
+			"i64":  int64(9),
+			"ui64": uint64(10),
+			"col":  enumerated{int8(3)},
+			"all":  compound{int8('0'), int16(1), int32(2), float32(3), float64(4)},
+		})
+	if err != nil {
+		t.Error(nil)
+	}
+	checkAllAttrs(t, nc, values)
+	defer nc.Close()
+}
+
+func checkAllAttrs(t *testing.T, nc api.Group, values *util.OrderedMap) {
+	t.Helper()
+	for _, key := range values.Keys() {
+		vr, has := nc.Attributes().Get(key)
+		if !has {
+			t.Error("not found")
+			continue
+		}
+		if !checkAttr(t, key, values, vr) {
+			t.Error("values did not match")
+		}
+	}
 }
 
 func TestFills(t *testing.T) {
@@ -1151,7 +1202,7 @@ func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
 	}
 	if !(len(val.Attributes.Keys()) == 0 && len(kv.val.Attributes.Keys()) == 0) &&
 		!reflect.DeepEqual(val.Attributes.Keys(), kv.val.Attributes.Keys()) {
-		t.Log("attr")
+		t.Logf("attr %v %v", val.Attributes.Keys(), kv.val.Attributes.Keys())
 		return false
 	}
 	for _, v := range val.Attributes.Keys() {
@@ -1165,12 +1216,13 @@ func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
 			t.Log("get kv")
 			return false
 		}
-		rb := reflect.ValueOf(b)
-		if rb.Kind() == reflect.Slice && rb.Len() == 1 {
-			// Special case: single length arrays are returned as scalars
-			elem := rb.Index(0)
-			b = elem.Interface()
-		}
+		/*
+			rb := reflect.ValueOf(b)
+				if rb.Kind() == reflect.Slice && rb.Len() == 1 {
+					// Special case: single length arrays are returned as scalars
+					elem := rb.Index(0)
+					b = elem.Interface()
+				}*/
 		if !reflect.DeepEqual(a, b) {
 			t.Logf("attr deepequal %s %T %T", name, a, b)
 			return false
@@ -1179,6 +1231,20 @@ func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
 	if !reflect.DeepEqual(val.Dimensions, kv.val.Dimensions) &&
 		!(len(val.Dimensions) == 0 && len(kv.val.Dimensions) == 0) {
 		t.Log("dims", name, val.Dimensions, kv.val.Dimensions)
+		return false
+	}
+	return true
+}
+
+func checkAttr(t *testing.T, name string, attr *util.OrderedMap, val interface{}) bool {
+	t.Helper()
+	v, has := attr.Get(name)
+	if !has {
+		t.Error("Attribute", name, "not found")
+		return false
+	}
+	if !reflect.DeepEqual(val, v) {
+		t.Logf("var deepequal name=%s got=%#v exp=%#v", name, val, v)
 		return false
 	}
 	return true

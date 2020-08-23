@@ -1,0 +1,44 @@
+netcdf testattrs {
+types:
+  compound alltypes {
+    byte b;
+    short s;
+    int i;
+    float f;
+    double d;
+  };
+  byte enum color {
+    RED = 0,
+    YELLOW = 1,
+    GREEN = 2,
+    CYAN = 3,
+    BLUE = 4,
+    MAGENTA = 5
+  };
+
+variables:
+  alltypes :all =  {'0', 1, 2, 3.0, 4.0};
+  color :col = CYAN;
+  char :c = 'c';
+  string :str = "hello";
+
+  float :f32 = 1;
+
+  double :f64 = 2;
+
+  byte :i8 = 3;
+
+  ubyte :ui8 = 4;
+
+  short :i16 = 5;
+
+  ushort :ui16 = 6;
+
+  int :i32 = 7;
+
+  uint :ui32 = 8;
+
+  int64 :i64 = 9;
+
+  uint64 :ui64 = 10;
+}

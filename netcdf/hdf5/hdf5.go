@@ -528,7 +528,7 @@ func (h5 *HDF5) readSuperblock() {
 		cacheType := read32(bf)
 		logger.Info("cacheType", cacheType)
 		reserved := read32(bf)
-		checkVal(0, reserved, "reserved")
+		checkVal(0, reserved, "reserved sb")
 		if cacheType == 1 {
 			btreeAddr := read64(bf)
 			nameHeapAddr := read64(bf)
@@ -542,10 +542,10 @@ func (h5 *HDF5) readSuperblock() {
 	if sbExtension != invalidAddress {
 		logger.Warn("superblock extension not supported")
 		if parseSBExtension {
+			// Hacky: there must be a better way to determine V1 object headers
 			if h5.isMagic("OHDR", sbExtension) {
 				_ = h5.readDataObjectHeader(sbExtension)
 			} else {
-				// Hacky: there must be a better way to determine V1 object headers
 				logger.Info("V1 object header")
 				_ = h5.readDataObjectHeaderV1(sbExtension)
 			}
@@ -575,8 +575,7 @@ func getString(b []byte) string {
 	return string(b[:end])
 }
 
-func readNullTerminatedName(padding int, properties []byte) (string, int) {
-	bf := newResetReaderFromBytes(properties)
+func readNullTerminatedName(padding int, bf io.Reader) (string, int) {
 	var name []byte
 	nullFound := false
 	plen := 0
@@ -625,18 +624,19 @@ func (h5 *HDF5) readAttributeData(obj *object, link *linkInfo, offset uint64, le
 	doDoubling(obj, link, offset, length, creationOrder, h5.readAttributeDirect)
 }
 
-func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int64, attr *attribute, isCompound bool) (int, int64) {
-	assert(len(b) >= 8, "short data")
-	bitFields := uint32(b[1]) | (uint32(b[2]) << 8) | (uint32(b[3]) << 16)
-	dtversion := (b[0] >> 4) & 0xf
-	dtclass := b[0] & 0xf
-	dtlength := uint32(0)
-	dtlength = uint32(b[4]) | (uint32(b[5]) << 8) | (uint32(b[6]) << 16) | (uint32(b[7]) << 24)
-	properties := b[8:]
-	logger.Infof("* datatype=0x%02x length=%d dtlength=%d dtversion=%d class=%s flags=%s",
-		b, len(b), dtlength,
+func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount int64, attr *attribute, isCompound bool) (int, int64) {
+	assert(bf.Rem() >= 8, "short data")
+	b0 := read8(bf)
+	b1 := read8(bf)
+	b2 := read8(bf)
+	b3 := read8(bf)
+	bitFields := uint32(b1) | (uint32(b2) << 8) | (uint32(b3) << 16)
+	dtversion := (b0 >> 4) & 0xf
+	dtclass := b0 & 0xf
+	dtlength := read32(bf)
+	logger.Infof("* length=%d dtlength=%d dtversion=%d class=%s flags=%s",
+		bf.Rem(), dtlength,
 		dtversion, typeNames[dtclass], binaryToString(uint64(bitFields)))
-	blen := 8
 	dlen := int64(0)
 	switch dtversion {
 	case dtversionEarly:
@@ -671,22 +671,21 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 			attr.endian = binary.LittleEndian
 		}
 		checkVal(0, paddingType, "padding must be zero")
-		logger.Info("len properties", len(properties))
-		if len(properties) == 0 {
+		logger.Info("len properties", bf.Rem())
+		if bf.Rem() == 0 {
 			logger.Error("no properties")
 		} else {
-			bff := newResetReaderFromBytes(properties)
-			bitOffset := read16(bff)
-			bitPrecision := read16(bff)
-			blen += 4
-			logger.Infof("bitOffset=%d bitPrecision=%d blen=%d", bitOffset, bitPrecision, blen)
+			bitOffset := read16(bf)
+			bitPrecision := read16(bf)
+			logger.Infof("bitOffset=%d bitPrecision=%d blen=%d", bitOffset, bitPrecision,
+				bf.Count())
 		}
-		if bf == nil {
+		if df == nil {
 			logger.Infof("no data")
 			break
 		}
-		if bf.Rem() >= int64(dtlength) {
-			attr.value = h5.getDataAttr(bf, *attr)
+		if df.Rem() >= int64(dtlength) {
+			attr.value = h5.getDataAttr(df, *attr)
 			dlen += int64(dtlength) * objCount
 		}
 	case typeFloatingPoint:
@@ -714,9 +713,8 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		logger.Info("* mantissa:", mantissa)
 		sign := (bitFields >> 8) & 0xff
 		logger.Info("* sign: ", sign)
-		assert(len(properties) >= 12,
-			fmt.Sprint("Properties need to be at least 12 bytes, was ", len(properties)))
-		bf := newResetReaderFromBytes(properties)
+		assert(bf.Rem() >= 12,
+			fmt.Sprint("Properties need to be at least 12 bytes, was ", bf.Rem()))
 		bitOffset := read16(bf)
 		bitPrecision := read16(bf)
 		exponentLocation := read8(bf)
@@ -725,7 +723,6 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		mantissaSize := read8(bf)
 		exponentBias := read32(bf)
 
-		blen += 12
 		logger.Infof("* bitOffset=%d bitPrecision=%d exponentLocation=%d exponentSize=%d mantissaLocation=%d mantissaSize=%d exponentBias=%d",
 			bitOffset,
 			bitPrecision,
@@ -734,24 +731,23 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 			mantissaLocation,
 			mantissaSize,
 			exponentBias)
-		if bf == nil {
+		if df == nil {
 			logger.Infof("no data")
 			break
 		}
-		logger.Info("data len", bf.Rem())
-		if bf.Rem() < int64(dtlength) {
-			logger.Info("data short", dtlength, bf.Rem())
+		logger.Info("data len", df.Rem())
+		if df.Rem() < int64(dtlength) {
+			logger.Info("data short", dtlength, df.Rem())
 			break
 		}
-		attr.value = h5.getDataAttr(bf, *attr)
+		attr.value = h5.getDataAttr(df, *attr)
 		dlen += int64(dtlength) * objCount
 
 	case typeTime:
 		logger.Fatal("time code has never been executed before and does nothing")
 		// uncomment the following to enable
 		if parseTime {
-			logger.Info("time, len(data)=", bf.Rem())
-			bff := bytes.NewReader(properties)
+			logger.Info("time, len(data)=", df.Rem())
 			var endian binary.ByteOrder
 			if bitFields == 0 {
 				endian = binary.LittleEndian
@@ -761,25 +757,24 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 				logger.Infof("time big-endian")
 			}
 			var bp int16
-			err := binary.Read(bff, endian, &bp)
+			err := binary.Read(bf, endian, &bp)
 			thrower.ThrowIfError(err)
 			logger.Info("time bit precision=", bp)
-			if bf.Rem() > 0 {
+			if df.Rem() > 0 {
 				fail("time")
 			}
-			blen += 2
 		}
 	case typeString:
 		logger.Info("string")
 		checkVal(1, dtversion, "Only support version 1 of string")
 		padding := bitFields & 0xf
 		set := (bitFields >> 3) & 0xf
-		if bf == nil {
+		if df == nil {
 			logger.Infof("no data")
 			break
 		}
-		b := make([]byte, bf.Rem())
-		read(bf, b)
+		b := make([]byte, df.Rem())
+		read(df, b)
 		logger.Infof("* string padding=%d set=%d b[%s]=%s", padding, set,
 			attr.name, getString(b))
 		attr.value = getString(b)
@@ -789,13 +784,12 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		logger.Infof("BitField type %d, all 0x%x", bfType, bitFields)
 
 	case typeOpaque:
-		logger.Info("opaque, not fully working", len(properties))
-		if len(properties) == 0 {
+		logger.Info("opaque, not fully working", bf.Rem())
+		if bf.Rem() == 0 {
 			logger.Info("No properties for opaque")
 			break
 		}
-		plen := len(properties[:])
-		bf := newResetReaderFromBytes(properties[:])
+		plen := int(bf.Rem())
 		name := make([]byte, plen)
 		read(bf, name)
 		stringName := getString(name)
@@ -820,92 +814,78 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 			padding = 7
 		}
 		for i := 0; i < int(nmembers); i++ {
-			name, p := readNullTerminatedName(padding, properties[poff:])
+			name, p := readNullTerminatedName(padding, bf)
 			logger.Info("compound name", name)
-			blen += p
 			poff += p
 			logger.Info(i, "compound name=", name)
-			bff := newResetReaderFromBytes(properties[poff:])
 			var byteOffset uint32
 			switch dtversion {
 			case 1, 2:
-				byteOffset = read32(bff)
+				byteOffset = read32(bf)
 				logger.Infof("[32old] byteOffset=0x%x", byteOffset)
-				blen += 4
 				poff += 4
 			case 3:
 				switch {
 				case dtlength < 256:
-					byteOffset = uint32(read8(bff))
+					byteOffset = uint32(read8(bf))
 					logger.Infof("[8] byteOffset=0x%x", byteOffset)
-					blen++
 					poff++
 				case dtlength < 65536:
-					byteOffset = uint32(read16(bff))
+					byteOffset = uint32(read16(bf))
 					logger.Infof("[16] byteOffset=0x%x", byteOffset)
-					blen += 2
 					poff += 2
 				case dtlength < 16777216:
-					low := uint32(read16(bff))
-					high := uint32(read8(bff))
+					low := uint32(read16(bf))
+					high := uint32(read8(bf))
 					logger.Infof("low=0x%x high=0x%x\n", low, high)
 					byteOffset = low | (high << 16)
 					logger.Infof("[24] byteOffset=0x%x", byteOffset)
-					blen += 3
 					poff += 3
 				default:
-					byteOffset = uint32(read32(bff))
+					byteOffset = uint32(read32(bf))
 					logger.Infof("[32] byteOffset=0x%x", byteOffset)
-					blen += 4
 					poff += 4
 				}
 			}
 			logger.Info(i, "compound byte offset=", byteOffset)
 			var compoundAttribute attribute
 			if dtversion == 1 {
-				dimensionality := read8(bff)
+				dimensionality := read8(bf)
 				logger.Info("dimensionality", dimensionality)
-				blen++
 				poff++
-				checkZeroes(bff, 3)
-				blen += 3
+				checkZeroes(bf, 3)
 				poff += 3
-				perm := read32(bff)
-				blen += 4
+				perm := read32(bf)
 				poff += 4
 				logger.Info("permutation", perm)
 				checkVal(0, perm, "permutation")
-				reserved := read32(bff)
-				checkVal(0, reserved, "reserved")
-				blen += 4
+				reserved := read32(bf)
+				checkVal(0, reserved, "reserved dt")
 				poff += 4
 				compoundAttribute.dimensions = make([]uint64, 4)
 				for i := 0; i < 4; i++ {
-					dsize := read32(bff)
+					dsize := read32(bf)
 					logger.Info("dimension", i, "size", dsize)
 					compoundAttribute.dimensions[i] = uint64(dsize)
-					blen += 4
 					poff += 4
 				}
 				compoundAttribute.dimensions = compoundAttribute.dimensions[:dimensionality]
 			}
 
 			rem := int64(0)
-			if bf != nil {
-				rem = bf.Rem()
+			if df != nil {
+				rem = df.Rem()
 			}
-			logger.Infof("%d compound before: len(prop) = %d len(data) = %d", i,
-				len(properties[poff:]), rem)
+			logger.Infof("%d compound before: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
 
-			thisb, thisd := h5.printDatatype(obj, properties[poff:], nil, 0,
+			thisb, thisd := h5.printDatatype(obj, bf, nil, 0,
 				&compoundAttribute, true /*iscompound*/)
 			logger.Info("thisb", thisb)
 			rem = int64(0)
-			if bf != nil {
-				rem = bf.Rem()
+			if df != nil {
+				rem = df.Rem()
 			}
-			logger.Infof("%d compound after: len(prop) = %d len(data) = %d", i, len(properties[poff:])-thisb, rem-thisd)
-			blen += thisb
+			logger.Infof("%d compound after: len(prop) = %d len(data) = %d", i, bf.Rem(), rem-thisd)
 			poff += thisb
 			dlen += thisd
 			logger.Infof("%d compound dtlength", compoundAttribute.length)
@@ -913,15 +893,15 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		}
 		logger.Info("Compound length is", attr.length)
 		rem := int64(0)
-		if bf != nil {
-			rem = bf.Rem()
+		if df != nil {
+			rem = df.Rem()
 		}
 		if rem > 0 {
-			logger.Info("compound alloced", dlen, bf.Rem()+bf.Count())
-			bff := makeFillValueReader(obj, bf, calcAttrSize(attr))
+			logger.Info("compound alloced", dlen, df.Rem()+df.Count())
+			bff := makeFillValueReader(obj, df, calcAttrSize(attr))
 			attr.value = h5.getDataAttr(bff, *attr)
-			logger.Info("rem=", bf.Rem(), "nread=", bff.(remReader).Count())
-			dlen = bf.Rem() + bf.Count() // assume we read it all
+			logger.Info("rem=", df.Rem(), "nread=", bff.(remReader).Count())
+			dlen = df.Rem() + df.Count() // assume we read it all
 		}
 		//logger.Infof("rem=0x%x", properties[poff:])
 		logger.Info("Finish compound")
@@ -937,12 +917,12 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		}
 		checkVal(0, rType, "rtype must be zero")
 		checkVal(0, bitFields, "reserved must be zero")
-		if bf == nil {
+		if df == nil {
 			logger.Infof("no data")
 			break
 		}
 		checkVal(8, dtlength, "refs must be 8 bytes")
-		bf := newResetReader(bf, int64(dtlength))
+		bf := newResetReader(df, int64(dtlength))
 		addr := read64(bf)
 		dlen += 8
 		assert(dtlength <= 8, "weird dtlength")
@@ -953,38 +933,28 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 
 	case typeEnumerated:
 		logger.Info("enumeration, not fully working")
-		logger.Info("blen begin", blen)
+		logger.Info("blen begin", bf.Count())
 		var enumAttr attribute
-		thisb, thisd := h5.printDatatype(obj, properties[:], nil, 0,
-			&enumAttr, false /*isCompound*/)
-		properties = properties[thisb:]
-		blen += thisb
-		logger.Info("blen now", blen)
+		_, thisd := h5.printDatatype(obj, bf, nil, 0, &enumAttr, false /*isCompound*/)
+		logger.Info("blen now", bf.Count())
 		dlen += thisd
 		attr.children = append(attr.children, enumAttr)
 		numberOfMembers := bitFields & 0xffff
 		names := make([]string, numberOfMembers)
 		padding := 0
 		for i := uint32(0); i < numberOfMembers; i++ {
-			name, p := readNullTerminatedName(padding, properties[:])
-			properties = properties[p:]
+			name, _ := readNullTerminatedName(padding, bf)
 			names[i] = name
-			blen += p
 		}
 		logger.Info("enum names:", names)
 		values := make([]interface{}, numberOfMembers)
-		bff := newResetReaderFromBytes(properties)
 		for i := uint32(0); i < numberOfMembers; i++ {
-			values[i] = h5.getDataAttr(bff, enumAttr)
+			values[i] = h5.getDataAttr(bf, enumAttr)
 			switch values[i].(type) {
 			case uint64, int64, float64:
-				blen += 8
 			case uint32, int32, float32:
-				blen += 4
 			case uint16, int16:
-				blen += 2
 			case uint8, int8:
-				blen += 1
 			default:
 				// TODO: figure out what to do for other types
 				fail("unknown enumeration type")
@@ -993,16 +963,16 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		// TODO: store the names and values, and then have an API to return
 		// them (type API).
 		logger.Info("enum values:", values)
-		if bf != nil && bf.Rem() > 0 {
+		if df != nil && df.Rem() > 0 {
 			// Read away some byts
-			bff := makeFillValueReader(obj, bf, calcAttrSize(attr))
-			attr.value = h5.getDataAttr(bff, *attr)
-			dlen = bf.Rem() + bf.Count() // assume we read it all
+			dff := makeFillValueReader(obj, df, calcAttrSize(attr))
+			attr.value = h5.getDataAttr(dff, *attr)
+			dlen = df.Rem() + df.Count() // assume we read it all
 		}
 
 	case typeVariableLength:
 		logger.Info("* variable-length, dtlength=", dtlength,
-			"proplen=", len(properties))
+			"proplen=", bf.Rem())
 		//checkVal(1, dtversion, "Only support version 1 of variable-length")
 		vtType = uint8(bitFields & 0xf) // XXX: we will need other bits too for decoding
 		vtPad := (bitFields >> 4) & 0xf
@@ -1024,17 +994,16 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 			fail("unknown variable-length type")
 		}
 		var variableAttr attribute
-		thisb, thisd := h5.printDatatype(obj, properties[:], nil, 0,
+		_, thisd := h5.printDatatype(obj, bf, nil, 0,
 			&variableAttr, false /*isCompound*/)
 		logger.Info("variable type", variableAttr.attrType, "class", variableAttr.class,
 			"vtType", vtType)
 		attr.children = append(attr.children, variableAttr)
 		attr.vtType = vtType
-		blen += thisb
 		dlen += thisd
 		rem := int64(0)
-		if bf != nil {
-			rem = bf.Rem()
+		if df != nil {
+			rem = df.Rem()
 		}
 		if rem < int64(dtlength) {
 			logger.Infof("variable-length short data: %d vs. %d", rem, dtlength)
@@ -1042,20 +1011,17 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		}
 		logger.Info("len data is", rem, "dlen", dlen)
 
-		attr.value = h5.getDataAttr(bf, *attr)
+		attr.value = h5.getDataAttr(df, *attr)
 		logger.Infof("Type of this vattr: %T", attr.value)
 
 	case typeArray:
 		logger.Info("Array")
 		poff := 0
-		bf := newResetReaderFromBytes(properties)
 		dimensionality := read8(bf)
 		logger.Info("dimensionality", dimensionality)
 		poff++
-		blen++
 		if dtversion < 3 {
 			checkZeroes(bf, 3)
-			blen += 3
 			poff += 3
 		}
 		dimensions := make([]uint64, dimensionality)
@@ -1063,37 +1029,34 @@ func (h5 *HDF5) printDatatype(obj *object, b []byte, bf remReader, objCount int6
 		for i := 0; i < int(dimensionality); i++ {
 			dimensions[i] = uint64(read32(bf))
 			logger.Info("dim=", dimensions[i])
-			blen += 4
 			poff += 4
 		}
 		if dtversion < 3 {
 			for i := 0; i < int(dimensionality); i++ {
 				perm := read32(bf)
 				logger.Info("perm=", perm)
-				blen += 4
 				poff += 4
 			}
 		}
 		var arrayAttr attribute
-		thisb, thisd := h5.printDatatype(obj, properties[poff:], nil, 0,
+		_, thisd := h5.printDatatype(obj, bf, nil, 0,
 			&arrayAttr, true /* isCompound*/)
 		attr.dimensionality = dimensionality
 		attr.dimensions = dimensions
 		attr.children = append(attr.children, arrayAttr)
-		blen += thisb
 		dlen += thisd
 
 	default:
 		fail(fmt.Sprint("bogus type not handled: ", dtclass))
 	}
-	if bf != nil && bf.Rem() > 0 {
+	if df != nil && df.Rem() > 0 {
 		// It is normal for there to be extra data, not sure why yet.
 		// It does not break any unit tests, so the extra data seems unnecessary.
-		logger.Info("did not read all data", bf.Rem(), typeNames[dtclass])
-		skip(bf, bf.Rem())
+		logger.Info("did not read all data", df.Rem(), typeNames[dtclass])
+		skip(df, df.Rem())
 	}
-	logger.Info("blen, dlen: ", blen, dlen)
-	return blen, dlen
+	logger.Info("blen, dlen: ", bf.Count(), dlen)
+	return int(bf.Count()), dlen
 }
 
 func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationOrder uint64) {
@@ -1165,7 +1128,8 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 	logger.Info("count objects=", count)
 	logger.Info("sizeRem=", bf.Rem())
 	if !shared {
-		_, _ = h5.printDatatype(obj, dtb, bf, count, attr, false /*isCompound*/)
+		pf := newResetReaderFromBytes(dtb)
+		_, _ = h5.printDatatype(obj, pf, bf, count, attr, false /*isCompound*/)
 	} else {
 		bff := newResetReaderFromBytes(dtb)
 		sVersion := read8(bff)
@@ -1173,7 +1137,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 		switch sVersion {
 		case 1:
 			zero := read16(bff)
-			checkVal(0, zero, "reserved")
+			checkVal(0, zero, "reserved attribute")
 		case 2, 3:
 			break
 		default:
@@ -1304,10 +1268,10 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 	}
 	logger.Infof("hard link=0x%x", hardAddr)
 	var obj *object
+	// Hacky: there must be a better way to determine V1 object headers
 	if h5.isMagic("OHDR", hardAddr) {
 		obj = h5.readDataObjectHeader(hardAddr)
 	} else {
-		// Hacky: there must be a better way to determine V1 object headers
 		logger.Info("V1 object header")
 		obj = h5.readDataObjectHeaderV1(hardAddr)
 	}
@@ -2360,12 +2324,11 @@ func (h5 *HDF5) readFillValue(bf io.Reader, size uint16) []byte {
 }
 
 func (h5 *HDF5) readDatatype(obj *object, bf io.Reader, size uint16) attribute {
-	b := make([]byte, size)
 	logger.Infof("going to read %v bytes", size)
-	read(bf, b[:])
 	logger.Info("print datatype with properties from chunk")
 	var objAttr attribute
-	_, _ = h5.printDatatype(obj, b, nil, 0, &objAttr, false /*isCompound*/)
+	pf := newResetReader(bf, bf.(remReader).Rem())
+	_, _ = h5.printDatatype(obj, pf, nil, 0, &objAttr, false /*isCompound*/)
 	return objAttr
 }
 
@@ -2602,7 +2565,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		rem := f.Rem()
 		if rem > 0 {
 			switch headerType {
-			case typeLinkInfo, typeDataLayout, typeAttribute: // ** fix these
+			case typeLinkInfo, typeDataLayout, typeAttribute, typeDatatype: // ** fix these
 				logger.Info("junk bytes at end of record, n=", rem,
 					"header type=", headerTypeToString(int(headerType)))
 			default:
@@ -2837,6 +2800,7 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		logger.Warn("No root address")
 		return api.Group(h5), nil
 	}
+	// Hacky: there must be a better way to determine V1 object headers
 	if h5.isMagic("OHDR", h5.rootAddr) {
 		h5.rootObject = h5.readDataObjectHeader(h5.rootAddr)
 	} else {

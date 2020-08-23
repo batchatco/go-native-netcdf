@@ -1035,7 +1035,7 @@ func TestGzip(t *testing.T) {
 	testFilters(t, []string{"GZIP=9"}, "-g9")
 }
 
-func TestAll(t *testing.T) {
+func TestCombinedFilters(t *testing.T) {
 	// FLET, if present, must always be last.
 	// If GZIP is present, SHUF may appear only before it.
 	testFilters(t, []string{"SHUF", "FLET"}, "-sf")

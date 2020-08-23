@@ -45,17 +45,20 @@ const (
 
 // For disabling code
 
-// For general things that don't happen
-const neverHappens = false
-
-// for some specific things
+// For some specific things that don't seem to happen
 const (
-	parseSBExtension                = false
-	parseHeapDirectBlock            = false
 	createEmptySlice                = false
 	parseTime                       = false
 	parseCreationOrder              = false
 	parseMultiDimensionalReferences = false
+	weirdSegmentCode                = false
+)
+
+// For some specific things that aren't useful and the code is disabled.
+// They are vars so they can be unit tested.
+var (
+	parseSBExtension     = false // happens, not useful
+	parseHeapDirectBlock = false // happens, not useful
 )
 
 var (
@@ -1383,7 +1386,6 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 			h5.readLinkData(obj, offset, length, 0)
 
 		case 6: // creation order for indexed group
-			logger.Fatal("creation order code has never been executed before")
 			if parseCreationOrder {
 				logger.Info("Creation order for indexed groups")
 				co := read64(bf)
@@ -1398,6 +1400,8 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 				logger.Infof("offset=0x%x length=%d", offset, length)
 				// XXX: TODO: don't downcast creationOrder
 				h5.readLinkData(obj, offset, length, co)
+			} else {
+				logger.Fatal("creation order code has never been executed before")
 			}
 
 		case 8: // for indexing the ‘name’ field for indexed attributes.
@@ -1424,7 +1428,6 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 			h5.readAttributeData(obj, obj.attr, offset, length, uint64(co))
 
 		case 9:
-			logger.Fatal("creation order code has never been executed before")
 			// uncomment the following to enable
 			if parseCreationOrder {
 				logger.Info("Creation order for indexed attributes")
@@ -1449,6 +1452,8 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 					versionAndType,
 					offset, length, mflags, co)
 				h5.readAttributeData(obj, obj.attr, offset, length, 0)
+			} else {
+				logger.Fatal("creation order code has never been executed before")
 			}
 		default:
 			fail(fmt.Sprintf("unhandled type: %d", ty))
@@ -2532,8 +2537,9 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			fail("comment not handled")
 		case typeObjectModificationTimeOld:
 			fail("old mod time not handled")
+
 		case typeSharedMessageTable:
-			fail("shared message table not handled")
+			assertError(false, ErrSuperblock, "shared message table not handled")
 
 		case typeObjectHeaderContinuation:
 			offset := read64(f)
@@ -2564,7 +2570,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			obj.attr = h5.readAttributeInfo(f)
 
 		case typeBtreeKValues:
-			fail("we don't handle btree k values")
+			assertError(false, ErrSuperblock, "we don't handle btree k values")
 
 		case typeDriverInfo:
 			fail("we don't handle driver info")
@@ -2579,6 +2585,9 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			b := make([]byte, f.Rem())
 			read(f, b)
 			logger.Warnf("Unknown header type %d data=%x", headerType, b)
+			if headerType == _typeUndocumented23 {
+				thrower.Throw(ErrSuperblock)
+			}
 			fail(fmt.Sprintf("UNHANDLED header type: %s", headerTypeToString(int(headerType))))
 		}
 		logger.Info("ex chunksize", chunkSize, "nRead", bf.Count(), "rem",
@@ -3609,21 +3618,24 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			continue
 		}
 		assert(!(segments[i].offset > off && segments[i].extra == 0), "this never happens")
-		if neverHappens {
-			readers = append(readers,
-				makeFillValueReader(obj, nil, int64(segments[i].offset-off)))
+
+		if weirdSegmentCode && (segments[i].offset > off && segments[i].extra == 0) {
+			makeFillValueReader(obj, nil, int64(segments[i].offset-off))
 			logger.Info("Fill value at offset", off, "length", segments[i].offset-off)
 		}
+
 		logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
 		off = segments[i].offset + segments[i].length
 		readers = append(readers, newResetReader(r, int64(segments[i].length)))
 	}
 	assert(off >= size, "this never happens")
-	if neverHappens {
+
+	if weirdSegmentCode && off >= size {
 		readers = append(readers,
 			makeFillValueReader(obj, nil, int64(size)-int64(off)))
 		logger.Info("Fill value at offset", off, "length", size-off)
 	}
+
 	return newResetReader(io.MultiReader(readers...), int64(size)), size
 }
 
@@ -4260,7 +4272,6 @@ func (h5 *HDF5) ListVariables() []string {
 }
 
 func emptySlice(v interface{}) reflect.Value {
-	fail("this empty slice code has never been executed before")
 	if createEmptySlice {
 		// It actually has been executed before, but we no longer use it.
 		// Perhaps delete.
@@ -4279,6 +4290,8 @@ func emptySlice(v interface{}) reflect.Value {
 			empty = reflect.MakeSlice(reflect.SliceOf(empty.Type()), 0, 0)
 		}
 		return empty
+	} else {
+		fail("this empty slice code has never been executed before")
 	}
 	panic("never happens")
 }

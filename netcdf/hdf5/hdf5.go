@@ -2450,8 +2450,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		f := newResetReader(bf, int64(size))
 		switch headerType {
 		case typeNIL:
-			b := make([]byte, size)
-			read(f, b)
+			checkZeroes(f, int(size))
 			logger.Infof("nil -- do nothing (%d bytes)", size)
 
 		case typeDataspace:

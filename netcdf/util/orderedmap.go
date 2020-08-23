@@ -2,12 +2,15 @@ package util
 
 import (
 	"errors"
+	"log"
 	"sort"
 )
 
 type OrderedMap struct {
-	keys   []string
-	values map[string]interface{}
+	keys        []string
+	values      map[string]interface{}
+	visibleKeys []string
+	hiddenKeys  map[string]bool
 }
 
 var (
@@ -16,6 +19,7 @@ var (
 
 func NewOrderedMap(keys []string, values map[string]interface{}) (*OrderedMap, error) {
 	if len(keys) != len(values) {
+		log.Print(keys, values)
 		return nil, ErrorKeysDontMatchValues
 	}
 	mapKeys := []string{}
@@ -36,11 +40,22 @@ func NewOrderedMap(keys []string, values map[string]interface{}) (*OrderedMap, e
 	if values == nil {
 		values = map[string]interface{}{}
 	}
-	return &OrderedMap{keys, values}, nil
+
+	visibleKeys := []string{}
+	visibleKeys = append(visibleKeys, keys...)
+
+	return &OrderedMap{
+		keys:        keys,
+		values:      values,
+		visibleKeys: visibleKeys,
+		hiddenKeys:  map[string]bool{}}, nil
 }
 
 func (om *OrderedMap) Add(name string, val interface{}) {
-	om.keys = append(om.keys, name)
+	if !om.hiddenKeys[name] {
+		om.keys = append(om.keys, name)
+		om.visibleKeys = append(om.visibleKeys, name)
+	}
 	om.values[name] = val
 }
 
@@ -49,6 +64,19 @@ func (om *OrderedMap) Get(key string) (val interface{}, has bool) {
 	return
 }
 
+func (om *OrderedMap) Hide(hiddenKey string) {
+	om.hiddenKeys[hiddenKey] = true
+	// recompute visible keys
+	visibleKeys := []string{}
+	for _, key := range om.keys {
+		if om.hiddenKeys[key] {
+			continue
+		}
+		visibleKeys = append(visibleKeys, key)
+	}
+	om.visibleKeys = visibleKeys
+}
+
 func (om *OrderedMap) Keys() []string {
-	return om.keys
+	return om.visibleKeys
 }

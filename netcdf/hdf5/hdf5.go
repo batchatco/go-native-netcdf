@@ -51,6 +51,8 @@ var (
 	parseHeapDirectBlock = false // happens, not useful
 )
 
+const ncpKey = "_NCProperties"
+
 var (
 	ErrBadMagic                = errors.New("bad magic number")
 	ErrUnsupportedFilter       = errors.New("unsupported filter found")
@@ -4057,6 +4059,7 @@ func getAttributes(unfiltered []attribute) api.AttributeMap {
 	}
 	om, err := util.NewOrderedMap(keys, filtered)
 	thrower.ThrowIfError(err)
+	om.Hide(ncpKey)
 	return om
 }
 

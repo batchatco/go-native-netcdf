@@ -41,6 +41,8 @@ const (
 	typeUInt64
 )
 
+const ncpKey = "_NCProperties"
+
 type dimension struct {
 	name      string
 	dimLength uint64 // 64-bits in V5
@@ -442,7 +444,7 @@ func (cdf *CDF) readHeader() (err error) {
 
 	// gatt_list
 	cdf.globalAttrs = cdf.getAttrList(bf)
-
+	cdf.globalAttrs.Hide(ncpKey)
 	// var list
 	nVars := cdf.getNElems(bf, fieldVariable)
 

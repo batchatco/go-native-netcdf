@@ -558,10 +558,11 @@ func TestGlobalAttrs(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	values, err := util.NewOrderedMap(
-		[]string{"str", "f32", "f64", "i8", "ui8", "i16", "ui16", "i32", "ui32", "i64", "ui64",
+	exp, err := util.NewOrderedMap(
+		[]string{"c", "str", "f32", "f64", "i8", "ui8", "i16", "ui16", "i32", "ui32", "i64", "ui64",
 			"col", "all"},
 		map[string]interface{}{
+			"c":    "c",
 			"str":  "hello",
 			"f32":  float32(1),
 			"f64":  float64(2),
@@ -577,21 +578,28 @@ func TestGlobalAttrs(t *testing.T) {
 			"all":  compound{int8('0'), int16(1), int32(2), float32(3), float64(4)},
 		})
 	if err != nil {
-		t.Error(nil)
+		t.Error(err)
+		return
 	}
-	checkAllAttrs(t, nc, values)
+	got := nc.Attributes()
+	checkAllAttrs(t, got, exp)
 	defer nc.Close()
 }
 
-func checkAllAttrs(t *testing.T, nc api.Group, values *util.OrderedMap) {
+func checkAllAttrs(t *testing.T, got api.AttributeMap, exp api.AttributeMap) {
 	t.Helper()
-	for _, key := range values.Keys() {
-		vr, has := nc.Attributes().Get(key)
-		if !has {
-			t.Error("not found")
+	used := map[string]bool{}
+	for _, key := range exp.Keys() {
+		used[key] = true
+		if !checkAttr(t, key, got, exp) {
+			t.Error("values did not match")
+		}
+	}
+	for _, key := range got.Keys() {
+		if used[key] {
 			continue
 		}
-		if !checkAttr(t, key, values, vr) {
+		if !checkAttr(t, key, got, exp) {
 			t.Error("values did not match")
 		}
 	}
@@ -1181,6 +1189,49 @@ func TestEnum(t *testing.T) {
 	checkAll(t, nc, enum)
 }
 
+func TestNCProperties(t *testing.T) {
+	fileName := "testenum" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	nc, err = Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	attrs := nc.Attributes()
+	if len(attrs.Keys()) != 0 {
+		t.Error("These attributes should not have been returned:", attrs.Keys())
+	}
+	hidden, has := attrs.Get(ncpKey)
+	if !has {
+		t.Error("Hidden property", ncpKey, "not found")
+		return
+	}
+	spl := strings.Split(hidden.(string), ",")
+	if len(spl) != 3 || spl[0] != "version=2" {
+		t.Error("Hidden property is not correct value:", hidden)
+		return
+	}
+	if !strings.HasPrefix(spl[1], "netcdf=") {
+		t.Error("Hidden property is not correct value:", hidden)
+		return
+	}
+	if !strings.HasPrefix(spl[2], "hdf5=") {
+		t.Error("Hidden property is not correct value:", hidden)
+		return
+	}
+}
+
 func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
 	t.Helper()
 	var kv *keyVal
@@ -1200,34 +1251,7 @@ func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
 			val.Values, kv.val.Values)
 		return false
 	}
-	if !(len(val.Attributes.Keys()) == 0 && len(kv.val.Attributes.Keys()) == 0) &&
-		!reflect.DeepEqual(val.Attributes.Keys(), kv.val.Attributes.Keys()) {
-		t.Logf("attr %v %v", val.Attributes.Keys(), kv.val.Attributes.Keys())
-		return false
-	}
-	for _, v := range val.Attributes.Keys() {
-		a, has := val.Attributes.Get(v)
-		if !has {
-			t.Log("get val")
-			return false
-		}
-		b, has := kv.val.Attributes.Get(v)
-		if !has {
-			t.Log("get kv")
-			return false
-		}
-		/*
-			rb := reflect.ValueOf(b)
-				if rb.Kind() == reflect.Slice && rb.Len() == 1 {
-					// Special case: single length arrays are returned as scalars
-					elem := rb.Index(0)
-					b = elem.Interface()
-				}*/
-		if !reflect.DeepEqual(a, b) {
-			t.Logf("attr deepequal %s %T %T", name, a, b)
-			return false
-		}
-	}
+	checkAllAttrs(t, val.Attributes, kv.val.Attributes)
 	if !reflect.DeepEqual(val.Dimensions, kv.val.Dimensions) &&
 		!(len(val.Dimensions) == 0 && len(kv.val.Dimensions) == 0) {
 		t.Log("dims", name, val.Dimensions, kv.val.Dimensions)
@@ -1236,15 +1260,20 @@ func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
 	return true
 }
 
-func checkAttr(t *testing.T, name string, attr *util.OrderedMap, val interface{}) bool {
+func checkAttr(t *testing.T, name string, gotAttr api.AttributeMap, expAttr api.AttributeMap) bool {
 	t.Helper()
-	v, has := attr.Get(name)
+	exp, has := expAttr.Get(name)
 	if !has {
-		t.Error("Attribute", name, "not found")
+		t.Error("Expected attribute", name, "not found")
 		return false
 	}
-	if !reflect.DeepEqual(val, v) {
-		t.Logf("var deepequal name=%s got=%#v exp=%#v", name, val, v)
+	got, has := gotAttr.Get(name)
+	if !has {
+		t.Error("Received attribute", name, "not found")
+		return false
+	}
+	if !reflect.DeepEqual(got, exp) {
+		t.Logf("var deepequal name=%s got=%#v exp=%#v", name, got, exp)
 		return false
 	}
 	return true

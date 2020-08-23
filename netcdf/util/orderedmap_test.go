@@ -1,6 +1,8 @@
 package util
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestNil(t *testing.T) {
 	_, err := NewOrderedMap(nil, nil)
@@ -27,6 +29,28 @@ func TestMismatchedLength(t *testing.T) {
 		t.Error("Should have returned an error")
 		return
 	}
+}
+
+func TestHidden(t *testing.T) {
+	om, err := NewOrderedMap([]string{"a", "b"},
+		map[string]interface{}{"a": nil, "b": nil})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	om.Hide("a")
+	keys := om.Keys()
+	if len(keys) != 1 || keys[0] != "b" {
+		t.Error("Hide() failed")
+		return
+	}
+	om.Add("a", 1)
+	keys = om.Keys()
+	if len(keys) != 1 || keys[0] != "b" {
+		t.Error("Hide() failed")
+		return
+	}
+	om.Hide("c")
 }
 
 func TestMismatchedKeys(t *testing.T) {
@@ -65,6 +89,6 @@ func TestOrder(t *testing.T) {
 	}
 	keys := om.Keys()
 	if keys[0] != "c" || keys[1] != "b" || keys[2] != "a" {
-		t.Error("Incorrect key order")
+		t.Error("Incorrect key order:", keys)
 	}
 }

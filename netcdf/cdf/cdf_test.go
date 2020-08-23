@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
@@ -343,11 +344,47 @@ func TestTypes(t *testing.T) {
 	checkAll(t, nc, values)
 }
 
+func TestNCProperties(t *testing.T) {
+	fileName := "testdata/testncproperties.nc"
+	_ = os.Remove(fileName)
+	cw, err := OpenWriter(fileName)
+	defer os.Remove(fileName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	closeCW(t, &cw)
+	nc, err := Open(fileName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	attrs := nc.Attributes()
+	if len(attrs.Keys()) != 0 {
+		t.Error("These attributes should not have been returned:", attrs.Keys())
+	}
+	hidden, has := attrs.Get(ncpKey)
+	if !has {
+		t.Error("Hidden property", ncpKey, "not found")
+		return
+	}
+	spl := strings.Split(hidden.(string), ",")
+	if len(spl) != 2 || spl[0] != "version=2" {
+		t.Error("Hidden property is not correct value:", hidden)
+		return
+	}
+	if !strings.HasPrefix(spl[1], "github.com/batchatco/go-native-netcdf=") {
+		t.Error("Hidden property is not correct value:", hidden)
+		return
+	}
+}
+
 func checkAll(t *testing.T, nc api.Group, values keyValList) {
 	t.Helper()
 	vars := nc.ListVariables()
 	if len(vars) != len(values) {
-		t.Error("mismatch")
+		t.Error("mismatch", "got=", len(vars), "exp=", len(values))
 		return
 	}
 	for _, name := range vars {

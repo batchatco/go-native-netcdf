@@ -299,10 +299,10 @@ func (cw *CDFWriter) getDimLengthsHelper(
 			return dims, typeChar
 		}
 		if vLen == 0 {
-                        // minimal support for unlimited, when it is the only dimension.
+			// minimal support for unlimited, when it is the only dimension.
 			kind = cw.scalarKind(t.Elem().Kind())
 			for kind == 0 {
-                                // there are other dimensions and we can't tell the size of them.
+				// there are other dimensions and we can't tell the size of them.
 				thrower.Throw(ErrEmptySlice)
 			}
 			return dims, kind
@@ -805,11 +805,17 @@ func OpenWriter(fileName string) (*CDFWriter, error) {
 		return nil, err
 	}
 	bf := bufio.NewWriter(file)
+	globalAttrs, err := util.NewOrderedMap(
+		[]string{ncpKey},
+		map[string]interface{}{
+			ncpKey: "version=2,github.com/batchatco/go-native-netcdf=1.0",
+		})
+	thrower.ThrowIfError(err)
 	cw := &CDFWriter{
 		file:        file,
 		bf:          &countedWriter{bf, 0},
 		vars:        nil,
-		globalAttrs: nil,
+		globalAttrs: globalAttrs,
 		dimLengths:  make(map[string]int64),
 		dimIds:      make(map[string]int64),
 		dimNames:    nil,

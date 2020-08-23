@@ -256,7 +256,7 @@ type object struct {
 	attrListIsSorted bool
 }
 
-var fillValueUndefined = []byte{0xff}
+var fillValueUndefinedConstant = []byte{0xff} // only the pointer is used
 
 type HDF5 struct {
 	fname     string
@@ -2315,8 +2315,8 @@ func (h5 *HDF5) readFillValue(bf io.Reader, size uint16) []byte {
 			if fillValueDefined == 0x1 {
 				fail("Cannot have both defined and undefined fill value")
 			}
-			logger.Infof("undefined fill value")
-			return fillValueUndefined // only the pointer is used
+			logger.Warnf("undefined fill value")
+			return fillValueUndefinedConstant // only the pointer is used
 		}
 	}
 	switch spaceAllocationTime {
@@ -2343,7 +2343,6 @@ func (h5 *HDF5) readFillValue(bf io.Reader, size uint16) []byte {
 	len := read32(bf)
 	if len == 0 {
 		logger.Infof("zero length fill value")
-		//return fillValueUndefined
 		return nil // zero-length, maybe they meant zero
 	}
 	b := make([]byte, len)
@@ -3690,7 +3689,7 @@ func makeFillValueReader(obj *object, bf io.Reader, length int64) io.Reader {
 		objFillValue = obj.fillValueOld
 	}
 	if objFillValue != nil {
-		if &objFillValue[0] == &fillValueUndefined[0] {
+		if &objFillValue[0] == &fillValueUndefinedConstant[0] {
 			logger.Info("Using the undefined fill value")
 			undefinedFillValue = true
 			objFillValue = nil

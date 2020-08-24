@@ -11,7 +11,7 @@ var errs = []error{ErrUnknown, ErrUnknown, nil, nil}
 
 func TestNew(t *testing.T) {
 	for i, name := range filenames {
-		f, err := os.Open("testfiles/" + name)
+		f, err := os.Open("testdata/" + name)
 		if err != nil {
 			t.Error("os.Open", name, err)
 		} else {
@@ -29,12 +29,12 @@ func TestNew(t *testing.T) {
 }
 
 func TestOpen(t *testing.T) {
-	_, err := Open("testfiles/bogus")
+	_, err := Open("testdata/bogus")
 	if err != ErrUnknown {
 		t.Error("expected error")
 	}
 	for i, name := range filenames {
-		g, err := Open("testfiles/" + name)
+		g, err := Open("testdata/" + name)
 		if err != errs[i] {
 			t.Error("Open", name, "expected", errs[i], "got", err)
 		}

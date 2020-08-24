@@ -1,4 +1,4 @@
-netcdf testunlimited {
+netcdf testcdf5 {
 dimensions:
   d2 = 1;
 variables:

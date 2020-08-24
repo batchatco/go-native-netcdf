@@ -400,17 +400,28 @@ func checkAll(t *testing.T, nc api.Group, values keyValList) {
 	}
 }
 
-func ncGen(t *testing.T, fileNameNoExt string) string {
+func ncGenVersion(t *testing.T, version string, fileNameNoExt string) string {
 	t.Helper()
-	cmd := exec.Command("ncgen", "-b", "-5", fileNameNoExt+".cdl",
+	cmd := exec.Command("ncgen", "-b", "-k", version, fileNameNoExt+".cdl",
 		"-o", fileNameNoExt+".nc")
 	genName := fileNameNoExt + ".nc"
 	err := cmd.Run()
 	if err != nil {
-		t.Log(err, "ncgen", "-b", "-5", fileNameNoExt+".cdl")
+		t.Log(err, "ncgen", "-b", "-k", version, fileNameNoExt+".cdl")
 		return ""
 	}
+	f, r := os.Open(genName)
+	if r != nil {
+		t.Log("os error", r)
+		return ""
+	}
+	f.Close()
 	return genName
+}
+
+func ncGen(t *testing.T, fileNameNoExt string) string {
+	t.Helper()
+	return ncGenVersion(t, "nc5", fileNameNoExt)
 }
 
 const errorNcGen = "Error running ncgen command from netcdf package"
@@ -596,6 +607,56 @@ func TestUnlimitedEmpty(t *testing.T) {
 
 func TestUnlimitedEmptySlow(t *testing.T) {
 	commonUnlimitedEmpty(t, slow)
+}
+
+func TestVersion(t *testing.T) {
+	versions := []string{"classic", "64-bit data", "64-bit offset"}
+	for _, version := range versions {
+		var fileName string
+		if version == "classic" {
+			fileName = "testdata/testunlimited"
+		} else {
+			// 64-bit offset should not actually compile the following file
+                        // because it has CDF5 types (unsigned, int64).  But it does.
+			fileName = "testdata/testcdf5"
+		}
+		genName := ncGenVersion(t, version, fileName)
+		if genName == "" {
+			t.Error(errorNcGen, version)
+			continue
+		}
+		defer os.Remove(genName)
+		nc, err := Open(genName)
+		if err != nil {
+			t.Error(err, version)
+			continue
+		}
+		_ = nc.ListVariables()
+		nc.Close()
+	}
+}
+
+func TestBadMagic(t *testing.T) {
+	versions := []string{"netCDF-4", "netCDF-4 classic model"}
+	for _, version := range versions {
+		fileName := "testdata/testunlimited" // base filename without extension
+		genName := ncGenVersion(t, version, fileName)
+		if genName == "" {
+			t.Error(errorNcGen, version)
+			return
+		}
+		defer os.Remove(genName)
+		nc, err := Open(genName)
+		if err == nil {
+			nc.Close()
+			t.Error("should not have opened", version)
+			continue
+		}
+		if err != ErrNotCDF {
+			t.Error(err, version)
+			return
+		}
+	}
 }
 
 func TestNull(t *testing.T) {

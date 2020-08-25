@@ -30,7 +30,7 @@ type savedVar struct {
 	dimLengths []int64
 	dimNames   []string
 	attrs      api.AttributeMap
-	offset     int64
+	vsize      int64
 }
 
 type CDFWriter struct {
@@ -43,6 +43,7 @@ type CDFWriter struct {
 	dimIds      map[string]int64
 	nextID      int64
 	version     int8
+	begin       int64
 }
 
 var (
@@ -594,7 +595,8 @@ func (cw *CDFWriter) checkV5Attributes(attrs api.AttributeMap) {
 	}
 }
 
-func (cw *CDFWriter) writeVar(saved *savedVar) {
+func (cw *CDFWriter) writeVar(which int) {
+	saved := &cw.vars[which]
 	cw.writeName(saved.name)
 	cw.writeNumber(int64(len(saved.dimLengths)))
 	for i := range saved.dimLengths {
@@ -632,8 +634,150 @@ func (cw *CDFWriter) writeVar(saved *savedVar) {
 	// pad vsize
 	vsize = 4 * ((vsize + 3) / 4)
 	cw.writeNumber(int64(vsize))
-	saved.offset = cw.bf.Count()
-	write64(cw.bf, 0) // patch later
+	saved.vsize = vsize
+
+	calcOffset := cw.begin
+	for i := 0; i < which; i++ {
+		calcOffset += cw.vars[i].vsize
+	}
+	write64(cw.bf, calcOffset)
+}
+
+func (cw *CDFWriter) computeAttributeSize(attrs api.AttributeMap) int64 {
+	count := int64(0)
+	addLength := func() {
+		count += 4
+		if cw.version == 5 {
+			count += 4
+		}
+	}
+	pad := func() {
+		count = (count + 3) & ^0x3
+	}
+	count += 4
+	addLength()
+	if attrs == nil || len(attrs.Keys()) == 0 {
+		return count
+	}
+	for _, k := range attrs.Keys() {
+		v, _ := attrs.Get(k)
+		// name
+		addLength()
+		count += int64(len(k))
+		pad()
+
+		// type
+		count += 4
+
+		// nelems
+		addLength()
+		switch val := v.(type) {
+		case string:
+			count += int64(len(val))
+
+		case int8:
+			count += 1
+
+		case []int8:
+			count += int64(len(val))
+
+		case int16:
+			count += 2
+
+		case []int16:
+			count += 2 * int64(len(val))
+
+		case int32:
+			count += 4
+
+		case []int32:
+			count += 4 * int64(len(val))
+
+		case float32:
+			count += 4
+
+		case []float32:
+			count += 4 * int64(len(val))
+
+		case float64:
+			count += 8
+
+		case []float64:
+			count += 8 * int64(len(val))
+
+			// v5
+		case uint8: // []uint8 and []byte are the same thing
+			count += 1
+
+		case []uint8: // []uint8 and []byte are the same thing
+			count += int64(len(val))
+
+		case uint16:
+			count += 2
+
+		case []uint16:
+			count += 2 * int64(len(val))
+
+		case uint32:
+			count += 4
+
+		case []uint32:
+			count += 4 * int64(len(val))
+
+		case int64:
+			count += 8
+
+		case []int64:
+			count += 8 * int64(len(val))
+
+		case uint64:
+			count += 8
+
+		case []uint64:
+			count += 8 * int64(len(val))
+
+		default:
+			logger.Warnf("Unknown type %T, %#v=%#v", v, k, v)
+			thrower.Throw(ErrUnknownType)
+		}
+		pad()
+	}
+	return count
+}
+
+func (cw *CDFWriter) computeVarSize(saved *savedVar) int64 {
+	count := int64(0)
+	addLength := func() {
+		count += 4
+		if cw.version == 5 {
+			count += 4
+		}
+	}
+	pad := func() {
+		count = (count + 3) & ^0x3
+	}
+	// name
+	addLength()
+	count += int64(len(saved.name))
+	pad()
+
+	// dims
+	addLength()
+	// dims
+	count += int64(len(saved.dimLengths) * 4)
+	if cw.version == 5 {
+		count += int64(len(saved.dimLengths) * 4)
+	}
+
+	// attributes
+	count += cw.computeAttributeSize(saved.attrs)
+	// type
+	count += 4
+	// vsize
+	addLength()
+	// offset
+	count += 8
+	return count
 }
 
 func roundInt64(i int64) int64 {
@@ -650,9 +794,6 @@ func (cw *CDFWriter) pad() {
 }
 
 func (cw *CDFWriter) writeData(saved savedVar) {
-	// this has to be written later, not in the header
-	offset := cw.bf.Count()
-	// patch saved.offset with this offset
 	switch saved.ty {
 	case typeByte:
 		cw.storeBytes(reflect.ValueOf(saved.val), saved.dimLengths)
@@ -684,23 +825,6 @@ func (cw *CDFWriter) writeData(saved savedVar) {
 	default:
 		thrower.Throw(ErrInternal)
 	}
-
-	// then go and patch the offset
-	err := cw.bf.Flush()
-	thrower.ThrowIfError(err)
-
-	// save current
-	current, err := cw.file.Seek(0, io.SeekCurrent)
-	thrower.ThrowIfError(err)
-
-	// patch
-	_, err = cw.file.Seek(int64(saved.offset), io.SeekStart)
-	thrower.ThrowIfError(err)
-	write64(cw.file, offset)
-
-	// reset to current
-	_, err = cw.file.Seek(current, io.SeekStart)
-	thrower.ThrowIfError(err)
 }
 
 func (cw *CDFWriter) Close() (err error) {
@@ -787,8 +911,16 @@ func (cw *CDFWriter) writeAll() {
 	if len(cw.vars) > 0 {
 		write32(cw.bf, fieldVariable)
 		cw.writeNumber(int64(len(cw.vars)))
+
+		// Calculate the beginning of where the data is going to be stored.
+		// The var entries will need that to calculate their offset.
+		cw.begin = cw.bf.Count()
 		for i := range cw.vars {
-			cw.writeVar(&cw.vars[i])
+			cw.begin += cw.computeVarSize(&cw.vars[i])
+		}
+
+		for i := range cw.vars {
+			cw.writeVar(i)
 		}
 		for i := range cw.vars {
 			cw.writeData(cw.vars[i])

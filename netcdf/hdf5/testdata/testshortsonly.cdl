@@ -1,8 +1,8 @@
 netcdf testunlimited {
 dimensions:
-	d1 = UNLIMITED;
+  d1 = UNLIMITED;
 variables:
-	short i16x1(d1);
+  short i16x1(d1);
 data:
   i16x1 = 9876, 5432, 7734;
 }

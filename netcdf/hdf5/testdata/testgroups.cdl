@@ -1,11 +1,11 @@
 netcdf testgroups {
- dimensions:
+dimensions:
   d1 = 1;
- variables:
+variables:
   int datamember(d1);
- data:
+data:
   datamember = 2;
- group:  a {
+group:  a {
   dimensions:
     d1 = 2;
   variables:

@@ -464,6 +464,12 @@ func ncGen(t *testing.T, fileNameNoExt string) string {
 		t.Log(err)
 		return ""
 	}
+	f, r := os.Open(genName)
+	if r != nil {
+		t.Log("os error", r)
+		return ""
+	}
+	f.Close()
 	return genName
 }
 
@@ -1202,12 +1208,6 @@ func TestNCProperties(t *testing.T) {
 		return
 	}
 	defer nc.Close()
-	nc, err = Open(genName)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	defer nc.Close()
 	attrs := nc.Attributes()
 	if len(attrs.Keys()) != 0 {
 		t.Error("These attributes should not have been returned:", attrs.Keys())
@@ -1218,16 +1218,16 @@ func TestNCProperties(t *testing.T) {
 		return
 	}
 	spl := strings.Split(hidden.(string), ",")
-	if len(spl) != 3 || spl[0] != "version=2" {
-		t.Error("Hidden property is not correct value:", hidden)
+	if len(spl) < 3 || spl[0] != "version=2" {
+		t.Error("1. Hidden property is not correct value:", hidden)
 		return
 	}
 	if !strings.HasPrefix(spl[1], "netcdf=") {
-		t.Error("Hidden property is not correct value:", hidden)
+		t.Error("2. Hidden property is not correct value:", hidden)
 		return
 	}
 	if !strings.HasPrefix(spl[2], "hdf5=") {
-		t.Error("Hidden property is not correct value:", hidden)
+		t.Error("3. Hidden property is not correct value:", hidden)
 		return
 	}
 }

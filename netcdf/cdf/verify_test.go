@@ -37,6 +37,7 @@ func getFiles(t *testing.T, path string, suffix string) map[string]bool {
 }
 
 func ncDump(t *testing.T, fname string) (success bool) {
+	t.Helper()
 	cmdString := []string{"-h", fname}
 	cmd := exec.Command("ncdump", cmdString...)
 	stdout, err := cmd.StdoutPipe()

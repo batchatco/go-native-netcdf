@@ -1,8 +1,8 @@
-netcdf testunlimited {
+netcdf testbytesunlimited {
 dimensions:
-	d1 = UNLIMITED;
+  d1 = UNLIMITED;
 variables:
-	byte i8x1(d1);
+  byte i8x1(d1);
 data:
   i8x1 = 12, 56;
 }

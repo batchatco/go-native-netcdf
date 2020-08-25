@@ -1,12 +1,12 @@
 netcdf testtypes {
- dimensions:
+dimensions:
   dim = 1;
   d1 = 2;
   d2 = 2;
 
- variables:
+variables:
   int i32x2(d1, d2);
 
- data:
+data:
   i32x2 = -10000000, 10000000, -20000000, 20000000;
 }

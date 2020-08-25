@@ -292,15 +292,22 @@ func ndims(t *testing.T, val interface{}) int {
 	return n
 }
 
+// closeCW closes the CDF writer and checks for errors.
 func closeCW(t *testing.T, cw **CDFWriter) {
 	t.Helper()
 	if *cw == nil {
 		return
 	}
+	fileName := (*cw).file.Name()
 	err := (*cw).Close()
 	if err != nil {
 		t.Error(err)
 	}
+        // Ensure we wrote a file that ncdump can read
+	if !ncDump(t, fileName) {
+		t.Error("ncdump could not open", fileName)
+	}
+	*cw = nil
 }
 
 func TestTypes(t *testing.T) {
@@ -312,7 +319,6 @@ func TestTypes(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
 	for i, v := range values {
 		var om *util.OrderedMap
 		var err error
@@ -333,8 +339,7 @@ func TestTypes(t *testing.T) {
 			t.Error(v.name, err)
 		}
 	}
-	cw.Close()
-	cw = nil
+	closeCW(t, &cw)
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -496,8 +501,7 @@ func commonOneDim(t *testing.T, slow bool) {
 		t.Error(err)
 		return
 	}
-	cw.Close()
-	cw = nil
+	closeCW(t, &cw)
 	nc2, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -613,11 +617,10 @@ func TestVersion(t *testing.T) {
 	versions := []string{"classic", "64-bit data", "64-bit offset"}
 	for _, version := range versions {
 		var fileName string
-		if version == "classic" {
+		switch version {
+		case "classic", "64-bit offset":
 			fileName = "testdata/testunlimited"
-		} else {
-			// 64-bit offset should not actually compile the following file
-                        // because it has CDF5 types (unsigned, int64).  But it does.
+		case "64-bit data":
 			fileName = "testdata/testcdf5"
 		}
 		genName := ncGenVersion(t, version, fileName)
@@ -625,14 +628,21 @@ func TestVersion(t *testing.T) {
 			t.Error(errorNcGen, version)
 			continue
 		}
-		defer os.Remove(genName)
 		nc, err := Open(genName)
 		if err != nil {
 			t.Error(err, version)
 			continue
 		}
 		_ = nc.ListVariables()
+		attrs := nc.Attributes()
+		hidden, has := attrs.Get(ncpKey)
+		if has {
+			t.Log(version, "hidden property=", hidden)
+		} else {
+			t.Log("Hidden property not found", version)
+		}
 		nc.Close()
+		os.Remove(genName)
 	}
 }
 
@@ -750,8 +760,7 @@ func TestFill(t *testing.T) {
 			return
 		}
 	}
-	cw.Close()
-	cw = nil
+	closeCW(t, &cw)
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -787,8 +796,7 @@ func TestGlobalAttributes(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	cw.Close()
-	cw = nil
+	closeCW(t, &cw)
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -832,8 +840,7 @@ func TestGroup(t *testing.T) {
 			return
 		}
 	}
-	cw.Close()
-	cw = nil
+	closeCW(t, &cw)
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -873,7 +880,7 @@ func TestEmpty(t *testing.T) {
 	fileName := "testdata/testempty.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
-	defer os.Remove(fileName)
+	//defer os.Remove(fileName)
 	if err != nil {
 		t.Error(err)
 		return
@@ -928,8 +935,7 @@ func TestString(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	cw.Close()
-	cw = nil
+	closeCW(t, &cw)
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -971,8 +977,7 @@ func TestMakeDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	cw.Close()
-	cw = nil
+	closeCW(t, &cw)
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)

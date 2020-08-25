@@ -20,5 +20,4 @@ data:
   nodim = GREEN;
 
   c = RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA;
-
 }

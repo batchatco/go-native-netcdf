@@ -1,10 +1,10 @@
 netcdf testtypes {
- dimensions:
+dimensions:
   dim = 1;
   d1 = 2;
   d2 = 2;
 
- variables:
+variables:
   string str;
   string strx1(dim);
   string strx2(d1, d2);
@@ -47,7 +47,7 @@ netcdf testtypes {
   uint64 ui64x1(dim);
   uint64 ui64x2(d1, d2);
 
- data:
+data:
   str = "a";
   strx1 = "a";
   strx2 = "ab", "cd", "ef", "gh";
@@ -90,5 +90,4 @@ netcdf testtypes {
   ui64 = 10000000000;
   ui64x1 = 10000000000;
   ui64x2 = 10000000000, 20000000000, 20000000000, 30000000000;
-
 }

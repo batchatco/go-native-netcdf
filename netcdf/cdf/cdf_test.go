@@ -293,6 +293,9 @@ func ndims(t *testing.T, val interface{}) int {
 }
 
 // closeCW closes the CDF writer and checks for errors.
+// It sets the pointer to nil when it is completed, and
+// so can be called twice, which may happen when it a
+// close is deferred, but also need to be done inline.
 func closeCW(t *testing.T, cw **CDFWriter) {
 	t.Helper()
 	if *cw == nil {
@@ -303,7 +306,7 @@ func closeCW(t *testing.T, cw **CDFWriter) {
 	if err != nil {
 		t.Error(err)
 	}
-        // Ensure we wrote a file that ncdump can read
+	// Ensure we wrote a file that ncdump can read
 	if !ncDump(t, fileName) {
 		t.Error("ncdump could not open", fileName)
 	}
@@ -319,6 +322,7 @@ func TestTypes(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	for i, v := range values {
 		var om *util.OrderedMap
 		var err error
@@ -339,7 +343,7 @@ func TestTypes(t *testing.T) {
 			t.Error(v.name, err)
 		}
 	}
-	closeCW(t, &cw)
+	closeCW(t, &cw) // writes out the data, can't be deferred
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -358,7 +362,7 @@ func TestNCProperties(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	closeCW(t, &cw)
+	closeCW(t, &cw) // writes out the data, can't be deferred
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -484,7 +488,7 @@ func commonOneDim(t *testing.T, slow bool) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	err = cw.AddVar("c2", api.Variable{
 		Values:     "b",
 		Dimensions: []string{"d1"},
@@ -501,7 +505,7 @@ func commonOneDim(t *testing.T, slow bool) {
 		t.Error(err)
 		return
 	}
-	closeCW(t, &cw)
+	closeCW(t, &cw) // writes out the data, can't be deferred
 	nc2, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -741,7 +745,7 @@ func TestFill(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	for i, v := range fills {
 		val := reflect.ValueOf(v.val.Values)
 		om, err := util.NewOrderedMap(
@@ -760,7 +764,7 @@ func TestFill(t *testing.T) {
 			return
 		}
 	}
-	closeCW(t, &cw)
+	closeCW(t, &cw) // writes out the data, can't be deferred
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -784,7 +788,7 @@ func TestGlobalAttributes(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	attributes, err := util.NewOrderedMap([]string{"gattr"},
 		map[string]interface{}{"gattr": 3.14})
 	if err != nil {
@@ -796,7 +800,7 @@ func TestGlobalAttributes(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	closeCW(t, &cw)
+	closeCW(t, &cw) // writes out the data, can't be deferred
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -832,7 +836,7 @@ func TestGroup(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	for _, v := range fills {
 		err = cw.AddVar(v.name, v.val)
 		if err != nil {
@@ -840,7 +844,7 @@ func TestGroup(t *testing.T) {
 			return
 		}
 	}
-	closeCW(t, &cw)
+	closeCW(t, &cw) // writes out the data, can't be deferred
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -885,7 +889,7 @@ func TestEmpty(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	empty := make([]int32, 0)
 	err = cw.AddVar("empty", api.Variable{
 		Values:     empty,
@@ -903,6 +907,7 @@ func TestEmpty(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	closeCW(t, &cw)
 }
 
 func getString(s string) string {
@@ -926,7 +931,7 @@ func TestString(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	err = cw.AddVar("string", api.Variable{
 		Values:     []string{"short", "abcdefg"},
 		Dimensions: nil,
@@ -935,7 +940,7 @@ func TestString(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	closeCW(t, &cw)
+	closeCW(t, &cw) // writes out the data, can't be deferred
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -968,7 +973,7 @@ func TestMakeDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	err = cw.AddVar("ivec", api.Variable{
 		Values:     []int32{0, 1, 2},
 		Dimensions: nil,
@@ -977,7 +982,7 @@ func TestMakeDim(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	closeCW(t, &cw)
+	closeCW(t, &cw) // writes out the data, can't be deferred
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -1010,7 +1015,7 @@ func TestInvalidName(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer closeCW(t, &cw)
+	defer closeCW(t, &cw) // okay to call this twice, sets cw to nil
 	attributes, err := util.NewOrderedMap([]string{"not valid "},
 		map[string]interface{}{"not valid ": 3.14})
 	if err != nil {

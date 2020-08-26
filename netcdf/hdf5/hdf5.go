@@ -37,11 +37,10 @@ const (
 
 // For some specific things that don't seem to happen
 const (
-	createEmptySlice                = false
+	createEmptySlice                = false // consider just deleting the code
 	parseTime                       = false
 	parseCreationOrder              = false
 	parseMultiDimensionalReferences = false
-	weirdSegmentCode                = false
 )
 
 // For some specific things that aren't useful and the code is disabled.
@@ -49,6 +48,7 @@ const (
 var (
 	parseSBExtension     = false // happens, not useful
 	parseHeapDirectBlock = false // happens, not useful
+	useIndirectBlocks    = false // false until we verify the code
 )
 
 const ncpKey = "_NCProperties"
@@ -71,6 +71,7 @@ var (
 	ErrCorrupted               = errors.New("corrupted file")
 	ErrLayout                  = errors.New("data layout version not supported")
 	ErrSuperblock              = errors.New("superblock extension not supported")
+	ErrIndirectBlocks          = errors.New("indirect blocks not implemented")
 )
 
 const (
@@ -190,6 +191,7 @@ type attribute struct {
 	class          uint8
 	attrType       uint8
 	vtType         uint8       // for variable length
+	vtPad          uint8       // for variable length
 	signed         bool        // for fixed-point
 	children       []attribute // for variable and compound, TODO also need dimensions
 	addr           uint64      // for reference
@@ -546,13 +548,7 @@ func (h5 *HDF5) readSuperblock() {
 	if sbExtension != invalidAddress {
 		logger.Info("superblock extension not supported")
 		if parseSBExtension {
-			// Hacky: there must be a better way to determine V1 object headers
-			if h5.isMagic("OHDR", sbExtension) {
-				_ = h5.readDataObjectHeader(sbExtension)
-			} else {
-				logger.Info("V1 object header")
-				_ = h5.readDataObjectHeaderV1(sbExtension)
-			}
+			_ = h5.readDataObjectHeader(sbExtension)
 		} else {
 			thrower.Throw(ErrSuperblock)
 		}
@@ -953,11 +949,10 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			"proplen=", bf.Rem())
 		//checkVal(1, dtversion, "Only support version 1 of variable-length")
 		vtType = uint8(bitFields & 0xf) // XXX: we will need other bits too for decoding
-		vtPad := (bitFields >> 4) & 0xf
-		checkVal(0, vtPad, "only do zero vtpad now")
+		vtPad := uint8(bitFields>>4) & 0xf
+		assert(vtPad == 0 || vtPad == 1, "only do v0 and v1 versions of VL padding")
 		vtCset := (bitFields >> 8) & 0xf
-		logger.Infof("type=%d paddingtype=%d cset=%d",
-			vtType, vtPad, vtCset)
+		logger.Infof("type=%d paddingtype=%d cset=%d", vtType, vtPad, vtCset)
 		switch vtType {
 		case 0:
 			checkVal(0, vtCset, "cset when not string")
@@ -977,6 +972,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			"vtType", vtType)
 		attr.children = append(attr.children, variableAttr)
 		attr.vtType = vtType
+		attr.vtPad = vtPad
 		rem := int64(0)
 		if df != nil {
 			rem = df.Rem()
@@ -1033,18 +1029,19 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 	logger.Infof("* attr version=%d", version)
 	assert(version >= 1 && version <= 3, "not an Attribute")
 	flags := read8(bf) // reserved in version 1
-	shared := false
+	sharedType := false
+	sharedSpace := false
 	switch version {
 	case 1:
 		checkVal(0, flags, "reserved field must be zero")
 	case 2, 3:
 		if hasFlag8(flags, 0) {
 			logger.Info("shared datatype")
-			shared = true
+			sharedType = true
 		}
 		if hasFlag8(flags, 1) {
 			logger.Info("shared dataspace")
-			shared = true
+			sharedSpace = true
 		}
 		logger.Infof("* attr flags=0x%x (%s)", flags, binaryToString(uint64(flags)))
 	}
@@ -1085,44 +1082,98 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 			checkVal(0, z, "zero pad")
 		}
 	}
-
-	dims, count := h5.readDataspace(newResetReader(bf, int64(dataspaceSize)))
-	if version == 1 {
-		padBytes(bf, 7)
+	var dims []uint64
+	var count int64
+	if sharedSpace {
+		checkVal(datatypeSize, 10, "datatype size must be 10 for shared")
+		sVersion := read8(bf)
+		sType := read8(bf)
+		addr := read64(bf)
+		logger.Infof("shared space version=%v type=%v addr=%x", sVersion, sType, addr)
+		fail("don't handle shared dataspaces")
+	} else {
+		dims, count = h5.readDataspace(newResetReader(bf, int64(dataspaceSize)))
+		if version == 1 {
+			padBytes(bf, 7)
+		}
+		attr.dimensions = dims
+		logger.Info("dimensions are", dims)
+		logger.Info("count objects=", count)
 	}
-	attr.dimensions = dims
-	logger.Info("dimensions are", dims)
-	logger.Info("count objects=", count)
 	logger.Info("sizeRem=", bf.Rem())
-	if !shared {
+	if !sharedType {
 		pf := newResetReaderFromBytes(dtb)
 		h5.printDatatype(obj, pf, bf, count, attr)
 	} else {
+		checkVal(datatypeSize, 10, "datatype size must be 10 for shared")
 		bff := newResetReaderFromBytes(dtb)
 		sVersion := read8(bff)
 		sType := read8(bff)
+		logger.Infof("shared type version=%v type=%v", sVersion, sType)
 		switch sVersion {
-		case 1:
-			zero := read16(bff)
-			checkVal(0, zero, "reserved attribute")
-		case 2, 3:
-			break
-		default:
-			fail("bad version")
-		}
-		switch sType {
-		case 0, 1, 3:
-			fail("Unimplemented shared message feature")
+		case 0, 1: // both version 1
+			logger.Warn("version 1 shared message encountered")
+			checkVal(sType, 0, "type must be zero")
+			checkZeroes(bff, 6)
+		case 2:
+			// the type is supposed to be zero for version 2, but is sometimes 2
+			assert(sType == 0 || sType == 2, "type must be 0 or 2")
+		case 3:
+			logger.Warn("version 3 shared message encountered")
+			switch sType {
+			case 0:
+				logger.Info("not actually shared")
+			case 1:
+				logger.Info("message in heap")
+			case 2:
+				logger.Info("messsage in an object")
+			case 3:
+				logger.Info("message not shared, but sharable")
+			default:
+				fail("Unimplemented shared message feature")
+			}
 		}
 		addr := read64(bff)
-		logger.Infof("shared addr=0x%x", addr)
-		sharedAttr, has := h5.sharedAttrs[addr]
-		if !has {
-			logger.Error("shared attr not found", addr)
+		logger.Infof("shared type addr=0x%x", addr)
+		oa := h5.sharedAttrs[addr]
+		if oa == nil {
+			obj := h5.readDataObjectHeader(addr)
+			oa = &obj.objAttr
+			h5.sharedAttrs[addr] = oa
 		} else {
-			attr.value = h5.getDataAttr(bf, *sharedAttr)
+			logger.Info("Found shared attr in map")
 		}
+		sAttr := *oa
+		sAttr.dimensions = dims
+		attr.value = h5.getDataAttr(bf, sAttr)
 	}
+}
+
+func (h5 *HDF5) findObject(addr uint64) *object {
+	var f func(obj *object) *object
+	f = func(obj *object) *object {
+		if obj == nil {
+			return nil
+		}
+		logger.Infof("trying obj addr = %x", obj.addr)
+		if obj.addr == addr {
+			return obj
+		}
+		for _, o := range obj.children {
+			res := f(o)
+			if res != nil {
+				return res
+			}
+		}
+		return nil
+	}
+	logger.Info("Try root object")
+	res := f(h5.rootObject)
+	if res != nil {
+		return res
+	}
+	logger.Info("Try group object")
+	return f(h5.groupObject)
 }
 
 type doublerCallback func(obj *object, bnum uint64, offset uint64, length uint16,
@@ -1152,26 +1203,31 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 		callback(obj, blockToUse, offset, length, creationOrder)
 		return true
 	}
-	// now try indirect blocks
-	logger.Warn("Using indirect blocks")
-	for entryNum, block := range link.iBlock {
-		if offset < blockSize {
-			blockToUse = block
-			break
+	if useIndirectBlocks {
+		// now try indirect blocks
+		logger.Warn("Using indirect blocks")
+		for entryNum, block := range link.iBlock {
+			if offset < blockSize {
+				blockToUse = block
+				break
+			}
+			offset -= blockSize
+			if (entryNum % width) == (width - 1) {
+				logger.Info("doubled block size")
+				blockSize *= 2
+			}
 		}
-		offset -= blockSize
-		if (entryNum % width) == (width - 1) {
-			logger.Info("doubled block size")
-			blockSize *= 2
-		}
+		assert(blockToUse != invalidAddress, "did not find direct or indirect block")
+
+		nextLink := *link
+		h5.readRootBlock(&nextLink, blockToUse, 0, link.rowsRootIndirect,
+			link.tableWidth, blockSize, link.maximumBlockSize)
+
+		return h5.readLinkData(obj, link, offset, length, creationOrder, callback)
+	} else {
+		thrower.Throw(ErrIndirectBlocks)
+		panic("never gets here")
 	}
-	assert(blockToUse != invalidAddress, "did not find direct or indirect block")
-
-	nextLink := *link
-	h5.readRootBlock(&nextLink, blockToUse, 0, link.rowsRootIndirect,
-		link.tableWidth, blockSize, link.maximumBlockSize)
-
-	return h5.readLinkData(obj, link, offset, length, creationOrder, callback)
 }
 
 func (h5 *HDF5) readLinkData(obj *object, link *linkInfo, offset uint64, length uint16,
@@ -1256,14 +1312,7 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 		checkZeroes(bf, int(bf.Rem()))
 	}
 	logger.Infof("hard link=0x%x", hardAddr)
-	var obj *object
-	// Hacky: there must be a better way to determine V1 object headers
-	if h5.isMagic("OHDR", hardAddr) {
-		obj = h5.readDataObjectHeader(hardAddr)
-	} else {
-		logger.Info("V1 object header")
-		obj = h5.readDataObjectHeaderV1(hardAddr)
-	}
+	obj := h5.readDataObjectHeader(hardAddr)
 	obj.name = string(linkName)
 	obj.creationOrder = co
 	logger.Info("obj name", obj.name)
@@ -2435,12 +2484,18 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Info("shared message length", length)
 			addr := read64(bf)
 			logger.Infof("shared message addr = 0x%x", addr)
-			o := h5.readDataObjectHeader(addr)
+			oa := h5.sharedAttrs[addr]
+			if oa == nil {
+				obj := h5.readDataObjectHeader(addr)
+				oa = &obj.objAttr
+				h5.sharedAttrs[addr] = oa
+			} else {
+				logger.Info("found shared attr in map")
+			}
+			obj.objAttr = *oa
+			obj.sharedAttr = &obj.objAttr
 			// TODO: we need to store addr and dtb somewhere, it will get used later
-			logger.Info("shared attr dtversion", o.objAttr.dtversion)
-			h5.sharedAttrs[addr] = &o.objAttr
-			obj.sharedAttr = &o.objAttr
-			obj.objAttr = *obj.sharedAttr
+			logger.Info("shared attr dtversion", obj.objAttr.dtversion)
 			// TODO: what else might we need to copy? dimensions?
 			continue
 		}
@@ -2515,6 +2570,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			h5.readFilterPipeline(obj, f, size)
 
 		case typeAttribute:
+			logger.Infof("Attribute, obj addr=0x%x", obj.addr)
 			h5.readAttribute(obj, f, size, 0)
 
 		case typeObjectComment:
@@ -2616,6 +2672,15 @@ func (h5 *HDF5) readContinuation(obj *object, version uint8, ohFlags byte, offse
 }
 
 func (h5 *HDF5) readDataObjectHeader(addr uint64) *object {
+	// Hacky: there must be a better way to determine V1 object headers
+	if h5.isMagic("OHDR", addr) {
+		return h5.readDataObjectHeaderV2(addr)
+	}
+	return h5.readDataObjectHeaderV1(addr)
+}
+
+func (h5 *HDF5) readDataObjectHeaderV2(addr uint64) *object {
+	logger.Infof("read object header %x", addr)
 	bf := h5.newSeek(addr, 0) // TODO: figure out size
 	checkMagic(bf, 4, "OHDR")
 	version := read8(bf)
@@ -2694,6 +2759,7 @@ func (h5 *HDF5) readDataObjectHeader(addr uint64) *object {
 }
 
 func (h5 *HDF5) readDataObjectHeaderV1(addr uint64) *object {
+	logger.Infof("v1 addr=0x%x", addr)
 	bf := h5.newSeek(addr, 0) // TODO: figure out size
 	version := read8(bf)
 	logger.Info("v1 object header version=", version)
@@ -2816,12 +2882,7 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		logger.Warn("No root address")
 		return api.Group(h5), nil
 	}
-	// Hacky: there must be a better way to determine V1 object headers
-	if h5.isMagic("OHDR", h5.rootAddr) {
-		h5.rootObject = h5.readDataObjectHeader(h5.rootAddr)
-	} else {
-		h5.rootObject = h5.readDataObjectHeaderV1(h5.rootAddr)
-	}
+	h5.rootObject = h5.readDataObjectHeader(h5.rootAddr)
 	h5.groupObject = h5.rootObject
 	h5.groupObject.isGroup = true
 	//logger.Info("rootObject", h5.rootObject)
@@ -3610,16 +3671,8 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		}
 
 		fillValues := int64(0)
-		if weirdSegmentCode && (segments[i].offset > off) && (segments[i].extra == 0) {
-			fillValues = int64(segments[i].offset - off)
-			readers = append(readers, makeFillValueReader(obj, nil, fillValues))
-			logger.Warn("Fill value at offset", off,
-				"seg offset", segments[i].offset,
-				"length", fillValues)
-		} else {
-			assertError(!((segments[i].offset > off) && (segments[i].extra == 0)),
-				ErrCorrupted, "this only happens in corrupted files (1)")
-		}
+		assertError(!((segments[i].offset > off) && (segments[i].extra == 0)),
+			ErrCorrupted, "this only happens in corrupted files (1)")
 
 		logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
 		off = segments[i].offset + segments[i].length
@@ -3627,13 +3680,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	}
 
 	fillValues := int64(0)
-	if weirdSegmentCode && off > size {
-		fillValues = int64(size) - int64(off)
-		readers = append(readers, makeFillValueReader(obj, nil, fillValues))
-		logger.Warn("Fill value at offset", off, "size", size, "length", fillValues)
-	} else {
-		assertError(off <= size, ErrCorrupted, "this only happens in corrupted files (2)")
-	}
+	assertError(off <= size, ErrCorrupted, "this only happens in corrupted files (2)")
 
 	return newResetReader(io.MultiReader(readers...), int64(size)+fillValues),
 		size + uint64(fillValues)
@@ -4152,48 +4199,9 @@ func findDim(obj *object, oaddr uint64, group string) string {
 	return ""
 }
 
-// TODO: make this smarter by finding the group first
-func lookupDimID(obj *object, searchGroup string, dimid int32, group string) string {
-	prefix := ""
-	if len(searchGroup) > 0 {
-		prefix = searchGroup + "/"
-	}
-	if searchGroup == group || (searchGroup == "" && group == "/") {
-		for _, o := range obj.children {
-			for _, a := range o.attrlist {
-				if a.name == "_Netcdf4Dimid" {
-					if dimid == a.value {
-						return prefix + o.name
-					}
-				}
-			}
-		}
-	}
-	return ""
-}
-
 func (h5 *HDF5) getDimensions(obj *object) []string {
 	logger.Infof("Getting dimensions addr 0x%x", obj.addr)
 	dimNames := make([]string, 0)
-	coordFound := false
-	for _, a := range obj.attrlist {
-		if a.name == "_Netcdf4Coordinates" {
-			coordFound = true
-			for _, dimid := range a.value.([]int32) {
-				// TODO: remove root
-				name := lookupDimID(h5.rootObject, "", dimid, h5.groupName)
-				if name != "" {
-					dimNames = append(dimNames, name)
-				} else {
-					logger.Warn("dimid not found", dimid)
-				}
-			}
-		}
-	}
-	if coordFound {
-		logger.Info("coord dim names", dimNames)
-		return dimNames
-	}
 	for _, a := range obj.attrlist {
 		if a.name != "DIMENSION_LIST" {
 			continue
@@ -4219,8 +4227,8 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 	if len(dimNames) > 0 {
 		return dimNames
 	}
-	var f func(ob *object)
 
+	var f func(ob *object)
 	f = func(ob *object) {
 		logger.Infof("obj %s 0x%x", ob.name, ob.addr)
 		for _, a := range ob.attrlist {

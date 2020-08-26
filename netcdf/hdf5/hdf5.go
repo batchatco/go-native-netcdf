@@ -275,6 +275,9 @@ type linkInfo struct {
 	heapIDLength       int
 	maxHeapSize        int
 	blockSize          uint64
+	tableWidth         uint16
+	maximumBlockSize   uint64
+	rowsRootIndirect   uint16
 }
 
 var (
@@ -1131,15 +1134,16 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 	blockSize := link.blockSize
 	blockToUse := invalidAddress
 	// First try direct blocks
+	width := int(link.tableWidth)
 	for entryNum, block := range link.block {
 		if offset < blockSize {
 			blockToUse = block
 			break
 		}
 		offset -= blockSize
-		row := entryNum / 4
+		row := entryNum / width
 		// We double the third row and beyond.
-		if row >= 1 && (entryNum%4) == 3 {
+		if row >= 1 && (entryNum%width) == (width-1) {
 			logger.Info("doubled block size")
 			blockSize *= 2
 		}
@@ -1156,12 +1160,17 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 			break
 		}
 		offset -= blockSize
-		if (entryNum % 4) == 3 {
+		if (entryNum % width) == (width - 1) {
 			logger.Info("doubled block size")
 			blockSize *= 2
 		}
 	}
 	assert(blockToUse != invalidAddress, "did not find direct or indirect block")
+
+	nextLink := *link
+	h5.readRootBlock(&nextLink, blockToUse, 0, link.rowsRootIndirect,
+		link.tableWidth, blockSize, link.maximumBlockSize)
+
 	return h5.readLinkData(obj, link, offset, length, creationOrder, callback)
 }
 
@@ -1169,12 +1178,6 @@ func (h5 *HDF5) readLinkData(obj *object, link *linkInfo, offset uint64, length 
 	creationOrder uint64, callback doublerCallback) bool {
 	logger.Infof("offset=0x%x length=%d", offset, length)
 	return h5.doDoubling(obj, link, offset, length, creationOrder, callback)
-}
-
-func (h5 *HDF5) xxreadLinkData(parent *object, link *linkInfo, offset uint64, length uint16,
-	creationOrder uint64) bool {
-	logger.Infof("offset=0x%x length=%d", offset, length)
-	return h5.doDoubling(parent, link, offset, length, creationOrder, h5.readLinkDirect)
 }
 
 func hasFlag8(flags byte, flag uint) bool {
@@ -1796,11 +1799,13 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 	tableWidth := read16(bf)
 	logger.Infof("table width=%d", tableWidth)
 	checkVal(4, tableWidth, "table width must be 4")
+	link.tableWidth = tableWidth
 	startingBlockSize := read64(bf)
 	link.blockSize = startingBlockSize
 	logger.Infof("starting block size=%d", startingBlockSize)
 	maximumBlockSize := read64(bf)
 	logger.Infof("maximum direct block size=%d", maximumBlockSize)
+	link.maximumBlockSize = maximumBlockSize
 	maximumHeapSize := read16(bf)
 	logger.Infof("maximum heap size=%d", maximumHeapSize)
 	if maximumHeapSize != 32 && maximumHeapSize != 40 {
@@ -1813,6 +1818,7 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 	logger.Infof("root block address=0x%x", rootBlockAddress)
 	rowsRootIndirect := read16(bf)
 	logger.Infof("rows in root indirect block=%d", rowsRootIndirect)
+	link.rowsRootIndirect = rowsRootIndirect
 	h5.checkChecksum(link.heapAddress, 142)
 	if rowsRootIndirect > 0 {
 		logger.Info("Reading indirect heap block")

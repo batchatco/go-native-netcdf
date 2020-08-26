@@ -613,9 +613,7 @@ func checkAllAttrs(t *testing.T, got api.AttributeMap, exp api.AttributeMap) {
 		}
 	}
 	if errors {
-		var a api.AttributeMap
-		a = got
-		t.Logf("%#v", a)
+		t.Logf("%#v", got)
 	}
 }
 

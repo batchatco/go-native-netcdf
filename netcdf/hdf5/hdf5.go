@@ -1134,6 +1134,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 			}
 		}
 		addr := read64(bff)
+		// TODO: this code is similar to code elsewhere, should be one function
 		logger.Infof("shared type addr=0x%x", addr)
 		oa := h5.sharedAttrs[addr]
 		if oa == nil {
@@ -2004,38 +2005,36 @@ func (h5 *HDF5) readAttributeInfo(bf io.Reader) *linkInfo {
 	}
 }
 
-func (h5 *HDF5) readGroupInfo(bf io.Reader, size uint16) {
+func (h5 *HDF5) readGroupInfo(obf io.Reader) {
+	bf := obf.(remReader)
+	origSize := bf.Rem()
+
 	version := read8(bf)
 	logger.Info("group info version=", version)
 	checkVal(0, version, "group info version")
 	flags := read8(bf)
 	logger.Infof("flags=%s", binaryToString(uint64(flags)))
-	origSize := size
-	size -= 2
 	if hasFlag8(flags, 0) {
-		assert(size >= 4, "mcv/mdv size")
+		assert(bf.Rem() >= 4, "mcv/mdv size")
 		mcv := read16(bf)
-		size -= 2
 		logger.Infof("mcv=0x%x", mcv)
 		mdv := read16(bf)
-		size -= 2
 		logger.Infof("mdv=0x%x", mdv)
 	}
 	if hasFlag8(flags, 1) {
-		assert(size >= 4, "ene/elnl size")
+		assert(bf.Rem() >= 4, "ene/elnl size")
 		ene := read16(bf)
-		size -= 2
 		logger.Infof("elnl=0x%x", ene)
 		elnl := read16(bf)
-		size -= 2
 		logger.Infof("elnl=0x%x", elnl)
 	}
-	if size > 0 {
+	if bf.Rem() > 0 {
 		// Due to a bug with ncgen, extra bytes can appear here.
 		// Allow them
-		block := make([]byte, size)
-		read(bf, block[:])
-		logger.Info("ignore remaining bytes", block, "origsize", origSize)
+		n := bf.Rem()
+		checkZeroes(bf, int(n))
+		logger.Info("ignore", n, "remaining bytes in Group Info message.",
+			"origsize=", origSize)
 	}
 }
 
@@ -2484,6 +2483,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Info("shared message length", length)
 			addr := read64(bf)
 			logger.Infof("shared message addr = 0x%x", addr)
+			// TODO: this code is similar to code elsewhere, should be one function
 			oa := h5.sharedAttrs[addr]
 			if oa == nil {
 				obj := h5.readDataObjectHeader(addr)
@@ -2564,7 +2564,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			assert(bogus == 0xdeadbeef, "bogus")
 
 		case typeGroupInfo:
-			h5.readGroupInfo(f, size)
+			h5.readGroupInfo(f)
 
 		case typeDataStorageFilterPipeline:
 			h5.readFilterPipeline(obj, f, size)

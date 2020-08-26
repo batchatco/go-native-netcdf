@@ -222,6 +222,7 @@ type dataBlock struct {
 	dsLength   uint64 // size in byte of dataset chunk
 	filterMask uint32
 	offsets    []uint64
+	rawData    []byte
 }
 
 type filter struct {
@@ -299,6 +300,13 @@ func warnAssert(condition bool, msg string) {
 		return
 	}
 	logger.Warn(msg)
+}
+
+func infoAssert(condition bool, msg string) {
+	if condition {
+		return
+	}
+	logger.Info(msg)
 }
 
 func fail(msg string) {
@@ -499,7 +507,8 @@ func (h5 *HDF5) readSuperblock() {
 	assertError(eofAddr <= uint64(h5.fileSize),
 		ErrTruncated,
 		fmt.Sprint("File may be truncated. size=", h5.fileSize, " expected=", eofAddr))
-	warnAssert(uint64(h5.fileSize) == eofAddr,
+
+	infoAssert(uint64(h5.fileSize) == eofAddr,
 		fmt.Sprint("Junk at end of file ignored. size=", h5.fileSize, " expected=", eofAddr))
 
 	if version == 2 {
@@ -532,7 +541,7 @@ func (h5 *HDF5) readSuperblock() {
 		h5.checkChecksum(0, 44)
 	}
 	if sbExtension != invalidAddress {
-		logger.Warn("superblock extension not supported")
+		logger.Info("superblock extension not supported")
 		if parseSBExtension {
 			// Hacky: there must be a better way to determine V1 object headers
 			if h5.isMagic("OHDR", sbExtension) {
@@ -598,7 +607,7 @@ func readNullTerminatedName(padding int, bf io.Reader) string {
 }
 
 func checkZeroes(bf io.Reader, len int) {
-	padBytesCheck(bf, len, false /*don't round*/, true /*don't warn only*/)
+	padBytesCheck(bf, len, false /*don't round*/, logger.Warn)
 }
 
 // Assumes it is an Attribute
@@ -610,13 +619,7 @@ func (h5 *HDF5) readAttributeDirect(obj *object, addr uint64, offset uint64, len
 	h5.readAttribute(obj, bf, length, creationOrder)
 }
 
-func (h5 *HDF5) readAttributeData(obj *object, link *linkInfo, offset uint64, length uint16,
-	creationOrder uint64) {
-	logger.Infof("offset=0x%x length=%d", offset, length)
-	doDoubling(obj, link, offset, length, creationOrder, h5.readAttributeDirect)
-}
-
-func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount int64, attr *attribute, isCompound bool) {
+func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount int64, attr *attribute) {
 	assert(bf.Rem() >= 8, "short data")
 	b0 := read8(bf)
 	b1 := read8(bf)
@@ -855,8 +858,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			}
 			logger.Infof("%d compound before: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
 
-			h5.printDatatype(obj, bf, nil, 0,
-				&compoundAttribute, true /*iscompound*/)
+			h5.printDatatype(obj, bf, nil, 0, &compoundAttribute)
 			rem = int64(0)
 			if df != nil {
 				rem = df.Rem()
@@ -906,12 +908,16 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		logger.Info("enumeration, not fully working")
 		logger.Info("blen begin", bf.Count())
 		var enumAttr attribute
-		h5.printDatatype(obj, bf, nil, 0, &enumAttr, false /*isCompound*/)
+		h5.printDatatype(obj, bf, nil, 0, &enumAttr)
 		logger.Info("blen now", bf.Count())
 		attr.children = append(attr.children, enumAttr)
 		numberOfMembers := bitFields & 0xffff
+		logger.Info("number of members=", numberOfMembers)
 		names := make([]string, numberOfMembers)
-		padding := 0
+		padding := 7
+		if dtversion == dtversionPacked {
+			padding = 0
+		}
 		for i := uint32(0); i < numberOfMembers; i++ {
 			name := readNullTerminatedName(padding, bf)
 			names[i] = name
@@ -963,8 +969,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			fail("unknown variable-length type")
 		}
 		var variableAttr attribute
-		h5.printDatatype(obj, bf, nil, 0,
-			&variableAttr, false /*isCompound*/)
+		h5.printDatatype(obj, bf, nil, 0, &variableAttr)
 		logger.Info("variable type", variableAttr.attrType, "class", variableAttr.class,
 			"vtType", vtType)
 		attr.children = append(attr.children, variableAttr)
@@ -1002,8 +1007,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			}
 		}
 		var arrayAttr attribute
-		h5.printDatatype(obj, bf, nil, 0,
-			&arrayAttr, true /* isCompound*/)
+		h5.printDatatype(obj, bf, nil, 0, &arrayAttr)
 		attr.dimensionality = dimensionality
 		attr.dimensions = dimensions
 		attr.children = append(attr.children, arrayAttr)
@@ -1089,7 +1093,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 	logger.Info("sizeRem=", bf.Rem())
 	if !shared {
 		pf := newResetReaderFromBytes(dtb)
-		h5.printDatatype(obj, pf, bf, count, attr, false /*isCompound*/)
+		h5.printDatatype(obj, pf, bf, count, attr)
 	} else {
 		bff := newResetReaderFromBytes(dtb)
 		sVersion := read8(bff)
@@ -1122,33 +1126,55 @@ type doublerCallback func(obj *object, bnum uint64, offset uint64, length uint16
 	creationOrder uint64)
 
 // Handling doubling table.  Assume width of 4.
-func doDoubling(obj *object, link *linkInfo, offset uint64, length uint16, creationOrder uint64, callback doublerCallback) {
-	logger.Infof("doubling start: offset=0x%x length=%d", offset, length)
+func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length uint16, creationOrder uint64, callback doublerCallback) bool {
+	logger.Infof("doubling start: offset=0x%x length=%d blocksize=%d block=%x iblock=%x", offset, length, link.blockSize, link.block, link.iBlock)
 	blockSize := link.blockSize
-	bnum := 0
-	for {
+	blockToUse := invalidAddress
+	// First try direct blocks
+	for entryNum, block := range link.block {
 		if offset < blockSize {
+			blockToUse = block
 			break
 		}
 		offset -= blockSize
-		// We don't double the second row
-		if bnum > 3 && bnum%4 == 3 {
-			logger.Infof("doubled: offset=0x%x blocksize=%d", offset, blockSize)
+		row := entryNum / 4
+		// We double the third row and beyond.
+		if row >= 1 && (entryNum%4) == 3 {
+			logger.Info("doubled block size")
 			blockSize *= 2
 		}
-		bnum++
-		if bnum >= len(link.block) {
-			fail(fmt.Sprintf("*** offset out of range! (%d)", bnum))
-			return
+	}
+	if offset < blockSize {
+		callback(obj, blockToUse, offset, length, creationOrder)
+		return true
+	}
+	// now try indirect blocks
+	logger.Warn("Using indirect blocks")
+	for entryNum, block := range link.iBlock {
+		if offset < blockSize {
+			blockToUse = block
+			break
+		}
+		offset -= blockSize
+		if (entryNum % 4) == 3 {
+			logger.Info("doubled block size")
+			blockSize *= 2
 		}
 	}
-	callback(obj, link.block[bnum], offset, length, creationOrder)
+	assert(blockToUse != invalidAddress, "did not find direct or indirect block")
+	return h5.readLinkData(obj, link, offset, length, creationOrder, callback)
 }
 
-func (h5 *HDF5) readLinkData(parent *object, offset uint64, length uint16,
-	creationOrder uint64) {
-	link := parent.link
-	doDoubling(parent, link, offset, length, creationOrder, h5.readLinkDirect)
+func (h5 *HDF5) readLinkData(obj *object, link *linkInfo, offset uint64, length uint16,
+	creationOrder uint64, callback doublerCallback) bool {
+	logger.Infof("offset=0x%x length=%d", offset, length)
+	return h5.doDoubling(obj, link, offset, length, creationOrder, callback)
+}
+
+func (h5 *HDF5) xxreadLinkData(parent *object, link *linkInfo, offset uint64, length uint16,
+	creationOrder uint64) bool {
+	logger.Infof("offset=0x%x length=%d", offset, length)
+	return h5.doDoubling(parent, link, offset, length, creationOrder, h5.readLinkDirect)
 }
 
 func hasFlag8(flags byte, flag uint) bool {
@@ -1245,13 +1271,13 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 }
 
 func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, recordSize uint16, depth uint16, nodeSize uint32) {
-	nr := numRec // should work
+	nr := uint64(numRec) // should work
 	len := 4 + 2 + nr*uint64(recordSize)
 	sub := 0
-	if depth <= 1 {
+	if depth > 1 {
 		sub = 2
 	}
-	bsize := int64(4+2) + (2*int64(nr)+1)*int64(recordSize) - int64(nr+1)*int64(sub)
+	bsize := int64(4+2) + int64(nr)*int64(recordSize) + (int64(nr)+1)*int64(8+1+sub)
 	bf := h5.newSeek(bta, bsize)
 	checkMagic(bf, 4, "BTIN")
 	version := read8(bf)
@@ -1263,19 +1289,27 @@ func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, rec
 	logger.Info("btin recordSize=", recordSize)
 	logger.Info("nr=", nr)
 	logger.Info("depth = ", depth)
+	logger.Info("count before=", bf.Count())
+	old := SetLogLevel(util.LevelError)
 	h5.readRecords(parent, bf, nr, ty)
+	SetLogLevel(old)
+	logger.Info("count after=", bf.Count())
+
 	for i := uint64(0); i <= nr; i++ {
-		cnp := read64(bf)
+		cnp := read64(bf) // child node pointer
+		len += 8
 		logger.Infof("cnp=0x%x", cnp)
 		// not sure this calculation is right
 		fixedSizeOverhead := uint32(10)
 		onePointerTriplet := uint32(16)
 		maxNumberOfRecords := uint64(nodeSize-(fixedSizeOverhead+onePointerTriplet)) / (uint64(recordSize) + uint64(onePointerTriplet))
 		logger.Info("max number of records", maxNumberOfRecords)
-		assert(maxNumberOfRecords < 256, "can't handle this") // TODO: support bigguer maxes
-		cnr := read8(bf)
+		assert(maxNumberOfRecords < 256, "can't handle this") // TODO: support bigger maxes
+		cnr := read8(bf)                                      // number of records for child node
+		len++
 		logger.Infof("cnr=0x%x", cnr)
 		logger.Info("depth=", depth)
+		old := SetLogLevel(util.LevelError)
 		if depth == 1 {
 			logger.Info("Descend into leaf")
 			h5.readBTreeLeaf(parent, cnp, uint64(cnr), recordSize)
@@ -1283,14 +1317,14 @@ func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, rec
 			logger.Info("Descend into node")
 			h5.readBTreeInternal(parent, cnp, uint64(cnr), recordSize, depth-1, nodeSize)
 		}
-		len += 9
+		SetLogLevel(old)
 		if depth > 1 {
-			tnr := read16(bf)
+			tnr := read16(bf) // total number of records in child node
 			len += 2
 			logger.Infof("tnr=0x%x", tnr)
 		}
 	}
-	assert(int64(len) == bsize, "problem")
+	checkVal(int64(len), bsize, "accounting problem")
 	h5.checkChecksum(bta, int(len))
 }
 
@@ -1315,8 +1349,9 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 			// done reading heap id
 			logger.Infof("offset=0x%x length=%d", offset, length)
 			logger.Info("read link data -- indexed groups")
-			h5.readLinkData(obj, offset, length, 0)
-
+			if !h5.readLinkData(obj, obj.link, offset, length, 0, h5.readLinkDirect) {
+				logger.Warn("Could not read link data")
+			}
 		case 6: // creation order for indexed group
 			if parseCreationOrder {
 				logger.Info("Creation order for indexed groups")
@@ -1331,7 +1366,9 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 				// done reading heap id
 				logger.Infof("offset=0x%x length=%d", offset, length)
 				// XXX: TODO: don't downcast creationOrder
-				h5.readLinkData(obj, offset, length, co)
+				if !h5.readLinkData(obj, obj.link, offset, length, co, h5.readLinkDirect) {
+					logger.Warn("Could not read link data")
+				}
 			} else {
 				logger.Fatal("creation order code has never been executed before")
 			}
@@ -1357,8 +1394,10 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 			logger.Infof("flags=%s co=0x%x hash=0x%x",
 				binaryToString(uint64(flags)), co, hash)
 			logger.Info("read link data -- indexed attributes")
-			h5.readAttributeData(obj, obj.attr, offset, length, uint64(co))
-
+			if !h5.readLinkData(obj, obj.attr, offset, length, uint64(co),
+				h5.readAttributeDirect) {
+				logger.Warn("could not read attribute data")
+			}
 		case 9:
 			// uncomment the following to enable
 			if parseCreationOrder {
@@ -1383,7 +1422,10 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 				logger.Infof("type 9 vat=0x%x offset=0x%x length=%d mflags=0x%x, co=%d",
 					versionAndType,
 					offset, length, mflags, co)
-				h5.readAttributeData(obj, obj.attr, offset, length, 0)
+				if !h5.readLinkData(obj, obj.attr, offset, length, 0,
+					h5.readAttributeDirect) {
+					logger.Warn("could not read attribute data")
+				}
 			} else {
 				logger.Fatal("creation order code has never been executed before")
 			}
@@ -1471,7 +1513,7 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 			dso += offsets[d] * sizes
 			sizes *= parent.objAttr.dimensions[d]
 		}
-		pending := dataBlock{addr, uint64(sizeChunk), 0, 0, filterMask, nil}
+		pending := dataBlock{addr, uint64(sizeChunk), 0, 0, filterMask, nil, nil}
 		pending.dsOffset = dso
 		pending.dsLength = numberOfElements * dtSize
 		pending.offsets = offsets
@@ -1595,17 +1637,14 @@ func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uin
 		for j := 0; j < int(width); j++ {
 			childDirectBlockAddress := read64(bf)
 			logger.Infof("child direct block address=0x%x", childDirectBlockAddress)
-			if childDirectBlockAddress != invalidAddress {
-				if i < maxRowsDirect {
-					addrs = append(addrs, childDirectBlockAddress)
-					blockSizes = append(blockSizes, blockSize)
-				} else {
-					iAddrs = append(iAddrs, childDirectBlockAddress)
-				}
+			if i < maxRowsDirect {
+				addrs = append(addrs, childDirectBlockAddress)
+				blockSizes = append(blockSizes, blockSize)
+			} else {
+				iAddrs = append(iAddrs, childDirectBlockAddress)
 			}
 		}
 	}
-	// then read N values here
 
 	// TODO: indirect blocks
 	logger.Info("Adding indirect heap blocks")
@@ -1777,8 +1816,8 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 	h5.checkChecksum(link.heapAddress, 142)
 	if rowsRootIndirect > 0 {
 		logger.Info("Reading indirect heap block")
-		h5.readRootBlock(link, rootBlockAddress, flags, rowsRootIndirect, tableWidth, startingBlockSize,
-			maximumBlockSize)
+		h5.readRootBlock(link, rootBlockAddress, flags, rowsRootIndirect,
+			tableWidth, startingBlockSize, maximumBlockSize)
 	} else {
 		logger.Info("Adding direct heap block")
 		assert(link.block == nil, "don't overwrite direct heap block")
@@ -2097,9 +2136,18 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader, layoutSize uint16)
 	case classCompact:
 		size := read16(bf)
 		logger.Infof("layout compact size=%d", size)
-		fail("compact not supported")
-		// We need the address passed in
-		//parent.dataBlocks = append(parent.dataBlocks, dataBlock{address, uint64(size)})
+		b := make([]byte, size)
+		read(bf, b)
+		parent.dataBlocks = append(parent.dataBlocks,
+			dataBlock{
+				offset:     0,
+				length:     uint64(len(b)),
+				dsOffset:   0,
+				dsLength:   uint64(len(b)),
+				filterMask: 0,
+				offsets:    nil,
+				rawData:    b,
+			})
 	case classContiguous:
 		address := read64(bf)
 		size := read64(bf)
@@ -2107,7 +2155,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader, layoutSize uint16)
 		if address != invalidAddress {
 			logger.Infof("alloc blocks")
 			parent.dataBlocks = append(parent.dataBlocks,
-				dataBlock{address, uint64(size), 0, uint64(size), 0, nil})
+				dataBlock{address, uint64(size), 0, uint64(size), 0, nil, nil})
 		}
 	case classChunked:
 		var flags uint8 // v4 only
@@ -2288,7 +2336,7 @@ func (h5 *HDF5) readDatatype(obj *object, bf io.Reader, size uint16) attribute {
 	logger.Info("print datatype with properties from chunk")
 	var objAttr attribute
 	pf := newResetReader(bf, bf.(remReader).Rem())
-	h5.printDatatype(obj, pf, nil, 0, &objAttr, false /*isCompound*/)
+	h5.printDatatype(obj, pf, nil, 0, &objAttr)
 	return objAttr
 }
 
@@ -2396,7 +2444,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		f := newResetReader(bf, int64(size))
 		switch headerType {
 		case typeNIL:
-			checkZeroes(f, int(size))
+			skip(f, int64(size))
 			logger.Infof("nil -- do nothing (%d bytes)", size)
 
 		case typeDataspace:
@@ -2671,12 +2719,14 @@ func (h5 *HDF5) readDataObjectHeaderV1(addr uint64) *object {
 }
 
 func (h5 *HDF5) Close() {
-	h5.file.Close()
+	if h5.file != nil {
+		h5.file.Close()
+	}
 	h5.file = nil
 }
 
 func (h5 *HDF5) GetGroup(group string) (g api.Group, err error) {
-	thrower.RecoverError(&err)
+	defer thrower.RecoverError(&err)
 	var groupName string
 	switch {
 	case strings.HasPrefix(group, "/"):
@@ -2859,7 +2909,7 @@ func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signe
 		var value uint32
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		logger.Info("fixed32value=", value)
+		logger.Info("int32 value=", value)
 		if signed {
 			return int32(value)
 		}
@@ -2963,7 +3013,7 @@ func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) int
 		var value float32
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		logger.Info("32value=", value, "rem=", bf.(remReader).Rem())
+		logger.Info("float32 value=", value, "rem=", bf.(remReader).Rem())
 		return value
 	}
 	logger.Info("alloc more floats")
@@ -2986,7 +3036,7 @@ func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) in
 		var value float64
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		logger.Info("64value=", value)
+		logger.Info("float64 value=", value)
 		return value
 	}
 	thisDim := dimLengths[0]
@@ -3006,7 +3056,8 @@ func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) in
 // check: whether or not to fail if padded bytes are not zeroed.  They
 // are supposed to be zero, but software exists out there that does not
 // zero them for opaque types.
-func padBytesCheck(obf io.Reader, pad32 int, round bool, warn bool) bool {
+func padBytesCheck(obf io.Reader, pad32 int, round bool,
+	logFunc func(v ...interface{})) bool {
 	cbf := obf.(remReader)
 	success := true
 	var extra int
@@ -3028,19 +3079,14 @@ func padBytesCheck(obf io.Reader, pad32 int, round bool, warn bool) bool {
 			}
 		}
 		if !success {
-			if warn {
-				logger.Infof("Reserved not zero len=%d 0x%x", extra, b)
-			} else {
-				fail(
-					fmt.Sprintf("Reserved not zero len=%d 0x%x", extra, b))
-			}
+			logFunc(fmt.Sprintf("Reserved not zero len=%d 0x%x", extra, b))
 		}
 	}
 	return success
 }
 
 func padBytes(bf io.Reader, pad32 int) {
-	padBytesCheck(bf, pad32, true /*round*/, false /*don't warn only*/)
+	padBytesCheck(bf, pad32, true /*round*/, logger.Fatal)
 }
 
 func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute) interface{} {
@@ -3090,8 +3136,8 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			}
 			if pad > 0 && !packed {
 				// With compression, there can be junk in the padding
-				if !padBytesCheck(cbf, pad, true /*round*/, true /*warn only*/) {
-					logger.Info("padbytes error, file:", h5.fname, "pad=", pad)
+				if !padBytesCheck(cbf, pad, true /*round*/, logger.Info) {
+					logger.Info("1. padbytes problem, file:", h5.fname, "pad=", pad)
 				}
 				if pad > maxPad {
 					maxPad = pad
@@ -3187,12 +3233,14 @@ func (h5 *HDF5) allocRegularStrings(bf io.Reader, dimLengths []uint64) interface
 		// maybe a string scalar is just one character?
 		b := make([]byte, 1)
 		read(bf, b)
+		logger.Info("string is", string(b))
 		return string(b)
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		b := make([]byte, thisDim)
 		read(bf, b)
+		logger.Info("string is", string(b))
 		return string(b)
 	}
 	vals := makeStringSlices(dimLengths)
@@ -3492,7 +3540,12 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			fmt.Sprintf("filter mask = 0x%x", val.filterMask))
 		logger.Infof("block %d is 0x%x, len %d (%d, %d), mask 0x%x",
 			i, val.offset, val.length, val.dsOffset, val.dsLength, val.filterMask)
-		bf := h5.newSeek(val.offset, int64(val.length))
+		var bf remReader
+		if val.rawData != nil {
+			bf = newResetReaderFromBytes(val.rawData)
+		} else {
+			bf = h5.newSeek(val.offset, int64(val.length))
+		}
 		dsLength := val.dsLength
 		if fletcher32Found {
 			logger.Info("Found fletcher32", val.length)
@@ -3549,26 +3602,35 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			readers = append(readers, newNullReader(r, segments[i].length))
 			continue
 		}
-		assert(!(segments[i].offset > off && segments[i].extra == 0), "this never happens")
 
-		if weirdSegmentCode && (segments[i].offset > off && segments[i].extra == 0) {
-			makeFillValueReader(obj, nil, int64(segments[i].offset-off))
-			logger.Info("Fill value at offset", off, "length", segments[i].offset-off)
+		fillValues := int64(0)
+		if weirdSegmentCode && (segments[i].offset > off) && (segments[i].extra == 0) {
+			fillValues = int64(segments[i].offset - off)
+			readers = append(readers, makeFillValueReader(obj, nil, fillValues))
+			logger.Warn("Fill value at offset", off,
+				"seg offset", segments[i].offset,
+				"length", fillValues)
+		} else {
+			assertError(!((segments[i].offset > off) && (segments[i].extra == 0)),
+				ErrCorrupted, "this only happens in corrupted files (1)")
 		}
 
 		logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
 		off = segments[i].offset + segments[i].length
-		readers = append(readers, newResetReader(r, int64(segments[i].length)))
-	}
-	assert(off >= size, "this never happens")
-
-	if weirdSegmentCode && off >= size {
-		readers = append(readers,
-			makeFillValueReader(obj, nil, int64(size)-int64(off)))
-		logger.Info("Fill value at offset", off, "length", size-off)
+		readers = append(readers, newResetReader(r, fillValues+int64(segments[i].length)))
 	}
 
-	return newResetReader(io.MultiReader(readers...), int64(size)), size
+	fillValues := int64(0)
+	if weirdSegmentCode && off > size {
+		fillValues = int64(size) - int64(off)
+		readers = append(readers, makeFillValueReader(obj, nil, fillValues))
+		logger.Warn("Fill value at offset", off, "size", size, "length", fillValues)
+	} else {
+		assertError(off <= size, ErrCorrupted, "this only happens in corrupted files (2)")
+	}
+
+	return newResetReader(io.MultiReader(readers...), int64(size)+fillValues),
+		size + uint64(fillValues)
 }
 
 func calcAttrSize(attr *attribute) int64 {
@@ -3883,9 +3945,11 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		case typeVariableLength:
 			pad = 7
 		}
-		logger.Info(cbf.Count(), "may pad array")
 		if pad > 0 {
-			padBytes(cbf, pad)
+			logger.Info(cbf.Count(), "will pad array")
+			if !padBytesCheck(cbf, pad, true /*round*/, logger.Info) {
+				logger.Info("2. padbytes problem, file:", h5.fname, "pad=", pad)
+			}
 		}
 		logger.Info(cbf.Count(), "array", "class", a.class)
 		return h5.getDataAttr(cbf, a)
@@ -4183,7 +4247,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 }
 
 func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
-	thrower.RecoverError(&err)
+	defer thrower.RecoverError(&err)
 	found := h5.findVariable(varName)
 	if found == nil {
 		logger.Warnf("variable %s not found", varName)

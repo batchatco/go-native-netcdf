@@ -2,7 +2,6 @@ package util
 
 import (
 	"errors"
-	"log"
 	"sort"
 )
 
@@ -19,7 +18,6 @@ var (
 
 func NewOrderedMap(keys []string, values map[string]interface{}) (*OrderedMap, error) {
 	if len(keys) != len(values) {
-		log.Print(keys, values)
 		return nil, ErrorKeysDontMatchValues
 	}
 	mapKeys := []string{}

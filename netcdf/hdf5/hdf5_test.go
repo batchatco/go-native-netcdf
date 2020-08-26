@@ -594,11 +594,13 @@ func TestGlobalAttrs(t *testing.T) {
 
 func checkAllAttrs(t *testing.T, got api.AttributeMap, exp api.AttributeMap) {
 	t.Helper()
+	errors := false
 	used := map[string]bool{}
 	for _, key := range exp.Keys() {
 		used[key] = true
 		if !checkAttr(t, key, got, exp) {
 			t.Error("values did not match")
+			errors = true
 		}
 	}
 	for _, key := range got.Keys() {
@@ -607,7 +609,13 @@ func checkAllAttrs(t *testing.T, got api.AttributeMap, exp api.AttributeMap) {
 		}
 		if !checkAttr(t, key, got, exp) {
 			t.Error("values did not match")
+			errors = true
 		}
+	}
+	if errors {
+		var a api.AttributeMap
+		a = got
+		t.Logf("%#v", a)
 	}
 }
 
@@ -1249,6 +1257,7 @@ func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
 	if !reflect.DeepEqual(val.Values, kv.val.Values) {
 		t.Logf("var deepequal name=%s got=%#v exp=%#v", name,
 			val.Values, kv.val.Values)
+		t.Logf("types got type=%T exp type=%T", val.Values, kv.val.Values)
 		return false
 	}
 	checkAllAttrs(t, val.Attributes, kv.val.Attributes)
@@ -1274,6 +1283,7 @@ func checkAttr(t *testing.T, name string, gotAttr api.AttributeMap, expAttr api.
 	}
 	if !reflect.DeepEqual(got, exp) {
 		t.Logf("var deepequal name=%s got=%#v exp=%#v", name, got, exp)
+		t.Logf("types got type=%T exp type=%T", got, exp)
 		return false
 	}
 	return true
@@ -1296,7 +1306,7 @@ func checkAllAttrOption(t *testing.T, nc api.Group, values keyValList, hasAttr b
 			vr.Attributes = nilMap
 		}
 		if !values.check(t, name, *vr) {
-			t.Error("check")
+			t.Error("mismatch")
 		}
 	}
 }

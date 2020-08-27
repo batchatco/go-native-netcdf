@@ -1,3 +1,4 @@
+// API common to different implementations of NetCDF4 (CDF or HDF5)
 package api
 
 import "io"

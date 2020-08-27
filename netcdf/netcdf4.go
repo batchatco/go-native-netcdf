@@ -1,3 +1,4 @@
+// Opens NetCDF files, regardless of type (CDF or HDF5)
 package netcdf
 
 import (
@@ -11,8 +12,8 @@ import (
 )
 
 const (
-	CDF = 'C'
-	HDF = 0x89
+	magicCDF = 'C'
+	magicHDF = 0x89
 )
 
 var ErrUnknown = errors.New("not a CDF or HDF5 file")
@@ -32,9 +33,9 @@ func Open(fname string) (api.Group, error) {
 	var g api.Group
 	err = ErrUnknown
 	switch kind {
-	case CDF:
+	case magicCDF:
 		g, err = cdf.Open(fname)
-	case HDF:
+	case magicHDF:
 		g, err = hdf5.Open(fname)
 	}
 	return g, err
@@ -51,9 +52,9 @@ func New(file api.ReadSeekerCloser) (api.Group, error) {
 	var g api.Group
 	err = ErrUnknown
 	switch kind {
-	case CDF:
+	case magicCDF:
 		g, err = cdf.New(file)
-	case HDF:
+	case magicHDF:
 		g, err = hdf5.New(file)
 	}
 	return g, err

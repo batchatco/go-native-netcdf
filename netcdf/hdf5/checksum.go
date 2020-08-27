@@ -1,5 +1,6 @@
-// Hash function used by HDF5 for checksums (Jenkins lookup3 hash function)
 package hdf5
+
+// Hash function used by HDF5 for checksums (Jenkins lookup3 hash function)
 
 func rot(x uint32, k uint32) uint32 {
 	return x<<k | x>>(32-k)

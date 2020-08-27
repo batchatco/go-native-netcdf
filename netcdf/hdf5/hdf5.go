@@ -1,3 +1,4 @@
+// HDF5 implementation of NetCDF
 package hdf5
 
 import (
@@ -325,9 +326,10 @@ func assertError(condition bool, err error, msg string) {
 	thrower.Throw(err)
 }
 
-func SetLogLevel(level int) int {
-	return logger.SetLogLevel(level)
-}
+// SetLogLevel sets the logging level to the given level, and returns
+// the old level. This is for internal debugging use. The log messages
+// are not expected to make much sense to anyone but the developers.
+var SetLogLevel = logger.SetLogLevel
 
 func (h5 *HDF5) newSeek(addr uint64, size int64) remReader {
 	assert(int64(addr) <= h5.fileSize, "bad seek")
@@ -2621,7 +2623,6 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			default:
 				logger.Warn("junk bytes at end of record, n=", rem,
 					"header type=", headerTypeToString(int(headerType)))
-				thrower.DisableCatching()
 				fail("junk")
 			}
 			checkZeroes(f, int(rem))
@@ -3512,21 +3513,21 @@ type segment struct {
 	extra  uint64
 }
 
-type Segments []*segment
+type segments []*segment
 
-func (s Segments) Len() int      { return len(s) }
-func (s Segments) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s segments) Len() int      { return len(s) }
+func (s segments) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 
-type ByOffset struct{ Segments }
+type byOffset struct{ segments }
 
-func (s ByOffset) Less(i, j int) bool {
-	if s.Segments[i].offset < s.Segments[j].offset {
+func (s byOffset) Less(i, j int) bool {
+	if s.segments[i].offset < s.segments[j].offset {
 		return true
 	}
-	if s.Segments[i].offset > s.Segments[j].offset {
+	if s.segments[i].offset > s.segments[j].offset {
 		return false
 	}
-	return s.Segments[i].extra < s.Segments[j].extra
+	return s.segments[i].extra < s.segments[j].extra
 }
 
 func getSegs(offset uint64, offsets []uint64, segs []*segment, dims []uint64, layout []uint64,
@@ -3642,7 +3643,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		}
 		offset += dsLength
 	}
-	sort.Sort(ByOffset{segments})
+	sort.Sort(byOffset{segments})
 	readers := make([]io.Reader, 0)
 	off := uint64(0)
 	for i := 0; i < len(segments); i++ {

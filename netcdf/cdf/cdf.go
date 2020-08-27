@@ -105,9 +105,10 @@ func (cdf *CDF) ListSubgroups() []string {
 	return nil
 }
 
-func SetLogLevel(level int) {
-	logger.SetLogLevel(level)
-}
+// SetLogLevel sets the logging level to the given level, and returns
+// the old level. This is for internal debugging use.  The log messages
+// are not expected to make much sense to anyone but the developers.
+var SetLogLevel = logger.SetLogLevel
 
 func fail(message string, err error) {
 	logger.Error(message)

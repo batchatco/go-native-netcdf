@@ -8,15 +8,17 @@ import (
 )
 
 type Logger struct {
-	logLevel int
+	logLevel LogLevel
 	logger   *log.Logger
 	lock     sync.Mutex
 }
 
+type LogLevel int
+
 const (
 	// error levels that should almost always be printed
-	LevelFatal = iota // error that must stop the program (panics)
-	LevelError        // error that does not need to stop execution
+	LevelFatal LogLevel = iota // error that must stop the program (panics)
+	LevelError                 // error that does not need to stop execution
 
 	// debugging levels, okay to disable
 	LevelWarn // something may be wrong, but not necessarily an error
@@ -26,8 +28,8 @@ const (
 	LogLevelDefault = LevelWarn
 
 	// min, max levels for setting print level
-	levelMin = LevelFatal
-	levelMax = LevelInfo
+	LevelMin = LevelFatal
+	LevelMax = LevelInfo
 )
 
 var (
@@ -44,13 +46,13 @@ func NewLogger() *Logger {
 	return &Logger{logLevel: LogLevelDefault, logger: logger, lock: sync.Mutex{}}
 }
 
-func (l *Logger) LogLevel() int {
+func (l *Logger) LogLevel() LogLevel {
 	return l.logLevel
 }
 
 // SetLogLevel returns the old level
-func (l *Logger) SetLogLevel(level int) int {
-	if level < levelMin || level > levelMax {
+func (l *Logger) SetLogLevel(level LogLevel) LogLevel {
+	if level < LevelMin || level > LevelMax {
 		panic("trying to set invalid log level")
 	}
 	old := l.logLevel
@@ -58,7 +60,7 @@ func (l *Logger) SetLogLevel(level int) int {
 	return old
 }
 
-func (l *Logger) output(level int, f func(...interface{}), v ...interface{}) {
+func (l *Logger) output(level LogLevel, f func(...interface{}), v ...interface{}) {
 	if level > l.logLevel {
 		return
 	}
@@ -68,7 +70,7 @@ func (l *Logger) output(level int, f func(...interface{}), v ...interface{}) {
 	f(v...)
 }
 
-func (l *Logger) outputf(level int, f func(string, ...interface{}), format string, v ...interface{}) {
+func (l *Logger) outputf(level LogLevel, f func(string, ...interface{}), format string, v ...interface{}) {
 	if level > l.logLevel {
 		return
 	}

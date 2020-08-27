@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/batchatco/go-native-netcdf/internal"
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
@@ -3811,10 +3812,10 @@ func makeFillValueReader(obj *object, bf io.Reader, length int64) io.Reader {
 		objFillValue = []byte{0}
 	}
 	if bf == nil {
-		return newResetReader(util.NewFillValueReader(objFillValue), length)
+		return newResetReader(internal.NewFillValueReader(objFillValue), length)
 	}
 	return newResetReader(
-		io.MultiReader(bf, util.NewFillValueReader(objFillValue)),
+		io.MultiReader(bf, internal.NewFillValueReader(objFillValue)),
 		length)
 }
 

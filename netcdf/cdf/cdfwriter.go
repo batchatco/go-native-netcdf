@@ -13,6 +13,7 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/batchatco/go-native-netcdf/internal"
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
@@ -377,7 +378,7 @@ func hasValidNames(am api.AttributeMap) bool {
 		return true
 	}
 	for _, key := range am.Keys() {
-		if !util.IsValidNetCDFName(key) {
+		if !internal.IsValidNetCDFName(key) {
 			return false
 		}
 	}
@@ -395,7 +396,7 @@ func (cw *CDFWriter) AddGlobalAttrs(attrs api.AttributeMap) error {
 func (cw *CDFWriter) AddVar(name string, vr api.Variable) (err error) {
 	defer thrower.RecoverError(&err)
 
-	if !util.IsValidNetCDFName(name) {
+	if !internal.IsValidNetCDFName(name) {
 		return ErrInvalidName
 	}
 	if !hasValidNames(vr.Attributes) {

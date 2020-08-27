@@ -13,6 +13,7 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/batchatco/go-native-netcdf/internal"
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
@@ -1021,5 +1022,5 @@ func makeFillValueReader(v variable, bf io.Reader) io.Reader {
 	default:
 		thrower.Throw(ErrInternal)
 	}
-	return io.MultiReader(bf, util.NewFillValueReader(fillValue))
+	return io.MultiReader(bf, internal.NewFillValueReader(fillValue))
 }

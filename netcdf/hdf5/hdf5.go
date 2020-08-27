@@ -191,7 +191,6 @@ type attribute struct {
 	class          uint8
 	attrType       uint8
 	vtType         uint8       // for variable length
-	vtPad          uint8       // for variable length
 	signed         bool        // for fixed-point
 	children       []attribute // for variable and compound, TODO also need dimensions
 	addr           uint64      // for reference
@@ -242,7 +241,6 @@ type object struct {
 	dataBlocks       []dataBlock
 	filters          []filter
 	objAttr          attribute
-	sharedAttr       *attribute
 	fillValue        []byte // takes precedence over old fill value
 	fillValueOld     []byte
 	isGroup          bool
@@ -615,7 +613,7 @@ func (h5 *HDF5) readAttributeDirect(obj *object, addr uint64, offset uint64, len
 	logger.Infof("* addr=0x%x offset=0x%x length=%d", addr, offset, length)
 	logger.Info("read Attributes at:", addr+offset)
 	bf := h5.newSeek(addr+uint64(offset), int64(length))
-	h5.readAttribute(obj, bf, length, creationOrder)
+	h5.readAttribute(obj, bf, creationOrder)
 }
 
 func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount int64, attr *attribute) {
@@ -950,6 +948,8 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		//checkVal(1, dtversion, "Only support version 1 of variable-length")
 		vtType = uint8(bitFields & 0xf) // XXX: we will need other bits too for decoding
 		vtPad := uint8(bitFields>>4) & 0xf
+		// The value of pad here may not have anything to do with reading data, just
+		// writing.  So we could accept all of them
 		assert(vtPad == 0 || vtPad == 1, "only do v0 and v1 versions of VL padding")
 		vtCset := (bitFields >> 8) & 0xf
 		logger.Infof("type=%d paddingtype=%d cset=%d", vtType, vtPad, vtCset)
@@ -972,7 +972,6 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			"vtType", vtType)
 		attr.children = append(attr.children, variableAttr)
 		attr.vtType = vtType
-		attr.vtPad = vtPad
 		rem := int64(0)
 		if df != nil {
 			rem = df.Rem()
@@ -1022,8 +1021,8 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	}
 }
 
-func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationOrder uint64) {
-	bf := newResetReader(obf, int64(size))
+func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) {
+	bf := obf.(remReader)
 	logger.Info("size=", bf.Rem())
 	version := read8(bf)
 	logger.Infof("* attr version=%d", version)
@@ -1134,20 +1133,22 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, size uint16, creationO
 			}
 		}
 		addr := read64(bff)
-		// TODO: this code is similar to code elsewhere, should be one function
 		logger.Infof("shared type addr=0x%x", addr)
-		oa := h5.sharedAttrs[addr]
-		if oa == nil {
-			obj := h5.readDataObjectHeader(addr)
-			oa = &obj.objAttr
-			h5.sharedAttrs[addr] = oa
-		} else {
-			logger.Info("Found shared attr in map")
-		}
+		oa := h5.getSharedAttr(addr)
 		sAttr := *oa
 		sAttr.dimensions = dims
 		attr.value = h5.getDataAttr(bf, sAttr)
 	}
+}
+
+func (h5 *HDF5) getSharedAttr(addr uint64) *attribute {
+	oa := h5.sharedAttrs[addr]
+	if oa == nil {
+		obj := h5.readDataObjectHeader(addr)
+		oa = &obj.objAttr
+		h5.sharedAttrs[addr] = oa
+	}
+	return oa
 }
 
 func (h5 *HDF5) findObject(addr uint64) *object {
@@ -2107,39 +2108,31 @@ func (h5 *HDF5) readDataspace(obf io.Reader) ([]uint64, int64) {
 	return ret, count
 }
 
-func (h5 *HDF5) readFilterPipeline(obj *object, bf io.Reader, size uint16) {
-	logger.Infof("pipeline size=%d", size)
+func (h5 *HDF5) readFilterPipeline(obj *object, obf io.Reader) {
+	bf := obf.(remReader)
+	logger.Infof("pipeline size=%d", bf.Rem())
 	version := read8(bf)
 	logger.Infof("pipeline version=%d", version)
-	size--
 	assert(version >= 1 && version <= 2, "pipeline versin")
 	nof := read8(bf)
-	size--
 	logger.Infof("pipeline filters=%d", nof)
 	if version == 1 {
 		reserved := read16(bf)
 		checkVal(0, reserved, "reserved")
-		size -= 2
 		reserved2 := read32(bf)
 		checkVal(0, reserved2, "reserved")
-		size -= 4
 	}
 	for i := 0; i < int(nof); i++ {
 		fiv := read16(bf)
-		size -= 2
 		nameLength := uint16(0)
 		if version == 1 || fiv >= 256 {
 			nameLength = read16(bf)
-			size -= 2
 		}
 		flags := read16(bf)
-		size -= 2
 		nCDV := read16(bf)
-		size -= 2
 		logger.Infof("fiv=%d name length=%d flags=%s ncdv=%d",
 			fiv, nameLength, binaryToString(uint64(flags)), nCDV)
 		if nameLength > 0 {
-			size -= nameLength
 			b := make([]byte, nameLength)
 			read(bf, b)
 			logger.Infof("filter name=%s", getString(b))
@@ -2150,22 +2143,19 @@ func (h5 *HDF5) readFilterPipeline(obj *object, bf io.Reader, size uint16) {
 				z := read8(bf)
 				checkVal(0, z, "zero pad")
 			}
-			size -= pad
 		}
 		cdv := make([]uint32, nCDV)
 		for i := 0; i < int(nCDV); i++ {
-			if size < 4 {
-				fail(fmt.Sprintf("short read on client data (%d)", size))
+			if bf.Rem() < 4 {
+				fail(fmt.Sprintf("short read on client data (%d)", bf.Rem()))
 			}
 			cd := read32(bf)
 			cdv[i] = cd
-			size -= 4
 			logger.Infof("client data[%d] = 0x%x", i, cd)
 		}
 		if version == 1 && nCDV%2 == 1 {
 			pad := read32(bf)
 			checkVal(0, pad, "pad is not zero")
-			size -= 4
 		}
 		switch fiv {
 		case filterDeflate, filterShuffle, filterFletcher32:
@@ -2177,9 +2167,9 @@ func (h5 *HDF5) readFilterPipeline(obj *object, bf io.Reader, size uint16) {
 	}
 }
 
-func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader, layoutSize uint16) {
-	logger.Infof("layout size=%d", layoutSize)
+func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 	bf := obf.(remReader)
+	logger.Infof("layout size=%d", bf.Rem())
 	version := read8(bf)
 	// V4 is quite complex and not supported yet, but we parse some of it
 	assertError(version == 3 || version == 4,
@@ -2324,7 +2314,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader, layoutSize uint16)
 	}
 }
 
-func (h5 *HDF5) readFillValue(bf io.Reader, size uint16) []byte {
+func (h5 *HDF5) readFillValue(bf io.Reader) []byte {
 	version := read8(bf)
 	assert(version >= 1 && version <= 3, "fill value version")
 	logger.Info("fill value version", version)
@@ -2385,7 +2375,8 @@ func (h5 *HDF5) readFillValue(bf io.Reader, size uint16) []byte {
 	return b
 }
 
-func (h5 *HDF5) readDatatype(obj *object, bf io.Reader, size uint16) attribute {
+func (h5 *HDF5) readDatatype(obj *object, bf io.Reader) attribute {
+	size := bf.(remReader).Rem()
 	logger.Infof("going to read %v bytes", size)
 	logger.Info("print datatype with properties from chunk")
 	var objAttr attribute
@@ -2483,17 +2474,8 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Info("shared message length", length)
 			addr := read64(bf)
 			logger.Infof("shared message addr = 0x%x", addr)
-			// TODO: this code is similar to code elsewhere, should be one function
-			oa := h5.sharedAttrs[addr]
-			if oa == nil {
-				obj := h5.readDataObjectHeader(addr)
-				oa = &obj.objAttr
-				h5.sharedAttrs[addr] = oa
-			} else {
-				logger.Info("found shared attr in map")
-			}
+			oa := h5.getSharedAttr(addr)
 			obj.objAttr = *oa
-			obj.sharedAttr = &obj.objAttr
 			// TODO: we need to store addr and dtb somewhere, it will get used later
 			logger.Info("shared attr dtversion", obj.objAttr.dtversion)
 			// TODO: what else might we need to copy? dimensions?
@@ -2524,7 +2506,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Info("Datatype")
 			// hacky: fix
 			save := obj.objAttr.dimensions
-			obj.objAttr = h5.readDatatype(obj, f, size)
+			obj.objAttr = h5.readDatatype(obj, f)
 			h5.sharedAttrs[obj.addr] = &obj.objAttr
 			obj.objAttr.dimensions = save
 			logger.Info("dimensions are", obj.objAttr.dimensions)
@@ -2540,7 +2522,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 
 		case typeDataStorageFillValue:
 			// this may not be used in netcdf
-			fv := h5.readFillValue(f, size)
+			fv := h5.readFillValue(f)
 			if fv == nil {
 				logger.Info("undefined or default fill value")
 				break
@@ -2556,7 +2538,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			fail("We don't handle external data files")
 
 		case typeDataLayout:
-			h5.readDataLayout(obj, f, size)
+			h5.readDataLayout(obj, f)
 
 		case typeBogus:
 			// for testing only
@@ -2567,14 +2549,15 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			h5.readGroupInfo(f)
 
 		case typeDataStorageFilterPipeline:
-			h5.readFilterPipeline(obj, f, size)
+			h5.readFilterPipeline(obj, f)
 
 		case typeAttribute:
 			logger.Infof("Attribute, obj addr=0x%x", obj.addr)
-			h5.readAttribute(obj, f, size, 0)
+			h5.readAttribute(obj, f, 0)
 
 		case typeObjectComment:
 			fail("comment not handled")
+
 		case typeObjectModificationTimeOld:
 			fail("old mod time not handled")
 
@@ -2582,10 +2565,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			assertError(false, ErrSuperblock, "shared message table not handled")
 
 		case typeObjectHeaderContinuation:
-			offset := read64(f)
-			size := read64(f)
-			logger.Infof("continuation offset=%08x length=%d", offset, size)
-			h5.readContinuation(obj, version, ohFlags, offset, size)
+			h5.readContinuation(obj, f, version, ohFlags)
 
 		case typeSymbolTableMessage:
 			btreeAddr := read64(f)
@@ -2654,7 +2634,10 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 	}
 }
 
-func (h5 *HDF5) readContinuation(obj *object, version uint8, ohFlags byte, offset uint64, size uint64) {
+func (h5 *HDF5) readContinuation(obj *object, obf io.Reader, version uint8, ohFlags byte) {
+	offset := read64(obf)
+	size := read64(obf)
+	logger.Infof("continuation offset=%08x length=%d", offset, size)
 	bf := h5.newSeek(offset, int64(size))
 	chunkSize := size
 	start := 0
@@ -3871,10 +3854,6 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 		return nil
 	}
 	attr := &obj.objAttr
-	if obj.sharedAttr != nil {
-		logger.Info("using shared attr")
-		attr = obj.sharedAttr
-	}
 	sz := calcAttrSize(attr)
 	logger.Info("about to getdataattr rem=", bf.(remReader).Rem(), "size=", sz)
 	bff := newResetReader(bf, sz)
@@ -4008,9 +3987,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		return h5.getDataAttr(cbf, a)
 
 	case typeOpaque:
-		values = allocOpaque(bf, attr.dimensions, attr.length)
-		logger.Infof("values=0x%x", values)
-		return values
+		return allocOpaque(bf, attr.dimensions, attr.length)
 
 	default:
 		logger.Fatal("unhandled type, getDataAttr", attr.class)
@@ -4273,7 +4250,10 @@ func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 	}
 	found.sortAttrList()
 	return &api.Variable{
-		Values: data, Dimensions: h5.getDimensions(found), Attributes: getAttributes(found.attrlist)}, nil
+			Values:     data,
+			Dimensions: h5.getDimensions(found),
+			Attributes: getAttributes(found.attrlist)},
+		nil
 }
 
 func (h5 *HDF5) ListSubgroups() []string {

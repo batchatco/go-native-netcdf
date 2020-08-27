@@ -1113,7 +1113,9 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 		sType := read8(bff)
 		logger.Infof("shared type version=%v type=%v", sVersion, sType)
 		switch sVersion {
-		case 0, 1: // both version 1
+		case 0, 1: // 0 is also version 1
+
+			// Warn because this version has never been seen by this code
 			logger.Warn("version 1 shared message encountered")
 			checkVal(sType, 0, "type must be zero")
 			checkZeroes(bff, 6)
@@ -1121,6 +1123,8 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 			// the type is supposed to be zero for version 2, but is sometimes 2
 			assert(sType == 0 || sType == 2, "type must be 0 or 2")
 		case 3:
+			// Warn because this version has never been seen by this code
+			// The code here may not be correct.
 			logger.Warn("version 3 shared message encountered")
 			switch sType {
 			case 0:
@@ -1152,33 +1156,6 @@ func (h5 *HDF5) getSharedAttr(addr uint64) *attribute {
 		h5.sharedAttrs[addr] = oa
 	}
 	return oa
-}
-
-func (h5 *HDF5) findObject(addr uint64) *object {
-	var f func(obj *object) *object
-	f = func(obj *object) *object {
-		if obj == nil {
-			return nil
-		}
-		logger.Infof("trying obj addr = %x", obj.addr)
-		if obj.addr == addr {
-			return obj
-		}
-		for _, o := range obj.children {
-			res := f(o)
-			if res != nil {
-				return res
-			}
-		}
-		return nil
-	}
-	logger.Info("Try root object")
-	res := f(h5.rootObject)
-	if res != nil {
-		return res
-	}
-	logger.Info("Try group object")
-	return f(h5.groupObject)
 }
 
 type doublerCallback func(obj *object, bnum uint64, offset uint64, length uint16,
@@ -1559,6 +1536,8 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 			logger.Infof("[%d] addr: 0x%x, %d", i, addr, sizeChunk)
 		}
 		if nodeLevel > 0 {
+			// This doesn't seem to happen
+			logger.Warn("Encountered nodeLevel > 0 for first time")
 			logger.Infof("read middle: 0x%x, %d", addr, nodeLevel)
 			dsOffset = h5.readBTreeNodeAny(parent, addr, false /*not top*/, dtSize,
 				numberOfElements, dsOffset, dimensionality)
@@ -1637,7 +1616,6 @@ func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
 		hash := computeChecksumStream(bff, int(blockSize))
 		logger.Infof("checksum=0x%x (expect=0x%x)", hash, checksum)
 		assert(checksum == hash, "checksum mismatch")
-		//h5.readHeap(heapHeaderAddr)
 	}
 }
 
@@ -1767,15 +1745,15 @@ func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) []byte {
 		zero := read8(bf)
 		checkVal(0, zero, "zero")
 	}
-	csize := read64(bf)
+	csize := read64(bf) // collection size, including these fields
 	csize -= 16
 	for csize >= 16 {
-		hoi := read16(bf)
-		rc := read16(bf)
+		hoi := read16(bf) // heap object index
+		rc := read16(bf)  // reference count
 		checkVal(0, rc, "refcount")
-		zero := read32(bf)
+		zero := read32(bf) // reserved
 		checkVal(0, zero, "zero")
-		osize := read64(bf)
+		osize := read64(bf) // object size)
 		csize -= 16
 		if osize > csize {
 			break
@@ -1785,7 +1763,7 @@ func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) []byte {
 			// round up to 8-byte boundary
 			asize := (osize + 7) & ^uint64(0x7)
 			if asize > csize {
-				logger.Info("too big, breaking")
+				logger.Warn("too big, breaking")
 				csize = 0
 				break
 			}
@@ -1956,21 +1934,13 @@ func (h5 *HDF5) isMagic(magic string, addr uint64) bool {
 	if addr == 0 || addr == invalidAddress {
 		return false
 	}
+	if addr+4 > uint64(h5.fileSize) {
+		logger.Error("seeking past end of file -- probably a truncated file")
+		thrower.Throw(ErrCorrupted)
+		panic("not reached")
+	}
 	var b [4]byte
 	_, err := h5.file.ReadAt(b[:], int64(addr))
-	if err != nil {
-		pErr, has := err.(*os.PathError)
-		if has {
-			logger.Error("Extracted path error", pErr.Error())
-			err = pErr.Unwrap()
-		}
-		logger.Error("ReadAt error: ", err.Error())
-		if err.Error() != os.ErrInvalid.Error() {
-			logger.Errorf("Weird invalid error: (%#v) (%#v)", os.ErrInvalid.Error(), err.Error())
-			thrower.Throw(ErrInternal)
-		}
-		thrower.Throw(ErrCorrupted)
-	}
 	thrower.ThrowIfError(err)
 	bs := string(b[:])
 	return bs == magic
@@ -2339,6 +2309,8 @@ func (h5 *HDF5) readFillValue(bf io.Reader) []byte {
 		reserved := (flags >> 6) & 0x3
 		checkVal(0, reserved, "extra bits in fill value")
 		if fillValueUnDefined == 0x1 {
+			// fillValueUndefined never seems to be set
+			logger.Warn("executing fill value undefined code for first time")
 			if fillValueDefined == 0x1 {
 				fail("Cannot have both defined and undefined fill value")
 			}
@@ -2458,12 +2430,8 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		if version == 1 {
 			logger.Infof("rem=%v size=%v", bf.Rem(), size)
 			used := bf.Count() - nReadSave
-			assert(int64(size) >= used, "subtracting v1 metadata from size")
 			logger.Infof("used %d bytes", used)
-			if int64(size) > bf.Rem() {
-				logger.Info("subtracting v1 metadata from size")
-				size -= uint16(used)
-			}
+			assert(int64(size) <= bf.Rem(), "not enough space")
 		}
 		if version > 1 {
 			nReadSave = bf.Count()
@@ -2709,7 +2677,8 @@ func (h5 *HDF5) readDataObjectHeaderV2(addr uint64) *object {
 		// TODO: store these times and provide an API to view them
 	}
 	if maxPresent {
-		// These don't matter for read-only
+		// These don't matter for read-only.
+		logger.Warn("this code has not been reached before")
 		s := read16(bf)
 		logger.Info("max compact=", s)
 		s = read16(bf)

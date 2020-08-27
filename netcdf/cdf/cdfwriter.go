@@ -303,7 +303,7 @@ func (cw *CDFWriter) getDimLengthsHelper(
 		if vLen == 0 {
 			// minimal support for unlimited, when it is the only dimension.
 			kind = cw.scalarKind(t.Elem().Kind())
-			for kind == 0 {
+			for kind == typeNone {
 				// there are other dimensions and we can't tell the size of them.
 				thrower.Throw(ErrEmptySlice)
 			}

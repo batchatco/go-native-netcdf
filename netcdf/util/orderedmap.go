@@ -1,3 +1,4 @@
+// Utility to create AttributeMaps for the NetCDF API
 package util
 
 import (
@@ -16,6 +17,8 @@ var (
 	ErrorKeysDontMatchValues = errors.New("keys don't match values")
 )
 
+// NewOrderedMap takes an unordered map (values) and an order (keys) and
+// returns an OrderedMap.
 func NewOrderedMap(keys []string, values map[string]interface{}) (*OrderedMap, error) {
 	if len(keys) != len(values) {
 		return nil, ErrorKeysDontMatchValues
@@ -49,6 +52,7 @@ func NewOrderedMap(keys []string, values map[string]interface{}) (*OrderedMap, e
 		hiddenKeys:  map[string]bool{}}, nil
 }
 
+// Add adds a key/value pair to an ordered map at the end.
 func (om *OrderedMap) Add(name string, val interface{}) {
 	if !om.hiddenKeys[name] {
 		om.keys = append(om.keys, name)
@@ -57,11 +61,14 @@ func (om *OrderedMap) Add(name string, val interface{}) {
 	om.values[name] = val
 }
 
+// Get returns the value associated with key and sets has to true if found.
 func (om *OrderedMap) Get(key string) (val interface{}, has bool) {
 	val, has = om.values[key]
 	return
 }
 
+// Hide hides the given key from the Keys() method, but
+// it is still in the map.
 func (om *OrderedMap) Hide(hiddenKey string) {
 	om.hiddenKeys[hiddenKey] = true
 	// recompute visible keys
@@ -75,6 +82,8 @@ func (om *OrderedMap) Hide(hiddenKey string) {
 	om.visibleKeys = visibleKeys
 }
 
+// Keys returns the keys in order for the map.
+// It does not return the hidden keys.
 func (om *OrderedMap) Keys() []string {
 	return om.visibleKeys
 }

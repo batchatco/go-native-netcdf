@@ -1,5 +1,7 @@
 package util
 
+// Internal logging utility.
+
 import (
 	"log"
 	"os"

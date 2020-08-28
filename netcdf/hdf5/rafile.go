@@ -46,6 +46,87 @@ func newResetReader(file io.Reader, size int64) remReader {
 		size: size}
 }
 
+type holeReader struct {
+	r         io.Reader
+	size      int64
+	count     int64
+	totalSize int64
+}
+
+func (r *holeReader) Rem() int64 {
+	return r.totalSize - r.count
+}
+
+func (r *holeReader) Count() int64 {
+	return r.count
+}
+
+func (r *holeReader) Read(p []byte) (int, error) {
+	thisLen := int64(len(p))
+	if r.count+thisLen > r.size {
+		if r.count < r.size {
+			thisLen = r.size - r.count
+		} else {
+			thisLen = 0
+		}
+	}
+	var nRead int64
+	if thisLen > 0 {
+		// regular read
+		n, err := r.r.Read(p[:thisLen])
+		if err != nil {
+			return 0, err
+		}
+		r.count += int64(n)
+		if int64(n) == thisLen {
+			return n, err
+		}
+		r.count += int64(n)
+		nRead = int64(n)
+		// more to read
+	}
+	// a hole
+	thisLen = int64(len(p)) - nRead
+	if thisLen+r.count > r.totalSize {
+		thisLen = r.totalSize - r.count
+		if thisLen > int64(len(p)) {
+			thisLen = int64(len(p))
+		}
+		r.count += thisLen
+		return int(thisLen), nil
+	}
+	if thisLen == 0 {
+		return 0, io.EOF
+	}
+	r.count += thisLen
+	return int(thisLen), nil
+}
+
+func newHoleReader(file io.Reader, size int64, totalSize int64) *holeReader {
+	return &holeReader{file, size, 0, totalSize}
+}
+
+func newSkipReader(file io.Reader, size int64, skip int64, totalSize int64) (remReader, error) {
+	bf := newResetReader(file, size+skip)
+	// Fake a seek
+	for skip > 0 {
+		skipSize := int64(1024 * 1024)
+		if skipSize > skip {
+			skipSize = skip
+		}
+		b := make([]byte, skipSize) // read a megabyte at a time to skip
+		n, err := bf.Read(b)
+		if err != nil {
+			return nil, err
+		}
+		if n < len(b) {
+			return nil, io.EOF
+		}
+		skip -= int64(n)
+	}
+	return newHoleReader(bf, size, totalSize), nil
+}
+
 func newRaFile(file io.ReadSeeker) *raFile {
 	return &raFile{
 		rcFile:      newRefCountedFile(file),

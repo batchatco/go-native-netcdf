@@ -547,8 +547,7 @@ func (cdf *CDF) Attributes() api.AttributeMap {
 	return cdf.globalAttrs
 }
 
-func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
-	defer thrower.RecoverError(&err)
+func (cdf *CDF) getVarCommon(name string) (api.VarGetter, error) {
 	vf, has := cdf.vars.Get(name)
 	if !has {
 		return nil, ErrNotFound
@@ -569,7 +568,7 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 		dimLengths[i] = dim.dimLength
 		// Handle unlimited dimension.
 		if dimLengths[i] == 0 {
-			assert(unlimited || i == 0,
+			assert(i == 0,
 				"unlimited dimension must be first",
 				ErrCorruptedFile)
 			unlimited = true
@@ -578,77 +577,139 @@ func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 		dimNames[i] = dim.name
 		totalSize *= int64(dimLengths[i])
 	}
-	var sizeInBytes int64
-	switch varFound.vType {
-	case typeDouble, typeInt64, typeUInt64:
-		sizeInBytes = totalSize * 8
-	case typeInt, typeFloat, typeUInt:
-		sizeInBytes = totalSize * 4
-	case typeShort, typeUShort:
-		sizeInBytes = totalSize * 2
-	case typeChar, typeByte, typeUByte:
-		sizeInBytes = totalSize
+	var chunkSize int64
+	length := int64(0)
+	switch {
+	case len(dimLengths) == 0:
+		chunkSize = totalSize
+		length = 1
+	case dimLengths[0] == 0:
+		chunkSize = totalSize
+		length = 0
 	default:
-		thrower.Throw(ErrInternal)
+		chunkSize = totalSize / int64(dimLengths[0])
+		length = int64(dimLengths[0])
 	}
-	var bf io.Reader
-	if unlimited && !cdf.specialCase {
-		bf = cdf.newRecordReader(&varFound)
-	} else {
-		seekTo(cdf.file, int64(varFound.begin))
-		bf = io.LimitReader(makeFillValueReader(varFound,
-			io.Reader(bufio.NewReader(cdf.file))), sizeInBytes)
+	getSlice := func(begin, end int64) (interface{}, error) {
+		if end < begin {
+			return nil, errors.New("invalid slice parameters")
+		}
+		var nChunks int64
+		switch {
+		case len(dimLengths) == 0:
+			// scalar
+			nChunks = 1
+		case dimLengths[0] == 0:
+			// unlimited
+			nChunks = 0
+		default:
+			nChunks = int64(end - begin)
+		}
+		sliceSize := int64(1)
+		var start int64
+		var sizeInBytes int64
+
+		sliceSize = nChunks * chunkSize
+		start = begin * chunkSize
+		switch varFound.vType {
+		case typeDouble, typeInt64, typeUInt64:
+			start *= 8
+			sizeInBytes = sliceSize * 8
+		case typeInt, typeFloat, typeUInt:
+			start *= 4
+			sizeInBytes = sliceSize * 4
+		case typeShort, typeUShort:
+			start *= 2
+			sizeInBytes = sliceSize * 2
+		case typeChar, typeByte, typeUByte:
+			sizeInBytes = sliceSize
+		default:
+			thrower.Throw(ErrInternal)
+		}
+
+		var bf io.Reader
+		if unlimited && !cdf.specialCase {
+			bf = cdf.newRecordReader(&varFound, start, sizeInBytes)
+		} else {
+			seekTo(cdf.file, int64(varFound.begin)+start)
+			bf = io.LimitReader(makeFillValueReader(varFound,
+				io.Reader(bufio.NewReader(cdf.file))), sizeInBytes)
+		}
+
+		// in case of unlimited, should read a record at a time, using cdf.recSize
+		var data interface{}
+		switch varFound.vType {
+		case typeByte:
+			data = make([]int8, sliceSize)
+
+		case typeChar:
+			data = make([]byte, sliceSize)
+
+		case typeShort:
+			data = make([]int16, sliceSize)
+
+		case typeInt:
+			data = make([]int32, sliceSize)
+
+		case typeFloat:
+			data = make([]float32, sliceSize)
+
+		case typeDouble:
+			data = make([]float64, sliceSize)
+
+		case typeUByte:
+			data = make([]uint8, sliceSize)
+
+		case typeUShort:
+			data = make([]uint16, sliceSize)
+
+		case typeUInt:
+			data = make([]uint32, sliceSize)
+
+		case typeUInt64:
+			data = make([]uint64, sliceSize)
+
+		case typeInt64:
+			data = make([]int64, sliceSize)
+
+		default:
+			fail("unknown type", ErrUnknownType)
+		}
+		err := binary.Read(bf, binary.BigEndian, data)
+		if err != nil {
+			return nil, err
+		}
+		if len(dimLengths) > 0 {
+			dimLengths[0] = uint64(nChunks)
+		}
+		converted := cdf.convert(data, dimLengths, varFound.vType)
+		if converted == nil {
+			thrower.Throw(ErrInternal)
+		}
+		return converted, nil
 	}
+	return internal.NewSlicer(getSlice, length, dimNames, varFound.attrs), nil
+}
 
-	// in case of unlimited, should read a record at a time, using cdf.recSize
-	var data interface{}
-	switch varFound.vType {
-	case typeByte:
-		data = make([]int8, totalSize)
+func (cdf *CDF) GetVarGetter(name string) (slicer api.VarGetter, err error) {
+	defer thrower.RecoverError(&err)
+	return cdf.getVarCommon(name)
+}
 
-	case typeChar:
-		data = make([]byte, totalSize)
-
-	case typeShort:
-		data = make([]int16, totalSize)
-
-	case typeInt:
-		data = make([]int32, totalSize)
-
-	case typeFloat:
-		data = make([]float32, totalSize)
-
-	case typeDouble:
-		data = make([]float64, totalSize)
-
-	case typeUByte:
-		data = make([]uint8, totalSize)
-
-	case typeUShort:
-		data = make([]uint16, totalSize)
-
-	case typeUInt:
-		data = make([]uint32, totalSize)
-
-	case typeUInt64:
-		data = make([]uint64, totalSize)
-
-	case typeInt64:
-		data = make([]int64, totalSize)
-
-	default:
-		fail("unknown type", ErrUnknownType)
+func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
+	defer thrower.RecoverError(&err)
+	sl, err := cdf.getVarCommon(name)
+	if err != nil {
+		return nil, err
 	}
-	err = binary.Read(bf, binary.BigEndian, data)
-	thrower.ThrowIfError(err)
-	converted := cdf.convert(data, dimLengths, varFound.vType)
-	if converted == nil {
-		thrower.Throw(ErrInternal)
+	vals, err := sl.GetSlice(0, sl.Len())
+	if err != nil {
+		return nil, err
 	}
 	return &api.Variable{
-		Values:     converted,
-		Dimensions: dimNames,
-		Attributes: varFound.attrs}, nil
+		Values:     vals,
+		Dimensions: sl.Dimensions(),
+		Attributes: sl.Attributes()}, nil
 }
 
 // Seeks and read bytes
@@ -670,11 +731,20 @@ func newSeekReader(file io.ReadSeeker, offset int64) io.Reader {
 	return &seekReader{file: file, offset: offset, reader: nil}
 }
 
-func (cdf *CDF) newRecordReader(v *variable) io.Reader {
+func (cdf *CDF) newRecordReader(v *variable, start int64, size int64) io.Reader {
 	readers := make([]io.Reader, cdf.numRecs)
-	for i := uint64(0); i < cdf.numRecs; i++ {
-		offset := int64(v.begin) + int64(i)*int64(cdf.recSize)
-		readers[i] = io.LimitReader(newSeekReader(cdf.file, offset), v.vsize)
+
+	for i := uint64(0); i < uint64(cdf.numRecs) && size > 0; i++ {
+		increment := int64(i) * int64(cdf.recSize)
+		if start > increment {
+			continue
+		}
+		offset := int64(v.begin) + increment
+		begin := offset + start
+		thisSize := v.vsize
+		readers[i] = io.LimitReader(newSeekReader(cdf.file, begin), thisSize)
+		size -= thisSize
+		start = 0
 	}
 	return io.MultiReader(readers...)
 }
@@ -863,7 +933,6 @@ func (cdf *CDF) convert(data interface{}, dimLengths []uint64, vType uint32) int
 		return emptySlice(data, dimLengths)
 	}
 	if len(dimLengths) == 0 {
-		v := reflect.ValueOf(data)
 		elem := v.Index(0)
 		if vType == typeChar {
 			return string([]byte{elem.Interface().(byte)})

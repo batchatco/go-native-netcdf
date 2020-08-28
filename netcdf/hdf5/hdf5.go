@@ -200,6 +200,9 @@ type attribute struct {
 	dimensionality uint8       // for compound
 	layout         []uint64
 	dimensions     []uint64 // for compound
+	isSlice        bool
+	firstDim       int64 // first dimension if getting slice (fake objects only)
+	lastDim        int64 // last dimension if getting slice (fake objects only)
 	endian         binary.ByteOrder
 	dtversion      uint8
 	creationOrder  uint64
@@ -3820,14 +3823,33 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 			fletcher32Found = true
 		}
 	}
+	// TODO if !zlibFound && !shuffleFound && !fletcher32Found && isSlice {
+	// we can seek first to save time.  Otherwise, it is slow inefficent reading to get to the 
+	// place we want (or some complicated algorithm).
 	bf, _ := h5.newRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
-	if bf == nil {
-		return nil
-	}
 	attr := &obj.objAttr
 	sz := calcAttrSize(attr)
 	logger.Info("about to getdataattr rem=", bf.(remReader).Rem(), "size=", sz)
-	bff := newResetReader(bf, sz)
+	var bff remReader
+	if attr.isSlice {
+		assert(attr.lastDim >= attr.firstDim, "bad slice params")
+		var chunkSize int64
+		switch {
+		case len(attr.dimensions) == 0:
+			chunkSize = 1
+		case attr.dimensions[0] == 0:
+			chunkSize = 0
+		default:
+			chunkSize = sz / int64(attr.dimensions[0])
+		}
+		skip := chunkSize * attr.firstDim
+		sliceSize := chunkSize * (attr.lastDim - attr.firstDim)
+		var err error
+		bff, err = newSkipReader(bf, skip, sliceSize, sz)
+		thrower.ThrowIfError(err)
+	} else {
+		bff = newResetReader(bf, sz)
+	}
 	return h5.getDataAttr(bff, *attr)
 }
 
@@ -4225,6 +4247,33 @@ func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 			Dimensions: h5.getDimensions(found),
 			Attributes: getAttributes(found.attrlist)},
 		nil
+}
+
+func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
+	defer thrower.RecoverError(&err)
+	found := h5.findVariable(varName)
+	if found == nil {
+		logger.Warnf("variable %s not found", varName)
+		return nil, ErrNotFound
+	}
+	found.sortAttrList()
+	getSlice := func(begin, end int64) (interface{}, error) {
+		if end < begin {
+			return nil, errors.New("invalid slice parameters")
+		}
+		fakeObj := *found
+		fakeObj.objAttr.isSlice = true
+		fakeObj.objAttr.firstDim = begin
+		fakeObj.objAttr.lastDim = end
+		data := h5.getData(&fakeObj)
+		if data == nil {
+			return nil, ErrNotFound
+		}
+		return data, nil
+	}
+	return internal.NewSlicer(getSlice, int64(found.objAttr.dimensions[0]),
+		h5.getDimensions(found),
+		getAttributes(found.attrlist)), nil
 }
 
 func (h5 *HDF5) ListSubgroups() []string {

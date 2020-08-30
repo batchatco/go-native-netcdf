@@ -1,4 +1,4 @@
-// HDF5 implementation of NetCDF
+// Package hdf5 implements HDF5 for NetCDF
 package hdf5
 
 import (
@@ -3461,22 +3461,27 @@ func newFletcher32Reader(r io.Reader, size uint64) remReader {
 }
 
 type nullReader struct {
-	r       io.Reader
-	size    uint64
-	hasRead bool
+	r   io.Reader
+	rem uint64
 }
 
 func (r *nullReader) Read(p []byte) (int, error) {
-	if !r.hasRead {
-		b := make([]byte, r.size)
-		read(r.r, b)
-		r.hasRead = true
+	thisLen := uint64(len(p))
+	if thisLen > r.rem {
+		thisLen = r.rem
+	}
+	for i := uint64(0); i < thisLen; i++ {
+		p[i] = 0
+	}
+	r.rem -= thisLen
+	if thisLen > 0 {
+		return int(thisLen), nil
 	}
 	return 0, io.EOF
 }
 
 func newNullReader(r io.Reader, size uint64) io.Reader {
-	return io.Reader(&nullReader{r, size, false})
+	return io.Reader(&nullReader{r, size})
 }
 
 type segment struct {
@@ -3514,9 +3519,17 @@ func getSegs(offset uint64, offsets []uint64, segs []*segment, dims []uint64, la
 			last = dims[0]
 		}
 		n := last - offsets[0]
-		segs = append(segs, &segment{offset, n * uint64(dtlen), nil, extra})
+		segs = append(segs, &segment{
+			offset: offset,
+			length: n * uint64(dtlen),
+			r:      nil,
+			extra:  extra})
 		if extra > 0 {
-			segs = append(segs, &segment{offset, extra, nil, unlimitedSize})
+			segs = append(segs, &segment{
+				offset: offset,
+				length: extra,
+				r:      nil,
+				extra:  unlimitedSize})
 		}
 		return segs
 	}
@@ -3540,7 +3553,11 @@ func getSegs(offset uint64, offsets []uint64, segs []*segment, dims []uint64, la
 		offset += skipsize
 	}
 	if extra > 0 {
-		segs = append(segs, &segment{offset, extra, nil, unlimitedSize})
+		segs = append(segs, &segment{
+			offset: offset,
+			length: extra,
+			r:      nil,
+			extra:  unlimitedSize})
 	}
 	return segs
 }
@@ -3557,25 +3574,56 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		logger.Info("No blocks, filling only", size, obj.objAttr.dimensions)
 		return makeFillValueReader(obj, nil, int64(size)), size
 	}
-	offset := uint64(0)
 	segments := make([]*segment, 0)
+	firstOffset := uint64(0)
+	lastOffset := uint64(size)
+	if obj.objAttr.isSlice {
+		if len(obj.objAttr.dimensions) > 0 && obj.objAttr.dimensions[0] > 0 {
+			dimSize := size / obj.objAttr.dimensions[0]
+			firstOffset = uint64(obj.objAttr.firstDim) * dimSize
+			lastOffset = uint64(obj.objAttr.lastDim) * dimSize
+			size = lastOffset - firstOffset
+		}
+	}
+	offset := uint64(0)
 	for i, val := range obj.dataBlocks {
+		dsLength := val.dsLength
+		skipBegin := uint64(0)
+		skipEnd := uint64(0)
+		valOffset := val.offset
+
+		if offset+dsLength <= firstOffset {
+			offset += dsLength
+			continue
+		}
+		if offset >= lastOffset {
+			break
+		}
+		if firstOffset >= offset && firstOffset < offset+dsLength {
+			skipBegin = (firstOffset - offset)
+		}
+		if offset+dsLength > lastOffset {
+			skipEnd = offset + dsLength - lastOffset
+		}
+
 		assert(val.filterMask == 0,
 			fmt.Sprintf("filter mask = 0x%x", val.filterMask))
 		logger.Infof("block %d is 0x%x, len %d (%d, %d), mask 0x%x",
 			i, val.offset, val.length, val.dsOffset, val.dsLength, val.filterMask)
 		var bf remReader
+		canSeek := false
 		if val.rawData != nil {
-			bf = newResetReaderFromBytes(val.rawData)
+			bf = newResetReaderFromBytes(val.rawData[skipBegin : dsLength+skipBegin])
 		} else {
-			bf = h5.newSeek(val.offset, int64(val.length))
+			bf = h5.newSeek(valOffset, int64(val.length))
+			canSeek = true
 		}
-		dsLength := val.dsLength
 		if fletcher32Found {
 			logger.Info("Found fletcher32", val.length)
 			bf = newFletcher32Reader(bf, val.length)
-		} else {
-			bf = newResetReader(bf, int64(val.length))
+			if firstOffset > 0 {
+				logger.Warn("cannot seek -- fletcher")
+			}
 		}
 		if zlibFound {
 			logger.Info("trying zlib")
@@ -3588,10 +3636,26 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 				return nil, 0
 			}
 			bf = newResetReader(zbf, int64(dsLength))
+			if firstOffset > 0 {
+				logger.Warn("cannot seek -- zlib")
+			}
 		}
 		if shuffleFound {
 			logger.Info("using shuffle", dsLength)
 			bf = newUnshuffleReader(bf, dsLength, shuffleParam)
+			if firstOffset > 0 {
+				logger.Info("cannot seek -- shuffle")
+			}
+		}
+		if skipBegin > 0 {
+			thisSize := int64(dsLength - (skipBegin + skipEnd))
+			if canSeek {
+				bf = h5.newSeek(valOffset+skipBegin, thisSize)
+			} else {
+				var err error
+				bf, err = newSkipReader(bf, thisSize, int64(skipBegin), int64(dsLength))
+				thrower.ThrowIfError(err)
+			}
 		}
 		// TODO: make N readers depending upon layout.  Then sort them and make a multidimensional
 		// reader.
@@ -3599,48 +3663,73 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		if len(obj.objAttr.layout) > 0 {
 			segs := getSegs(0, val.offsets, nil, obj.objAttr.dimensions, obj.objAttr.layout,
 				obj.objAttr.length)
-			d := uint64(0)
+			d := firstOffset
 			for i := range segs {
-				segs[i].r = bf
-				segments = append(segments, segs[i])
+				if d+segs[i].length < firstOffset {
+					d += segs[i].length
+					continue
+				}
+				if d >= lastOffset {
+					break
+				}
+				begSkip := uint64(0)
+				endSkip := uint64(0)
+				if firstOffset >= d && firstOffset < d+segs[i].length {
+					begSkip = (firstOffset - d)
+				}
+				if d+segs[i].length > lastOffset {
+					endSkip = d + segs[i].length - lastOffset
+				}
+				s := &segment{
+					offset: segs[i].offset + begSkip,
+					length: segs[i].length - (begSkip + endSkip),
+					r:      bf,
+					extra:  segs[i].extra}
+				segments = append(segments, s)
+				logger.Info("Add seg offset=", s.offset, "length=", s.length, "extra=", s.extra)
 				d += segs[i].length
-				logger.Info("d, dsLength", d, dsLength)
+				logger.Info("d=", d, "segs[i].length=", segs[i].length, "begSkip=", begSkip,
+					"endSkip=", endSkip)
 			}
 			if d < dsLength {
 				logger.Info("d < dsLength", d, dsLength)
-				//last := segs[len(segs)-1]
-				//segments = append(segments, &segment{last.offset, dsLength - d, bf, unlimitedSize})
 			}
 		} else {
-			segments = append(segments, &segment{offset, dsLength, bf, 0})
+			segments = append(segments,
+				&segment{
+					offset: offset + skipBegin,
+					length: dsLength - (skipBegin + skipEnd),
+					r:      bf,
+					extra:  0})
 		}
 		offset += dsLength
 	}
 	sort.Sort(byOffset{segments})
 	readers := make([]io.Reader, 0)
-	off := uint64(0)
+	off := firstOffset
+	logger.Info("firstoffset=", firstOffset, "lastOffset=", lastOffset)
 	for i := 0; i < len(segments); i++ {
 		r := segments[i].r
 		if segments[i].extra == unlimitedSize {
 			logger.Info("Null reader at offset", segments[i].offset, "length", segments[i].length)
 			readers = append(readers, newNullReader(r, segments[i].length))
-			continue
+		} else {
+			assertError(!((segments[i].offset > off) && (segments[i].extra == 0)),
+				ErrCorrupted, fmt.Sprint("this only happens in corrupted files (1)",
+					" segoff=", segments[i].offset, " off=", off, " extra=", segments[i].extra))
+			logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
+			readers = append(readers, newResetReader(r, int64(segments[i].length)))
 		}
-
-		fillValues := int64(0)
-		assertError(!((segments[i].offset > off) && (segments[i].extra == 0)),
-			ErrCorrupted, "this only happens in corrupted files (1)")
-
-		logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
 		off = segments[i].offset + segments[i].length
-		readers = append(readers, newResetReader(r, fillValues+int64(segments[i].length)))
+		if off >= lastOffset {
+			break
+		}
 	}
 
-	fillValues := int64(0)
-	assertError(off <= size, ErrCorrupted, "this only happens in corrupted files (2)")
+	assertError(off <= lastOffset, ErrCorrupted,
+		fmt.Sprintf("this only happens in corrupted files (2) %d %d", off, lastOffset))
 
-	return newResetReader(io.MultiReader(readers...), int64(size)+fillValues),
-		size + uint64(fillValues)
+	return newResetReader(io.MultiReader(readers...), int64(size)), size
 }
 
 func calcAttrSize(attr *attribute) int64 {
@@ -3824,7 +3913,7 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 		}
 	}
 	// TODO if !zlibFound && !shuffleFound && !fletcher32Found && isSlice {
-	// we can seek first to save time.  Otherwise, it is slow inefficent reading to get to the 
+	// we can seek first to save time.  Otherwise, it is slow inefficent reading to get to the
 	// place we want (or some complicated algorithm).
 	bf, _ := h5.newRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
 	attr := &obj.objAttr
@@ -3842,11 +3931,8 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 		default:
 			chunkSize = sz / int64(attr.dimensions[0])
 		}
-		skip := chunkSize * attr.firstDim
 		sliceSize := chunkSize * (attr.lastDim - attr.firstDim)
-		var err error
-		bff, err = newSkipReader(bf, skip, sliceSize, sz)
-		thrower.ThrowIfError(err)
+		bff = newResetReader(bf, sliceSize)
 	} else {
 		bff = newResetReader(bf, sz)
 	}
@@ -3860,17 +3946,26 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 	var values interface{}
 	logger.Info("getDataAttr, class", typeNames[attr.class],
 		"length", attr.length, "rem", bf.(remReader).Rem(), "dims=", attr.dimensions)
+	dimensions := attr.dimensions
+	if attr.isSlice {
+		nd := make([]uint64, len(dimensions))
+		copy(nd, dimensions)
+		if len(dimensions) > 0 {
+			nd[0] = uint64(attr.lastDim - attr.firstDim)
+		}
+		dimensions = nd
+	}
 	switch attr.class {
 	case typeFixedPoint: // fixed-point
 		switch attr.length {
 		case 1:
-			values = allocInt8s(bf, attr.dimensions, attr.signed)
+			values = allocInt8s(bf, dimensions, attr.signed)
 		case 2:
-			values = allocShorts(bf, attr.dimensions, attr.endian, attr.signed)
+			values = allocShorts(bf, dimensions, attr.endian, attr.signed)
 		case 4:
-			values = allocInts(bf, attr.dimensions, attr.endian, attr.signed)
+			values = allocInts(bf, dimensions, attr.endian, attr.signed)
 		case 8:
-			values = allocInt64s(bf, attr.dimensions, attr.endian, attr.signed)
+			values = allocInt64s(bf, dimensions, attr.endian, attr.signed)
 		default:
 			fail(fmt.Sprintf("bad size: %d", attr.length))
 		}
@@ -3879,41 +3974,41 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 	case typeFloatingPoint: // floating-point
 		switch attr.length {
 		case 4:
-			values = allocFloats(bf, attr.dimensions, attr.endian)
+			values = allocFloats(bf, dimensions, attr.endian)
 			logger.Info("done alloc floats, rem=", bf.(remReader).Rem())
 		case 8:
-			values = allocDoubles(bf, attr.dimensions, attr.endian)
+			values = allocDoubles(bf, dimensions, attr.endian)
 		default:
 			fail(fmt.Sprintf("bad size: %d", attr.length))
 		}
 		return values // already converted
 
 	case typeString: // string
-		logger.Info("regular string", len(attr.dimensions))
-		return h5.allocRegularStrings(bf, attr.dimensions) // already converted
+		logger.Info("regular string", len(dimensions))
+		return h5.allocRegularStrings(bf, dimensions) // already converted
 
 	case typeVariableLength:
-		logger.Info("dimensions=", attr.dimensions)
+		logger.Info("dimensions=", dimensions)
 		if attr.vtType == 1 {
 			// It's a string
 			// TODO: use the padding and character set information
-			logger.Info("variable-length string", len(attr.dimensions))
-			return h5.allocStrings(bf, attr.dimensions) // already converted
+			logger.Info("variable-length string", len(dimensions))
+			return h5.allocStrings(bf, dimensions) // already converted
 		}
 		logger.Info("variable-length type",
 			typeNames[int(attr.children[0].class)])
-		logger.Info("dimensions=", attr.dimensions)
-		values = h5.allocVariable(bf, attr.dimensions, attr.children[0])
+		logger.Info("dimensions=", dimensions)
+		values = h5.allocVariable(bf, dimensions, attr.children[0])
 		logger.Infof("vl kind %T", values)
 		return values
 
 	case typeCompound:
 		logger.Info("Alloc compound rem=", bf.(remReader).Rem())
-		values = h5.allocCompounds(bf, attr.dimensions, attr)
+		values = h5.allocCompounds(bf, dimensions, attr)
 		return values
 
 	case typeReference:
-		return h5.allocReferences(bf, attr.dimensions) // already converted
+		return h5.allocReferences(bf, dimensions) // already converted
 
 	case typeEnumerated:
 		enumAttr := attr.children[0]
@@ -3921,13 +4016,13 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		case typeFixedPoint: // fixed-point
 			switch enumAttr.length {
 			case 1:
-				values = allocInt8s(bf, attr.dimensions, enumAttr.signed)
+				values = allocInt8s(bf, dimensions, enumAttr.signed)
 			case 2:
-				values = allocShorts(bf, attr.dimensions, enumAttr.endian, enumAttr.signed)
+				values = allocShorts(bf, dimensions, enumAttr.endian, enumAttr.signed)
 			case 4:
-				values = allocInts(bf, attr.dimensions, enumAttr.endian, enumAttr.signed)
+				values = allocInts(bf, dimensions, enumAttr.endian, enumAttr.signed)
 			case 8:
-				values = allocInt64s(bf, attr.dimensions, enumAttr.endian, enumAttr.signed)
+				values = allocInt64s(bf, dimensions, enumAttr.endian, enumAttr.signed)
 			default:
 				fail(fmt.Sprintf("bad size: %d", enumAttr.length))
 			}
@@ -3935,9 +4030,9 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		case typeFloatingPoint: // floating-point
 			switch enumAttr.length {
 			case 4:
-				values = allocFloats(bf, attr.dimensions, enumAttr.endian)
+				values = allocFloats(bf, dimensions, enumAttr.endian)
 			case 8:
-				values = allocDoubles(bf, attr.dimensions, enumAttr.endian)
+				values = allocDoubles(bf, dimensions, enumAttr.endian)
 			default:
 				fail(fmt.Sprintf("bad size: %d", attr.length))
 			}
@@ -3950,7 +4045,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		// TODO: this probably isn't right
 		a := attr.children[0]
 		a.dimensionality = attr.dimensionality
-		a.dimensions = attr.dimensions
+		a.dimensions = dimensions
 		cbf := bf.(remReader)
 		pad := 0
 		switch attr.children[0].class {
@@ -3980,7 +4075,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		return h5.getDataAttr(cbf, a)
 
 	case typeOpaque:
-		return allocOpaque(bf, attr.dimensions, attr.length)
+		return allocOpaque(bf, dimensions, attr.length)
 
 	default:
 		logger.Fatal("unhandled type, getDataAttr", attr.class)

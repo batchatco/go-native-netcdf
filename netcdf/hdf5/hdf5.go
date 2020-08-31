@@ -286,7 +286,7 @@ type linkInfo struct {
 }
 
 var (
-	logger = util.NewLogger()
+	logger = internal.NewLogger()
 	log    = "don't use the log package" // prevents usage of standard log package
 )
 
@@ -333,7 +333,22 @@ func assertError(condition bool, err error, msg string) {
 // SetLogLevel sets the logging level to the given level, and returns
 // the old level. This is for internal debugging use. The log messages
 // are not expected to make much sense to anyone but the developers.
-var SetLogLevel = logger.SetLogLevel
+// The lowest level is 0 (no error logs at all) and the highest level is
+// 3 (errors, warnings and debug messages).
+func SetLogLevel(level int) int {
+	old := logger.LogLevel()
+	switch level {
+	case 0:
+		logger.SetLogLevel(internal.LevelFatal)
+	case 1:
+		logger.SetLogLevel(internal.LevelError)
+	case 2:
+		logger.SetLogLevel(internal.LevelWarn)
+	default:
+		logger.SetLogLevel(internal.LevelInfo)
+	}
+	return int(old)
+}
 
 func (h5 *HDF5) newSeek(addr uint64, size int64) remReader {
 	assert(int64(addr) <= h5.fileSize, "bad seek")
@@ -1327,9 +1342,7 @@ func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, rec
 	logger.Info("nr=", nr)
 	logger.Info("depth = ", depth)
 	logger.Info("count before=", bf.Count())
-	old := SetLogLevel(util.LevelError)
 	h5.readRecords(parent, bf, nr, ty)
-	SetLogLevel(old)
 	logger.Info("count after=", bf.Count())
 
 	for i := uint64(0); i <= nr; i++ {
@@ -1346,7 +1359,6 @@ func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, rec
 		len++
 		logger.Infof("cnr=0x%x", cnr)
 		logger.Info("depth=", depth)
-		old := SetLogLevel(util.LevelError)
 		if depth == 1 {
 			logger.Info("Descend into leaf")
 			h5.readBTreeLeaf(parent, cnp, uint64(cnr), recordSize)
@@ -1354,7 +1366,6 @@ func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, rec
 			logger.Info("Descend into node")
 			h5.readBTreeInternal(parent, cnp, uint64(cnr), recordSize, depth-1, nodeSize)
 		}
-		SetLogLevel(old)
 		if depth > 1 {
 			tnr := read16(bf) // total number of records in child node
 			len += 2
@@ -2803,6 +2814,8 @@ func fileSize(file io.ReadSeeker) int64 {
 	return fi
 }
 
+// Open is the implementation of the API netcdf.Open.
+// Using netcdf.Open is preferred over using this directly.
 func Open(fname string) (nc api.Group, err error) {
 	defer thrower.RecoverError(&err)
 	file, err := os.Open(fname)
@@ -2816,6 +2829,8 @@ func Open(fname string) (nc api.Group, err error) {
 	return c, err
 }
 
+// New is the implementation of the API netcdf.New.
+// Using netcdf.New is preferred over using this directly.
 func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 	defer thrower.RecoverError(&err)
 	fileSize := fileSize(file)

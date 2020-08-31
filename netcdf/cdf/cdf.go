@@ -95,7 +95,7 @@ var (
 )
 
 var (
-	logger = util.NewLogger()
+	logger = internal.NewLogger()
 )
 
 func (cdf *CDF) ListVariables() []string {
@@ -107,9 +107,24 @@ func (cdf *CDF) ListSubgroups() []string {
 }
 
 // SetLogLevel sets the logging level to the given level, and returns
-// the old level. This is for internal debugging use.  The log messages
+// the old level. This is for internal debugging use. The log messages
 // are not expected to make much sense to anyone but the developers.
-var SetLogLevel = logger.SetLogLevel
+// The lowest level is 0 (no error logs at all) and the highest level is
+// 3 (errors, warnings and debug messages).
+func SetLogLevel(level int) int {
+	old := logger.LogLevel()
+	switch level {
+	case 0:
+		logger.SetLogLevel(internal.LevelFatal)
+	case 1:
+		logger.SetLogLevel(internal.LevelError)
+	case 2:
+		logger.SetLogLevel(internal.LevelWarn)
+	default:
+		logger.SetLogLevel(internal.LevelInfo)
+	}
+	return int(old)
+}
 
 func fail(message string, err error) {
 	logger.Error(message)
@@ -507,9 +522,9 @@ func (cdf *CDF) Close() {
 	}
 }
 
-// TODO: use hdf5 file refcounting
-// TODO: fake groups with "/" in names
 func (cdf *CDF) GetGroup(group string) (g api.Group, err error) {
+	// TODO: use hdf5 file refcounting
+	// TODO: fake groups with "/" in names
 	defer thrower.RecoverError(&err)
 	if group != "" && group != "/" {
 		return nil, ErrNotFound
@@ -518,6 +533,8 @@ func (cdf *CDF) GetGroup(group string) (g api.Group, err error) {
 	return api.Group(cdf), nil
 }
 
+// Open is the implementation of the API netcdf.Open.
+// Using netcdf.Open is preferred over using this directly.
 func Open(fname string) (api.Group, error) {
 	file, err := os.Open(fname)
 	if err != nil {
@@ -530,6 +547,8 @@ func Open(fname string) (api.Group, error) {
 	return c, err
 }
 
+// New is the implementation of the API netcdf.New.
+// Using netcdf.New is preferred over using this directly.
 func New(file api.ReadSeekerCloser) (ag api.Group, err error) {
 	defer thrower.RecoverError(&err)
 	c := &CDF{file: file, fileRefCount: 1}

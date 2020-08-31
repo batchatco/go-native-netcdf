@@ -385,6 +385,8 @@ func hasValidNames(am api.AttributeMap) bool {
 	return true
 }
 
+// AddGlobalAttrs adds global attributes to be written out.
+// Use util.NewOrderedMap to create attribute maps.
 func (cw *CDFWriter) AddGlobalAttrs(attrs api.AttributeMap) error {
 	if !hasValidNames(attrs) {
 		return ErrInvalidName
@@ -393,6 +395,8 @@ func (cw *CDFWriter) AddGlobalAttrs(attrs api.AttributeMap) error {
 	return nil
 }
 
+// AddVar adds a variable to be written out.
+// Use util.NewOrderedMap to create attribute maps for the variable.
 func (cw *CDFWriter) AddVar(name string, vr api.Variable) (err error) {
 	defer thrower.RecoverError(&err)
 
@@ -828,6 +832,7 @@ func (cw *CDFWriter) writeData(saved savedVar) {
 	}
 }
 
+// Close writes all the data out and closes the file.
 func (cw *CDFWriter) Close() (err error) {
 	defer thrower.RecoverError(&err)
 	cw.writeAll()
@@ -932,6 +937,9 @@ func (cw *CDFWriter) writeAll() {
 	}
 }
 
+// OpenWriter creates the file and make it available for writing
+// using AddVar and AddGlobalAttrs.  The file must be closed to actually
+// write it out.
 func OpenWriter(fileName string) (*CDFWriter, error) {
 	file, err := os.Create(fileName)
 	if err != nil {

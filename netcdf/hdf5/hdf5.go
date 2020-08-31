@@ -3460,35 +3460,10 @@ func newFletcher32Reader(r io.Reader, size uint64) remReader {
 	return newResetReaderFromBytes(b)
 }
 
-type nullReader struct {
-	r   io.Reader
-	rem uint64
-}
-
-func (r *nullReader) Read(p []byte) (int, error) {
-	thisLen := uint64(len(p))
-	if thisLen > r.rem {
-		thisLen = r.rem
-	}
-	for i := uint64(0); i < thisLen; i++ {
-		p[i] = 0
-	}
-	r.rem -= thisLen
-	if thisLen > 0 {
-		return int(thisLen), nil
-	}
-	return 0, io.EOF
-}
-
-func newNullReader(r io.Reader, size uint64) io.Reader {
-	return io.Reader(&nullReader{r, size})
-}
-
 type segment struct {
 	offset uint64
 	length uint64
 	r      io.Reader
-	extra  uint64
 }
 
 type segments []*segment
@@ -3505,61 +3480,7 @@ func (s byOffset) Less(i, j int) bool {
 	if s.segments[i].offset > s.segments[j].offset {
 		return false
 	}
-	return s.segments[i].extra < s.segments[j].extra
-}
-
-func getSegs(offset uint64, offsets []uint64, segs []*segment, dims []uint64, layout []uint64,
-	dtlen uint32) []*segment {
-	if len(layout) == 1 {
-		offset += offsets[0] * uint64(dtlen)
-		last := uint64(layout[0]) + offsets[0]
-		extra := uint64(0)
-		if last > dims[0] {
-			extra = (last - dims[0]) * uint64(dtlen)
-			last = dims[0]
-		}
-		n := last - offsets[0]
-		segs = append(segs, &segment{
-			offset: offset,
-			length: n * uint64(dtlen),
-			r:      nil,
-			extra:  extra})
-		if extra > 0 {
-			segs = append(segs, &segment{
-				offset: offset,
-				length: extra,
-				r:      nil,
-				extra:  unlimitedSize})
-		}
-		return segs
-	}
-	skipsize := uint64(dtlen)
-	for i := 1; i < len(dims); i++ {
-		skipsize *= uint64(dims[i])
-	}
-	offset += skipsize * offsets[0]
-	last := uint64(layout[0]) + offsets[0]
-	extra := uint64(0)
-	extraSkipsize := uint64(dtlen)
-	for i := 1; i < len(layout); i++ {
-		extraSkipsize *= uint64(layout[i])
-	}
-	if last > dims[0] {
-		extra = (last - dims[0]) * extraSkipsize
-		last = dims[0]
-	}
-	for i := offsets[0]; i < last; i++ {
-		segs = getSegs(offset, offsets[1:], segs, dims[1:], layout[1:], dtlen)
-		offset += skipsize
-	}
-	if extra > 0 {
-		segs = append(segs, &segment{
-			offset: offset,
-			length: extra,
-			r:      nil,
-			extra:  unlimitedSize})
-	}
-	return segs
+	return true
 }
 
 func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
@@ -3657,51 +3578,11 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 				thrower.ThrowIfError(err)
 			}
 		}
-		// TODO: make N readers depending upon layout.  Then sort them and make a multidimensional
-		// reader.
-		logger.Info("layout", obj.objAttr.layout, "dimensions", obj.objAttr.dimensions)
-		if len(obj.objAttr.layout) > 0 {
-			segs := getSegs(0, val.offsets, nil, obj.objAttr.dimensions, obj.objAttr.layout,
-				obj.objAttr.length)
-			d := firstOffset
-			for i := range segs {
-				if d+segs[i].length < firstOffset {
-					d += segs[i].length
-					continue
-				}
-				if d >= lastOffset {
-					break
-				}
-				begSkip := uint64(0)
-				endSkip := uint64(0)
-				if firstOffset >= d && firstOffset < d+segs[i].length {
-					begSkip = (firstOffset - d)
-				}
-				if d+segs[i].length > lastOffset {
-					endSkip = d + segs[i].length - lastOffset
-				}
-				s := &segment{
-					offset: segs[i].offset + begSkip,
-					length: segs[i].length - (begSkip + endSkip),
-					r:      bf,
-					extra:  segs[i].extra}
-				segments = append(segments, s)
-				logger.Info("Add seg offset=", s.offset, "length=", s.length, "extra=", s.extra)
-				d += segs[i].length
-				logger.Info("d=", d, "segs[i].length=", segs[i].length, "begSkip=", begSkip,
-					"endSkip=", endSkip)
-			}
-			if d < dsLength {
-				logger.Info("d < dsLength", d, dsLength)
-			}
-		} else {
-			segments = append(segments,
-				&segment{
-					offset: offset + skipBegin,
-					length: dsLength - (skipBegin + skipEnd),
-					r:      bf,
-					extra:  0})
-		}
+		segments = append(segments,
+			&segment{
+				offset: offset + skipBegin,
+				length: dsLength - (skipBegin + skipEnd),
+				r:      bf})
 		offset += dsLength
 	}
 	sort.Sort(byOffset{segments})
@@ -3710,22 +3591,16 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	logger.Info("firstoffset=", firstOffset, "lastOffset=", lastOffset)
 	for i := 0; i < len(segments); i++ {
 		r := segments[i].r
-		if segments[i].extra == unlimitedSize {
-			logger.Info("Null reader at offset", segments[i].offset, "length", segments[i].length)
-			readers = append(readers, newNullReader(r, segments[i].length))
-		} else {
-			assertError(!((segments[i].offset > off) && (segments[i].extra == 0)),
-				ErrCorrupted, fmt.Sprint("this only happens in corrupted files (1)",
-					" segoff=", segments[i].offset, " off=", off, " extra=", segments[i].extra))
-			logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
-			readers = append(readers, newResetReader(r, int64(segments[i].length)))
-		}
+		assertError(segments[i].offset <= off,
+			ErrCorrupted, fmt.Sprint("this only happens in corrupted files (1)",
+				" segoff=", segments[i].offset, " off=", off))
+		logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
+		readers = append(readers, newResetReader(r, int64(segments[i].length)))
 		off = segments[i].offset + segments[i].length
 		if off >= lastOffset {
 			break
 		}
 	}
-
 	assertError(off <= lastOffset, ErrCorrupted,
 		fmt.Sprintf("this only happens in corrupted files (2) %d %d", off, lastOffset))
 
@@ -4326,6 +4201,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 }
 
 func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
+	err = ErrInternal
 	defer thrower.RecoverError(&err)
 	found := h5.findVariable(varName)
 	if found == nil {
@@ -4337,10 +4213,12 @@ func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 		return nil, ErrNotFound
 	}
 	found.sortAttrList()
+	dims := h5.getDimensions(found)
+	attrs := getAttributes(found.attrlist)
 	return &api.Variable{
 			Values:     data,
-			Dimensions: h5.getDimensions(found),
-			Attributes: getAttributes(found.attrlist)},
+			Dimensions: dims,
+			Attributes: attrs},
 		nil
 }
 
@@ -4366,9 +4244,11 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 		}
 		return data, nil
 	}
+	dims := h5.getDimensions(found)
+	attrs := getAttributes(found.attrlist)
 	return internal.NewSlicer(getSlice, int64(found.objAttr.dimensions[0]),
-		h5.getDimensions(found),
-		getAttributes(found.attrlist)), nil
+		dims,
+		attrs), nil
 }
 
 func (h5 *HDF5) ListSubgroups() []string {

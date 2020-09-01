@@ -987,6 +987,47 @@ func TestUnlimited(t *testing.T) {
 	checkAll(t, nc, unlims)
 }
 
+func TestVariableLength(t *testing.T) {
+	fileName := "testvlen" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	vars := keyValList{
+		{"v", api.Variable{
+			Values: [][]int32{
+				{}, // zero
+				{1},
+				{2, 3},
+				{4, 5, 6},
+				{7, 8, 9, 10},
+				{11, 12, 13, 14, 15},
+			},
+			Dimensions: []string{"dim"},
+			Attributes: nilMap}},
+		{"v2", api.Variable{
+			Values: [][]int32{
+				{11, 12, 13, 14, 15},
+				{7, 8, 9, 10},
+				{4, 5, 6},
+				{2, 3},
+				{1},
+				{}, // zero
+			},
+			Dimensions: []string{"dim"},
+			Attributes: nilMap}},
+	}
+	checkAll(t, nc, vars)
+}
+
 func TestUnlimitedEmpty(t *testing.T) {
 	fileName := "testempty" // base filename without extension
 	genName := ncGen(t, fileName)

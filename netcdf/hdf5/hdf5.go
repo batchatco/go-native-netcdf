@@ -39,7 +39,6 @@ const (
 
 // For some specific things that don't seem to happen
 const (
-	createEmptySlice                = false // consider just deleting the code
 	parseTime                       = false
 	parseCreationOrder              = false
 	parseMultiDimensionalReferences = false
@@ -216,10 +215,6 @@ type enumerated struct {
 }
 
 type opaque []byte
-
-type variableLength struct {
-	values interface{} // is a slice of something
-}
 
 type dataBlock struct {
 	offset     uint64 // offset of data
@@ -3218,16 +3213,31 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 		err = binary.Read(bf, binary.LittleEndian, &index)
 		thrower.ThrowIfError(err)
 		logger.Infof("length %d addr 0x%x index %d\n", length, addr, index)
+		var val0 interface{}
+		var s []byte
+		var bff remReader
 		if length == 0 {
-			return variableLength{}
+			// If there's no value to read, we fake one to get the type.
+			fakeAttr := attr
+			fakeAttr.dimensions = nil
+			b := make([]byte, attr.length)
+			bf := newResetReaderFromBytes(b)
+			val0 = h5.getDataAttr(bf, fakeAttr)
+		} else {
+			s = h5.readGlobalHeap(addr, index)
+			bff = newResetReaderFromBytes(s)
+			val0 = h5.getDataAttr(bff, attr)
 		}
-		s := h5.readGlobalHeap(addr, index)
-		bff := newResetReaderFromBytes(s)
-		values := make([]interface{}, length)
-		for i := 0; i < int(length); i++ {
-			values[i] = h5.getDataAttr(bff, attr)
+		t := reflect.ValueOf(val0).Type()
+		sl := reflect.MakeSlice(reflect.SliceOf(t), int(length), int(length))
+		if length > 0 {
+			sl.Index(0).Set(reflect.ValueOf(val0))
+			for i := 1; i < int(length); i++ {
+				val := h5.getDataAttr(bff, attr)
+				sl.Index(i).Set(reflect.ValueOf(val))
+			}
 		}
-		return variableLength{convert(values)}
+		return sl.Interface()
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
@@ -3241,11 +3251,7 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 		t := reflect.ValueOf(vals[0]).Type()
 		vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))
 		for i := 0; i < int(thisDim); i++ {
-			if vals[i] == nil {
-				vals2.Index(i).Set(reflect.Zero(t))
-			} else {
-				vals2.Index(i).Set(reflect.ValueOf(vals[i]))
-			}
+			vals2.Index(i).Set(reflect.ValueOf(vals[i]))
 		}
 		logger.Infof("Return val type %T", vals2.Interface())
 		return vals2.Interface()
@@ -3885,12 +3891,11 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 			logger.Info("variable-length string", len(dimensions))
 			return h5.allocStrings(bf, dimensions) // already converted
 		}
-		logger.Info("variable-length type",
-			typeNames[int(attr.children[0].class)])
+		logger.Info("variable-length type", typeNames[int(attr.children[0].class)])
 		logger.Info("dimensions=", dimensions)
 		values = h5.allocVariable(bf, dimensions, attr.children[0])
 		logger.Infof("vl kind %T", values)
-		return values
+		return convert(values)
 
 	case typeCompound:
 		logger.Info("Alloc compound rem=", bf.(remReader).Rem())
@@ -4049,7 +4054,6 @@ func getAttributes(unfiltered []attribute) api.AttributeMap {
 				fixit := func(value interface{}) interface{} {
 					switch v := value.(type) {
 					case string:
-					case variableLength:
 					case float64:
 					case float32:
 					case int64:
@@ -4162,13 +4166,12 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 			continue
 		}
 		logger.Infof("DIMENSION_LIST=%T 0x%x", a.value, a.value)
-		varLen := a.value.([]variableLength)
+		varLen := a.value.([][]int64)
 		for _, v := range varLen {
-			for i, c := range v.values.([]int64) {
+			for i, addr := range v {
 				// Each dimension in the dimension list points to an object address in the global heap
 				// TODO: fix this hack to get full 64-bit addresses
-				addr := c
-				logger.Infof("dimension list %d 0x%x (0x%x)", i, c, addr)
+				logger.Infof("dimension list %d 0x%x)", i, addr)
 				oaddr := uint64(addr)
 
 				dim := findDim(h5.rootObject, oaddr, "")
@@ -4360,28 +4363,21 @@ func (h5 *HDF5) ListVariables() []string {
 }
 
 func emptySlice(v interface{}) reflect.Value {
-	if createEmptySlice {
-		// It actually has been executed before, but we no longer use it.
-		// Perhaps delete.
-		top := reflect.ValueOf(v)
-		elemType := top.Type().Elem()
-		slices := 0
-		// count how many slices we need to make
-		for elemType.Kind() == reflect.Slice {
-			elemType = elemType.Elem()
-			slices++
-		}
-		// here's one slice
-		empty := reflect.MakeSlice(reflect.SliceOf(elemType), 0, 0)
-		// here are the rest
-		for i := 1; i < slices; i++ {
-			empty = reflect.MakeSlice(reflect.SliceOf(empty.Type()), 0, 0)
-		}
-		return empty
-	} else {
-		fail("this empty slice code has never been executed before")
+	top := reflect.ValueOf(v)
+	elemType := top.Type().Elem()
+	slices := 0
+	// count how many slices we need to make
+	for elemType.Kind() == reflect.Slice {
+		elemType = elemType.Elem()
+		slices++
 	}
-	panic("never happens")
+	// here's one slice
+	empty := reflect.MakeSlice(reflect.SliceOf(elemType), 0, 0)
+	// here are the rest
+	for i := 1; i < slices; i++ {
+		empty = reflect.MakeSlice(reflect.SliceOf(empty.Type()), 0, 0)
+	}
+	return empty
 }
 
 func undoInterfaces(v interface{}) reflect.Value {
@@ -4399,7 +4395,6 @@ func undoInterfaces(v interface{}) reflect.Value {
 	for i := 1; i < val.Len(); i++ {
 		underlying = undoInterfaces(top.Index(i).Interface())
 		if !underlying.Type().AssignableTo(val.Type().Elem()) {
-			logger.Info("Can't assign, probably a compound")
 			return top
 		}
 		val.Index(i).Set(underlying)

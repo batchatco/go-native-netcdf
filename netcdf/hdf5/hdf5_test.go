@@ -551,6 +551,13 @@ func TestTypes(t *testing.T) {
 	}
 	defer nc.Close()
 	checkAll(t, nc, values)
+	h5, has := nc.(*HDF5)
+	if has {
+		ty := h5.findType("strx1")
+		if ty != "string" {
+			t.Error("strx1", "bad type", ty)
+		}
+	}
 }
 
 func TestGlobalAttrs(t *testing.T) {
@@ -872,6 +879,8 @@ func TestByte(t *testing.T) {
 }
 
 func TestCompound(t *testing.T) {
+	old := SetLogLevel(3)
+	defer SetLogLevel(old)
 	genName := ncGen(t, "testcompounds")
 	if genName == "" {
 		t.Error(errorNcGen)
@@ -922,6 +931,56 @@ func TestCompound(t *testing.T) {
 		},
 	}
 	checkAll(t, nc, values)
+	h5, has := nc.(*HDF5)
+	if has {
+		for _, v := range values {
+			_ = h5.findType(v.name)
+		}
+	}
+}
+
+func TestSimple(t *testing.T) {
+	genName := ncGen(t, "testsimple")
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	//SetLogLevel(util.LevelInfo)
+	defer nc.Close()
+
+	values := keyValList{
+		keyVal{"anA",
+			api.Variable{
+				Values:     compound{int32(5280)},
+				Dimensions: []string{},
+				Attributes: nilMap},
+		},
+		keyVal{"aB",
+			api.Variable{
+				Values:     compound{float32(98.6)},
+				Dimensions: []string{},
+				Attributes: nilMap},
+		},
+		keyVal{"scalar",
+			api.Variable{
+				Values:     int32(5),
+				Dimensions: []string{},
+				Attributes: nilMap},
+		},
+	}
+	checkAll(t, nc, values)
+	h5, has := nc.(*HDF5)
+	if has {
+		for _, v := range values {
+			ty := h5.findType(v.name)
+			t.Log("type for", v.name, ty)
+		}
+	}
 }
 
 func TestOneDim(t *testing.T) {
@@ -1346,6 +1405,11 @@ func checkAllAttrOption(t *testing.T, nc api.Group, values keyValList, hasAttr b
 		}
 		if !values.check(t, name, *vr) {
 			t.Error("mismatch")
+		}
+		h5, has := nc.(*HDF5)
+		if has {
+			ty := h5.findType(name)
+			t.Log("type for", name, ty)
 		}
 	}
 }

@@ -956,13 +956,13 @@ func TestSimple(t *testing.T) {
 	values := keyValList{
 		keyVal{"anA",
 			api.Variable{
-				Values:     compound{int32(5280)},
+				Values:     compound{int16(55), int32(5280)},
 				Dimensions: []string{},
 				Attributes: nilMap},
 		},
 		keyVal{"aB",
 			api.Variable{
-				Values:     compound{float32(98.6)},
+				Values:     compound{float32(98.6), float64(-273.3)},
 				Dimensions: []string{},
 				Attributes: nilMap},
 		},

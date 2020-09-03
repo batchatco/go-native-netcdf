@@ -52,7 +52,7 @@ var (
 	parseSBExtension     = false // happens, not useful
 	parseHeapDirectBlock = false // happens, not useful
 	useIndirectBlocks    = false // false until we verify the code
-	allowBitfields       = false
+	allowBitfields       = false // not used in NetCDF
 )
 
 const ncpKey = "_NCProperties"
@@ -77,6 +77,7 @@ var (
 	ErrSuperblock              = errors.New("superblock extension not supported")
 	ErrIndirectBlocks          = errors.New("indirect blocks not implemented")
 	ErrBitfield                = errors.New("bitfields not supported")
+	ErrArrays                  = errors.New("arrays not supported")
 )
 
 const (
@@ -1056,7 +1057,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		h5.printDatatype(obj, bf, nil, 0, &arrayAttr)
 		attr.children = append(attr.children, arrayAttr)
 		if df != nil && df.Rem() > 0 {
-			logger.Warn("Using an array")
+			logger.Info("Using an array in an attribute")
 			attr.value = h5.getDataAttr(df, *attr)
 		}
 

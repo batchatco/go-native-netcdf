@@ -58,7 +58,7 @@ var (
 const ncpKey = "_NCProperties"
 
 var (
-	ErrBadMagic                = errors.New("bad magic number")
+	ErrBadMagic                = errors.New("bad magic number -- not an HDF5 file")
 	ErrUnsupportedFilter       = errors.New("unsupported filter found")
 	ErrUnknownCompression      = errors.New("unknown compression")
 	ErrInternal                = errors.New("internal error")
@@ -4093,6 +4093,32 @@ func (h5 *HDF5) findVariable(varName string) *object {
 	return obj
 }
 
+func (h5 *HDF5) findGlobalAttrType(attrName string) string {
+	for _, attr := range h5.rootObject.attrlist {
+		if attr.name != attrName {
+			continue
+		}
+		origNames := map[string]bool{}
+		return h5.printType(attr, origNames)
+	}
+	return ""
+}
+
+func (h5 *HDF5) findVarAttrType(varName string, attrName string) string {
+	obj := h5.findVariable(varName)
+	if obj == nil {
+		return ""
+	}
+	for _, attr := range obj.attrlist {
+		if attr.name != attrName {
+			continue
+		}
+		origNames := map[string]bool{}
+		return h5.printType(attr, origNames)
+	}
+	return ""
+}
+
 func (h5 *HDF5) findType(varName string) string {
 	obj := h5.findVariable(varName)
 	if obj == nil {
@@ -4107,7 +4133,6 @@ func (h5 *HDF5) findSignature(signature string, origNames map[string]bool) strin
 		if origNames[varName] {
 			continue
 		}
-		origNames[varName] = true
 		hasClass := false
 		hasCoordinates := false
 		hasName := false
@@ -4135,8 +4160,10 @@ func (h5 *HDF5) findSignature(signature string, origNames map[string]bool) strin
 			// this is a variable
 			continue
 		}
-		logger.Warn("This is a type:", obj.name)
+		logger.Info("This is a type", obj.name)
+		origNames[varName] = true
 		sig := h5.printType(obj.objAttr, origNames)
+		origNames[varName] = false
 		if sig != "" && sig == signature {
 			return obj.name
 		}
@@ -4174,15 +4201,27 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 		return "string"
 
 	case typeOpaque:
-		// TODO: find name of type
-		if attr.value == nil {
-			return "opaque"
+		signature := fmt.Sprintf("opaque(%d)", attr.length)
+		namedType := h5.findSignature(signature, origNames)
+		if namedType != "" {
+			return namedType
 		}
-		return "opaque:" + attr.value.(string) // why isn't the name stored in attr.name?
+		return signature
 
-	case typeCompound: // compound
+	case typeCompound:
 		// TODO: find name of type
-		return "compound" // TODO, make a signature
+		members := make([]string, len(attr.children))
+		for i, cattr := range attr.children {
+			ty := h5.printType(cattr, origNames)
+			members[i] = fmt.Sprintf("%s %s", cattr.name, ty)
+		}
+		interior := strings.Join(members, "; ")
+		signature := fmt.Sprintf("compound { %s; };", interior)
+		namedType := h5.findSignature(signature, origNames)
+		if namedType != "" {
+			return namedType
+		}
+		return signature
 
 	case typeEnumerated:
 		// TODO: find name of type
@@ -4208,11 +4247,42 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 			// It's a string
 			return "string"
 		}
-		return "vlen" // TODO
+		vAttr := attr.children[0]
+		ty := h5.printType(vAttr, origNames)
+		if ty == "" {
+			return "vlen"
+		}
+		signature := fmt.Sprintf("%s(*)", ty)
+		namedType := h5.findSignature(signature, origNames)
+		if namedType != "" {
+			return namedType
+		}
+		return signature
 
 	case typeArray:
 		// this never appears in NetCDF
-		return "array" // TODO
+		arrayAttr := attr.children[0]
+		ty := h5.printType(arrayAttr, origNames)
+		if ty == "" {
+			return "array"
+		}
+		dStr := make([]string, len(attr.dimensions))
+		for i, d := range attr.dimensions {
+			dStr[i] = fmt.Sprintf("%d", d)
+		}
+		dims := strings.Join(dStr, ",")
+		signature := fmt.Sprintf("%s(%s)", ty, dims)
+		namedType := h5.findSignature(signature, origNames)
+		if namedType != "" {
+			return namedType
+		}
+		return signature
+
+	case typeBitField:
+		return "bitfield"
+
+	case typeReference:
+		return "reference"
 	}
 	fail(fmt.Sprint("bogus type not handled: ", attr.class, attr.length))
 	panic("never gets here")

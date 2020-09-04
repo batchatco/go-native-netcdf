@@ -1,0 +1,21 @@
+netcdf testsimple {
+types:
+	compound AAA {
+		short s;
+		int i;
+	};
+	compound BBB {
+		float x;
+		double y;
+	};
+
+variables:
+	AAA anA;
+	BBB aB;
+	int scalar;
+
+data:
+	anA = { 55, 5280 };
+	aB = { 98.6, -273.3 };
+	scalar = 5;
+}

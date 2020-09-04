@@ -18,7 +18,7 @@ func TestSlicer(t *testing.T) {
 		{10, 11, 12, 13, 14},
 		{15, 16, 17, 18, 19}}
 	contents := keyValList{
-		{"tid", api.Variable{
+		{"tid", "", api.Variable{
 			Values:     tidValues,
 			Attributes: nilMap,
 			Dimensions: []string{"lat", "lon"}}},
@@ -37,6 +37,8 @@ func TestSlicer(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	h5, _ := nc.(*HDF5)
+	baseType := h5.findType("tid")
 	// Grab slices of various sizes (including 0 and 4) and see if they match expected.
 	for sliceSize := 0; sliceSize <= 4; sliceSize++ {
 		for i := 0; i < (4 - sliceSize); i++ {
@@ -51,12 +53,12 @@ func TestSlicer(t *testing.T) {
 				Attributes: slicer.Attributes()}
 			tid := contents[0]
 			exp := keyValList{
-				{tid.name, api.Variable{
+				{tid.name, "byte", api.Variable{
 					Values:     tidValues[i : i+sliceSize],
 					Dimensions: tid.val.Dimensions,
 					Attributes: tid.val.Attributes}},
 			}
-			if !exp.check(t, "tid", got) {
+			if !exp.check(t, "tid", baseType, got) {
 				t.Error("fail")
 			}
 		}

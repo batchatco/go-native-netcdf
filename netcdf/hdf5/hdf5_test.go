@@ -17,8 +17,9 @@ const errorNcGen = "Error running ncgen command from netcdf package"
 const errorNcFilter = "Error running h5repack command from hdf5 package"
 
 type keyVal struct {
-	name string
-	val  api.Variable
+	name     string
+	baseType string // not including dimensions
+	val      api.Variable
 }
 
 type keyValList []keyVal
@@ -26,135 +27,135 @@ type keyValList []keyVal
 var nilMap = &util.OrderedMap{}
 
 var values = keyValList{
-	{"str", api.Variable{
+	{"str", "string", api.Variable{
 		Values:     "a",
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"strx1", api.Variable{
+	{"strx1", "string", api.Variable{
 		Values:     []string{"a"},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"strx2", api.Variable{
+	{"strx2", "string", api.Variable{
 		Values:     [][]string{{"ab", "cd"}, {"ef", "gh"}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"f32", api.Variable{
+	{"f32", "float", api.Variable{
 		Values:     float32(-10.1),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"f32x1", api.Variable{
+	{"f32x1", "float", api.Variable{
 		Values:     []float32{-10.1},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"f32x2", api.Variable{
+	{"f32x2", "float", api.Variable{
 		Values:     [][]float32{{-10.1, 10.1}, {-20.2, 20.2}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"f64", api.Variable{
+	{"f64", "double", api.Variable{
 		Values:     float64(-10.1),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"f64x1", api.Variable{
+	{"f64x1", "double", api.Variable{
 		Values:     []float64{-10.1},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"f64x2", api.Variable{
+	{"f64x2", "double", api.Variable{
 		Values:     [][]float64{{-10.1, 10.1}, {-20.2, 20.2}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i8", api.Variable{
+	{"i8", "byte", api.Variable{
 		Values:     int8(-10),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i8x1", api.Variable{
+	{"i8x1", "byte", api.Variable{
 		Values:     []int8{-10},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i8x2", api.Variable{
+	{"i8x2", "byte", api.Variable{
 		Values:     [][]int8{{-10, 10}, {-20, 20}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui8", api.Variable{
+	{"ui8", "ubyte", api.Variable{
 		Values:     uint8(10),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui8x1", api.Variable{
+	{"ui8x1", "ubyte", api.Variable{
 		Values:     []uint8{10},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui8x2", api.Variable{
+	{"ui8x2", "ubyte", api.Variable{
 		Values:     [][]uint8{{10, 20}, {20, 30}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i16", api.Variable{
+	{"i16", "short", api.Variable{
 		Values:     int16(-10000),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i16x1", api.Variable{
+	{"i16x1", "short", api.Variable{
 		Values:     []int16{-10000},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i16x2", api.Variable{
+	{"i16x2", "short", api.Variable{
 		Values:     [][]int16{{-10000, 10000}, {-20000, 20000}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui16", api.Variable{
+	{"ui16", "ushort", api.Variable{
 		Values:     uint16(10000),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui16x1", api.Variable{
+	{"ui16x1", "ushort", api.Variable{
 		Values:     []uint16{10000},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui16x2", api.Variable{
+	{"ui16x2", "ushort", api.Variable{
 		Values:     [][]uint16{{10000, 20000}, {20000, 30000}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i32", api.Variable{
+	{"i32", "int", api.Variable{
 		Values:     int32(-10000000),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i32x1", api.Variable{
+	{"i32x1", "int", api.Variable{
 		Values:     []int32{-10000000},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i32x2", api.Variable{
+	{"i32x2", "int", api.Variable{
 		Values:     [][]int32{{-10000000, 10000000}, {-20000000, 20000000}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui32", api.Variable{
+	{"ui32", "uint", api.Variable{
 		Values:     uint32(10000000),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui32x1", api.Variable{
+	{"ui32x1", "uint", api.Variable{
 		Values:     []uint32{10000000},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui32x2", api.Variable{
+	{"ui32x2", "uint", api.Variable{
 		Values:     [][]uint32{{10000000, 20000000}, {20000000, 30000000}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i64", api.Variable{
+	{"i64", "int64", api.Variable{
 		Values:     int64(-10000000000),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i64x1", api.Variable{
+	{"i64x1", "int64", api.Variable{
 		Values:     []int64{-10000000000},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i64x2", api.Variable{
+	{"i64x2", "int64", api.Variable{
 		Values:     [][]int64{{-10000000000, 10000000000}, {-20000000000, 20000000000}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui64", api.Variable{
+	{"ui64", "uint64", api.Variable{
 		Values:     uint64(10000000000),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui64x1", api.Variable{
+	{"ui64x1", "uint64", api.Variable{
 		Values:     []uint64{10000000000},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui64x2", api.Variable{
+	{"ui64x2", "uint64", api.Variable{
 		Values:     [][]uint64{{10000000000, 20000000000}, {20000000000, 30000000000}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
@@ -164,137 +165,137 @@ var fvf32 = math.Float32frombits(0x7cf00000)
 var fvf64 = math.Float64frombits(0x479e000000000000)
 
 var fills = keyValList{
-	{"str", api.Variable{
+	{"str", "string", api.Variable{
 		Values:     "",
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"strx1", api.Variable{
+	{"strx1", "string", api.Variable{
 		Values:     []string{""},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"strx2", api.Variable{
+	{"strx2", "string", api.Variable{
 		Values:     [][]string{{"", ""}, {"", ""}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"f32", api.Variable{
+	{"f32", "float", api.Variable{
 		Values:     float32(fvf32),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"f32x1", api.Variable{
+	{"f32x1", "float", api.Variable{
 		Values:     []float32{fvf32},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"f32x2", api.Variable{
+	{"f32x2", "float", api.Variable{
 		Values:     [][]float32{{fvf32, fvf32}, {fvf32, fvf32}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"f64", api.Variable{
+	{"f64", "double", api.Variable{
 		Values:     float64(fvf64),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"f64x1", api.Variable{
+	{"f64x1", "double", api.Variable{
 		Values:     []float64{fvf64},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"f64x2", api.Variable{
+	{"f64x2", "double", api.Variable{
 		Values:     [][]float64{{fvf64, fvf64}, {fvf64, fvf64}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i8", api.Variable{
+	{"i8", "byte", api.Variable{
 		Values:     int8(-127),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i8x1", api.Variable{
+	{"i8x1", "byte", api.Variable{
 		Values:     []int8{-127},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i8x2", api.Variable{
+	{"i8x2", "byte", api.Variable{
 		Values:     [][]int8{{-127, -127}, {-127, -127}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui8", api.Variable{
+	{"ui8", "ubyte", api.Variable{
 		Values:     uint8(255),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui8x1", api.Variable{
+	{"ui8x1", "ubyte", api.Variable{
 		Values:     []uint8{255},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui8x2", api.Variable{
+	{"ui8x2", "ubyte", api.Variable{
 		Values:     [][]uint8{{255, 255}, {255, 255}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i16", api.Variable{
+	{"i16", "short", api.Variable{
 		Values:     int16(-32767),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i16x1", api.Variable{
+	{"i16x1", "short", api.Variable{
 		Values:     []int16{-32767},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i16x2", api.Variable{
+	{"i16x2", "short", api.Variable{
 		Values:     [][]int16{{-32767, -32767}, {-32767, -32767}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui16", api.Variable{
+	{"ui16", "ushort", api.Variable{
 		Values:     uint16(65535),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui16x1", api.Variable{
+	{"ui16x1", "ushort", api.Variable{
 		Values:     []uint16{65535},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui16x2", api.Variable{
+	{"ui16x2", "ushort", api.Variable{
 		Values:     [][]uint16{{65535, 65535}, {65535, 65535}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i32", api.Variable{
+	{"i32", "int", api.Variable{
 		Values:     int32(-2147483647),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i32x1", api.Variable{
+	{"i32x1", "int", api.Variable{
 		Values:     []int32{-2147483647},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i32x2", api.Variable{
+	{"i32x2", "int", api.Variable{
 		Values:     [][]int32{{-2147483647, -2147483647}, {-2147483647, -2147483647}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui32", api.Variable{
+	{"ui32", "uint", api.Variable{
 		Values:     uint32(4294967295),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui32x1", api.Variable{
+	{"ui32x1", "uint", api.Variable{
 		Values:     []uint32{4294967295},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui32x2", api.Variable{
+	{"ui32x2", "uint", api.Variable{
 		Values:     [][]uint32{{4294967295, 4294967295}, {4294967295, 4294967295}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i64", api.Variable{
+	{"i64", "int64", api.Variable{
 		Values:     int64(-9223372036854775806),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i64x1", api.Variable{
+	{"i64x1", "int64", api.Variable{
 		Values:     []int64{-9223372036854775806},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i64x2", api.Variable{
+	{"i64x2", "int64", api.Variable{
 		Values: [][]int64{
 			{-9223372036854775806, -9223372036854775806},
 			{-9223372036854775806, -9223372036854775806}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui64", api.Variable{
+	{"ui64", "uint64", api.Variable{
 		Values:     uint64(18446744073709551614),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui64x1", api.Variable{
+	{"ui64x1", "uint64", api.Variable{
 		Values:     []uint64{18446744073709551614},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui64x2", api.Variable{
+	{"ui64x2", "uint64", api.Variable{
 		Values: [][]uint64{
 			{18446744073709551614, 18446744073709551614},
 			{18446744073709551614, 18446744073709551614}},
@@ -303,136 +304,136 @@ var fills = keyValList{
 }
 
 var fills2 = keyValList{
-	{"str", api.Variable{
+	{"str", "string", api.Variable{
 		Values:     "#",
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"strx1", api.Variable{
+	{"strx1", "string", api.Variable{
 		Values:     []string{"#"},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"strx2", api.Variable{
+	{"strx2", "string", api.Variable{
 		Values:     [][]string{{"#", "#"}, {"#", "#"}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
 
-	{"f32", api.Variable{
+	{"f32", "float", api.Variable{
 		Values:     float32(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"f32x1", api.Variable{
+	{"f32x1", "float", api.Variable{
 		Values:     []float32{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"f32x2", api.Variable{
+	{"f32x2", "float", api.Variable{
 		Values:     [][]float32{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"f64", api.Variable{
+	{"f64", "double", api.Variable{
 		Values:     float64(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"f64x1", api.Variable{
+	{"f64x1", "double", api.Variable{
 		Values:     []float64{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"f64x2", api.Variable{
+	{"f64x2", "double", api.Variable{
 		Values:     [][]float64{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i8", api.Variable{
+	{"i8", "byte", api.Variable{
 		Values:     int8(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i8x1", api.Variable{
+	{"i8x1", "byte", api.Variable{
 		Values:     []int8{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i8x2", api.Variable{
+	{"i8x2", "byte", api.Variable{
 		Values:     [][]int8{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui8", api.Variable{
+	{"ui8", "ubyte", api.Variable{
 		Values:     uint8(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui8x1", api.Variable{
+	{"ui8x1", "ubyte", api.Variable{
 		Values:     []uint8{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui8x2", api.Variable{
+	{"ui8x2", "ubyte", api.Variable{
 		Values:     [][]uint8{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i16", api.Variable{
+	{"i16", "short", api.Variable{
 		Values:     int16(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i16x1", api.Variable{
+	{"i16x1", "short", api.Variable{
 		Values:     []int16{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i16x2", api.Variable{
+	{"i16x2", "short", api.Variable{
 		Values:     [][]int16{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui16", api.Variable{
+	{"ui16", "ushort", api.Variable{
 		Values:     uint16(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui16x1", api.Variable{
+	{"ui16x1", "ushort", api.Variable{
 		Values:     []uint16{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui16x2", api.Variable{
+	{"ui16x2", "ushort", api.Variable{
 		Values:     [][]uint16{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i32", api.Variable{
+	{"i32", "int", api.Variable{
 		Values:     int32(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i32x1", api.Variable{
+	{"i32x1", "int", api.Variable{
 		Values:     []int32{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i32x2", api.Variable{
+	{"i32x2", "int", api.Variable{
 		Values:     [][]int32{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui32", api.Variable{
+	{"ui32", "uint", api.Variable{
 		Values:     uint32(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui32x1", api.Variable{
+	{"ui32x1", "uint", api.Variable{
 		Values:     []uint32{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui32x2", api.Variable{
+	{"ui32x2", "uint", api.Variable{
 		Values:     [][]uint32{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"i64", api.Variable{
+	{"i64", "int64", api.Variable{
 		Values:     int64(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"i64x1", api.Variable{
+	{"i64x1", "int64", api.Variable{
 		Values:     []int64{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"i64x2", api.Variable{
+	{"i64x2", "int64", api.Variable{
 		Values:     [][]int64{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
-	{"ui64", api.Variable{
+	{"ui64", "uint64", api.Variable{
 		Values:     uint64(0),
 		Dimensions: nil,
 		Attributes: nilMap}},
-	{"ui64x1", api.Variable{
+	{"ui64x1", "uint64", api.Variable{
 		Values:     []uint64{0},
 		Dimensions: []string{"dim"},
 		Attributes: nilMap}},
-	{"ui64x2", api.Variable{
+	{"ui64x2", "uint64", api.Variable{
 		Values:     [][]uint64{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: nilMap}},
@@ -551,13 +552,6 @@ func TestTypes(t *testing.T) {
 	}
 	defer nc.Close()
 	checkAll(t, nc, values)
-	h5, has := nc.(*HDF5)
-	if has {
-		ty := h5.findType("strx1")
-		if ty != "string" {
-			t.Error("strx1", "bad type", ty)
-		}
-	}
 }
 
 func TestGlobalAttrs(t *testing.T) {
@@ -596,6 +590,11 @@ func TestGlobalAttrs(t *testing.T) {
 	}
 	got := nc.Attributes()
 	checkAllAttrs(t, got, exp)
+	h5, _ := nc.(*HDF5)
+	for _, a := range got.Keys() {
+		ty := h5.findGlobalAttrType(a)
+		t.Log("global attr type for", a, "=", ty)
+	}
 	defer nc.Close()
 }
 
@@ -879,8 +878,6 @@ func TestByte(t *testing.T) {
 }
 
 func TestCompound(t *testing.T) {
-	old := SetLogLevel(3)
-	defer SetLogLevel(old)
 	genName := ncGen(t, "testcompounds")
 	if genName == "" {
 		t.Error(errorNcGen)
@@ -891,7 +888,6 @@ func TestCompound(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	//SetLogLevel(util.LevelInfo)
 	defer nc.Close()
 
 	vals := []compound{
@@ -917,13 +913,13 @@ func TestCompound(t *testing.T) {
 		{int32(3), int32(4), int32(5)},
 	}
 	values := keyValList{
-		keyVal{"v",
+		keyVal{"v", "includes",
 			api.Variable{
 				Values:     vals,
 				Dimensions: []string{"dim"},
 				Attributes: nilMap},
 		},
-		keyVal{"same",
+		keyVal{"same", "sametypes",
 			api.Variable{
 				Values:     samevals,
 				Dimensions: []string{"dim"},
@@ -931,12 +927,6 @@ func TestCompound(t *testing.T) {
 		},
 	}
 	checkAll(t, nc, values)
-	h5, has := nc.(*HDF5)
-	if has {
-		for _, v := range values {
-			_ = h5.findType(v.name)
-		}
-	}
 }
 
 func TestSimple(t *testing.T) {
@@ -950,23 +940,22 @@ func TestSimple(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	//SetLogLevel(util.LevelInfo)
 	defer nc.Close()
 
 	values := keyValList{
-		keyVal{"anA",
+		keyVal{"anA", "AAA",
 			api.Variable{
 				Values:     compound{int16(55), int32(5280)},
 				Dimensions: []string{},
 				Attributes: nilMap},
 		},
-		keyVal{"aB",
+		keyVal{"aB", "BBB",
 			api.Variable{
 				Values:     compound{float32(98.6), float64(-273.3)},
 				Dimensions: []string{},
 				Attributes: nilMap},
 		},
-		keyVal{"scalar",
+		keyVal{"scalar", "int",
 			api.Variable{
 				Values:     int32(5),
 				Dimensions: []string{},
@@ -974,13 +963,6 @@ func TestSimple(t *testing.T) {
 		},
 	}
 	checkAll(t, nc, values)
-	h5, has := nc.(*HDF5)
-	if has {
-		for _, v := range values {
-			ty := h5.findType(v.name)
-			t.Log("type for", v.name, ty)
-		}
-	}
 }
 
 func TestOneDim(t *testing.T) {
@@ -1026,19 +1008,19 @@ func TestUnlimited(t *testing.T) {
 	}
 	defer nc.Close()
 	unlims := keyValList{
-		{"i8x1", api.Variable{
+		{"i8x1", "byte", api.Variable{
 			Values:     [][]int8{{12}, {56}},
 			Dimensions: []string{"d1", "d2"},
 			Attributes: nilMap}},
-		{"i16x1", api.Variable{
+		{"i16x1", "short", api.Variable{
 			Values:     []int16{9876, 5432},
 			Dimensions: []string{"d1"},
 			Attributes: nilMap}},
-		{"i32x1", api.Variable{
+		{"i32x1", "int", api.Variable{
 			Values:     []int32{12, 34},
 			Dimensions: []string{"d1"},
 			Attributes: nilMap}},
-		{"i64x1", api.Variable{
+		{"i64x1", "int64", api.Variable{
 			Values:     []int64{56100, 78100},
 			Dimensions: []string{"d1"},
 			Attributes: nilMap}},
@@ -1061,7 +1043,7 @@ func TestVariableLength(t *testing.T) {
 	}
 	defer nc.Close()
 	vars := keyValList{
-		{"v", api.Variable{
+		{"v", "vint", api.Variable{
 			Values: [][]int32{
 				{}, // zero
 				{1},
@@ -1072,7 +1054,7 @@ func TestVariableLength(t *testing.T) {
 			},
 			Dimensions: []string{"dim"},
 			Attributes: nilMap}},
-		{"v2", api.Variable{
+		{"v2", "vint", api.Variable{
 			Values: [][]int32{
 				{11, 12, 13, 14, 15},
 				{7, 8, 9, 10},
@@ -1101,31 +1083,31 @@ func TestUnlimitedEmpty(t *testing.T) {
 	}
 	defer nc.Close()
 	empty := keyValList{
-		{"a", api.Variable{
+		{"a", "int", api.Variable{
 			Values:     []int32{},
 			Dimensions: []string{"u"},
 			Attributes: nilMap}},
-		{"b", api.Variable{
+		{"b", "opaque5", api.Variable{
 			Values:     []opaque{},
 			Dimensions: []string{"u"},
 			Attributes: nilMap}},
-		{"c", api.Variable{
+		{"c", "alltypes", api.Variable{
 			Values:     []compound{},
 			Dimensions: []string{"u"},
 			Attributes: nilMap}},
-		{"d", api.Variable{
+		{"d", "alltypes", api.Variable{
 			Values:     [][]compound{},
 			Dimensions: []string{"u", "u"},
 			Attributes: nilMap}},
-		{"e", api.Variable{
+		{"e", "alltypes", api.Variable{
 			Values:     [][][]compound{},
 			Dimensions: []string{"u", "u", "u"},
 			Attributes: nilMap}},
-		{"f", api.Variable{
+		{"f", "opaque5", api.Variable{
 			Values:     [][]opaque{},
 			Dimensions: []string{"u", "u"},
 			Attributes: nilMap}},
-		{"g", api.Variable{
+		{"g", "opaque5", api.Variable{
 			Values:     [][][]opaque{},
 			Dimensions: []string{"u", "u", "u"},
 			Attributes: nilMap}},
@@ -1147,7 +1129,7 @@ func TestUnlimitedOnlyBytes(t *testing.T) {
 	}
 	defer nc.Close()
 	unlims := keyValList{
-		{"i8x1", api.Variable{
+		{"i8x1", "byte", api.Variable{
 			Values:     []int8{12, 56},
 			Dimensions: []string{"d1"},
 			Attributes: nilMap}},
@@ -1217,7 +1199,6 @@ func TestCombinedFilters(t *testing.T) {
 }
 
 func TestBadMagic(t *testing.T) {
-	//SetLogLevel(util.LevelInfo)
 	fileName := "testdata/badmagic" // base filename without extension
 	_, err := Open(fileName)
 	if err != ErrBadMagic {
@@ -1240,7 +1221,7 @@ func TestUnlimitedOnlyShorts(t *testing.T) {
 	}
 	defer nc.Close()
 	unlims := keyValList{
-		{"i16x1", api.Variable{
+		{"i16x1", "short", api.Variable{
 			Values:     []int16{9876, 5432, 7734},
 			Dimensions: []string{"d1"},
 			Attributes: nilMap}},
@@ -1262,7 +1243,7 @@ func TestOpaque(t *testing.T) {
 	}
 	defer nc.Close()
 	opaque := keyValList{
-		{"v", api.Variable{
+		{"v", "opaque5", api.Variable{
 			Values: []opaque{
 				{0xde, 0xad, 0xbe, 0xef, 0x01},
 				{0xde, 0xad, 0xbe, 0xef, 0x02},
@@ -1289,11 +1270,11 @@ func TestEnum(t *testing.T) {
 	}
 	defer nc.Close()
 	enum := keyValList{
-		{"c", api.Variable{
+		{"c", "color", api.Variable{
 			Values:     enumerated{[]int8{0, 1, 2, 3, 4, 5}},
 			Dimensions: []string{"dim"},
 			Attributes: nilMap}},
-		{"nodim", api.Variable{
+		{"nodim", "color", api.Variable{
 			Values:     enumerated{int8(2)},
 			Dimensions: nil,
 			Attributes: nilMap}},
@@ -1338,7 +1319,8 @@ func TestNCProperties(t *testing.T) {
 	}
 }
 
-func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
+func (kl keyValList) check(t *testing.T, name string, baseType string,
+	val api.Variable) bool {
 	t.Helper()
 	var kv *keyVal
 	for _, k := range kl {
@@ -1362,6 +1344,10 @@ func (kl keyValList) check(t *testing.T, name string, val api.Variable) bool {
 	if !reflect.DeepEqual(val.Dimensions, kv.val.Dimensions) &&
 		!(len(val.Dimensions) == 0 && len(kv.val.Dimensions) == 0) {
 		t.Log("dims", name, val.Dimensions, kv.val.Dimensions)
+		return false
+	}
+	if kv.baseType != baseType {
+		t.Log("Type mismatch got=", baseType, "exp=", kv.baseType)
 		return false
 	}
 	return true
@@ -1403,13 +1389,15 @@ func checkAllAttrOption(t *testing.T, nc api.Group, values keyValList, hasAttr b
 		if !hasAttr {
 			vr.Attributes = nilMap
 		}
-		if !values.check(t, name, *vr) {
+		h5, _ := nc.(*HDF5)
+		ty := h5.findType(name)
+		if !values.check(t, name, ty, *vr) {
 			t.Error("mismatch")
 		}
-		h5, has := nc.(*HDF5)
-		if has {
-			ty := h5.findType(name)
-			t.Log("type for", name, ty)
+		t.Log("var type for var", name, "=", ty)
+		for _, a := range vr.Attributes.Keys() {
+			ty := h5.findVarAttrType(name, a)
+			t.Log("attr type for var", name, "attr", a, "=", ty)
 		}
 	}
 }
@@ -1422,4 +1410,8 @@ func checkAllNoAttr(t *testing.T, nc api.Group, values keyValList) {
 func checkAll(t *testing.T, nc api.Group, values keyValList) {
 	t.Helper()
 	checkAllAttrOption(t, nc, values, true /*attributes*/)
+	h5, _ := nc.(*HDF5)
+	for _, v := range values {
+		_ = h5.findType(v.name)
+	}
 }

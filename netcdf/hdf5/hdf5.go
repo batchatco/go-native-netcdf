@@ -52,7 +52,7 @@ var (
 	parseSBExtension     = false // happens, not useful
 	parseHeapDirectBlock = false // happens, not useful
 	useIndirectBlocks    = false // false until we verify the code
-	allowBitfields       = false // not used in NetCDF
+	allowBitfields       = false // not used in NetCDF, but part of HDF5
 )
 
 const ncpKey = "_NCProperties"
@@ -150,7 +150,7 @@ const (
 	typeDriverInfo
 	typeAttributeInfo
 	typeObjectReferenceCount
-	_typeUndocumented23 // used in undocumented superblock extension
+	typeMetadataCacheImage // unofficial
 )
 
 var htts = []string{
@@ -180,7 +180,7 @@ var htts = []string{
 	"Driver Info",
 	"Attribute Info",
 	"Object Reference Count",
-	"(undocumented type=23)",
+	"Metadata	Cache	Image	Message", // unofficial
 }
 
 // types of data layout classes
@@ -195,7 +195,6 @@ type attribute struct {
 	name          string
 	value         interface{}
 	class         uint8
-	attrType      uint8       // always zero?  consider removing
 	vtType        uint8       // for variable length
 	signed        bool        // for fixed-point
 	children      []attribute // for variable and compound, TODO also need dimensions
@@ -655,7 +654,6 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	case dtversionEarly:
 		logger.Info("Early version datatype")
 	case dtversionArray:
-		// TODO: figure out if this means anything
 		logger.Info("Array-encoded datatype")
 	case dtversionPacked:
 		logger.Info("VAX and/or packed datatype")
@@ -666,7 +664,6 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	attr.dtversion = dtversion
 	attr.class = dtclass
 	attr.length = dtlength
-	attr.attrType = vtType
 	switch dtclass {
 	// TODO: make functions because this is too long
 	case typeFixedPoint:
@@ -825,16 +822,17 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			break
 		}
 		plen := int(bf.Rem())
-		name := make([]byte, plen)
-		read(bf, name)
-		stringName := getString(name)
-		logger.Info("name=", stringName)
-		namelen := len(stringName)
-		for i := namelen; i < plen; i++ {
-			checkVal(0, name[i],
+		tag := make([]byte, plen)
+		// not sure what the purpose of the tag is
+		read(bf, tag)
+		stringTag := getString(tag)
+		logger.Info("tag=", stringTag)
+		taglen := len(stringTag)
+		for i := taglen; i < plen; i++ {
+			checkVal(0, tag[i],
 				fmt.Sprint("reserved byte should be zero: ", i))
 		}
-		attr.value = stringName
+		attr.value = stringTag
 
 	case typeCompound: // compound
 		logger.Info("* compound")
@@ -1015,7 +1013,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		}
 		var variableAttr attribute
 		h5.printDatatype(obj, bf, nil, 0, &variableAttr)
-		logger.Info("variable type", variableAttr.attrType, "class", variableAttr.class,
+		logger.Info("variable class", variableAttr.class,
 			"vtType", vtType)
 		attr.children = append(attr.children, variableAttr)
 		attr.vtType = vtType
@@ -2619,13 +2617,19 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			refCount := read32(f)
 			logger.Info("Reference count:", refCount)
 
+		case typeMetadataCacheImage:
+			// Used in superblock version 2 (not supported)
+			v := read8(bf)
+			logger.Info("metadata cache image version=", v)
+			offset := read64(bf)
+			length := read64(bf)
+			logger.Info("metadata cache image offset=0x%x length=%d\n", offset, length)
+			thrower.Throw(ErrSuperblock)
+
 		default:
 			b := make([]byte, f.Rem())
 			read(f, b)
-			logger.Warnf("Unknown header type %d data=%x", headerType, b)
-			if headerType == _typeUndocumented23 {
-				thrower.Throw(ErrSuperblock)
-			}
+			logger.Warnf("Unknown header type 0x%x data=%x", headerType, b)
 			fail(fmt.Sprintf("UNHANDLED header type: %s", headerTypeToString(int(headerType))))
 		}
 		logger.Info("mid chunksize", chunkSize, "nRead", bf.Count(), "rem",
@@ -4093,7 +4097,7 @@ func (h5 *HDF5) findGlobalAttrType(attrName string) string {
 			continue
 		}
 		origNames := map[string]bool{}
-		return h5.printType(attr, origNames)
+		return h5.printType(attrName, attr, origNames)
 	}
 	return ""
 }
@@ -4108,7 +4112,7 @@ func (h5 *HDF5) findVarAttrType(varName string, attrName string) string {
 			continue
 		}
 		origNames := map[string]bool{}
-		return h5.printType(attr, origNames)
+		return h5.printType(varName, attr, origNames)
 	}
 	return ""
 }
@@ -4119,10 +4123,116 @@ func (h5 *HDF5) findType(varName string) string {
 		return ""
 	}
 	origNames := map[string]bool{varName: true}
-	return h5.printType(obj.objAttr, origNames)
+	return h5.printType(varName, obj.objAttr, origNames)
 }
 
-func (h5 *HDF5) findSignature(signature string, origNames map[string]bool) string {
+func (h5 *HDF5) getType(typeName string) string {
+	obj, has := h5.groupObject.children[typeName]
+	if !has {
+		return ""
+	}
+	logger.Info("Trying to find type", typeName, "group", h5.groupName, "child=", obj.name)
+	hasClass := false
+	hasCoordinates := false
+	hasName := false
+	for _, a := range obj.attrlist {
+		switch a.name {
+		case "CLASS":
+			hasClass = true
+		case "NAME":
+			nameValue := a.value.(string)
+			if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
+				logger.Info("found name", nameValue)
+				hasName = true
+			}
+		case "_Netcdf4Coordinates":
+			logger.Info("Found _Netcdf4Coordinates")
+			hasCoordinates = true
+		}
+	}
+	if hasClass && !hasCoordinates && !hasName {
+		return ""
+	}
+	if obj.objAttr.dimensions != nil {
+		// it's a variable
+		return ""
+	}
+	origNames := map[string]bool{typeName: true}
+	sig := h5.printType(typeName, obj.objAttr, origNames)
+	return sig
+}
+
+func (h5 *HDF5) getGoType(typeName string) string {
+	obj, has := h5.groupObject.children[typeName]
+	if !has {
+		return ""
+	}
+	logger.Info("Trying to find type", typeName, "group", h5.groupName, "child=", obj.name)
+	hasClass := false
+	hasCoordinates := false
+	hasName := false
+	for _, a := range obj.attrlist {
+		switch a.name {
+		case "CLASS":
+			hasClass = true
+		case "NAME":
+			nameValue := a.value.(string)
+			if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
+				logger.Info("found name", nameValue)
+				hasName = true
+			}
+		case "_Netcdf4Coordinates":
+			logger.Info("Found _Netcdf4Coordinates")
+			hasCoordinates = true
+		}
+	}
+	if hasClass && !hasCoordinates && !hasName {
+		return ""
+	}
+	if obj.objAttr.dimensions != nil {
+		// it's a variable
+		return ""
+	}
+	origNames := map[string]bool{typeName: true}
+	sig := h5.printGoType(typeName, obj.objAttr, origNames)
+	return fmt.Sprintf("type %s %s", typeName, sig)
+}
+
+func (h5 *HDF5) listTypes() []string {
+	var ret []string
+	for typeName, obj := range h5.groupObject.children {
+		hasClass := false
+		hasCoordinates := false
+		hasName := false
+		for _, a := range obj.attrlist {
+			switch a.name {
+			case "CLASS":
+				hasClass = true
+			case "NAME":
+				nameValue := a.value.(string)
+				if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
+					logger.Info("found name", nameValue)
+					hasName = true
+				}
+			case "_Netcdf4Coordinates":
+				logger.Info("Found _Netcdf4Coordinates")
+				hasCoordinates = true
+			}
+		}
+		if hasClass && !hasCoordinates && !hasName {
+			continue
+		}
+		if obj.objAttr.dimensions != nil {
+			// this is a variable
+			continue
+		}
+		ret = append(ret, typeName)
+	}
+	return ret
+}
+
+func (h5 *HDF5) findSignature(signature string, name string, origNames map[string]bool,
+	printer func(name string, attr attribute, origNames map[string]bool) string) string {
 	for varName, obj := range h5.groupObject.children {
 		if origNames[varName] {
 			continue
@@ -4153,7 +4263,7 @@ func (h5 *HDF5) findSignature(signature string, origNames map[string]bool) strin
 			continue
 		}
 		origNames[varName] = true
-		sig := h5.printType(obj.objAttr, origNames)
+		sig := printer(name, obj.objAttr, origNames)
 		origNames[varName] = false
 		if sig != "" && sig == signature {
 			return obj.name
@@ -4162,7 +4272,7 @@ func (h5 *HDF5) findSignature(signature string, origNames map[string]bool) strin
 	return ""
 }
 
-func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
+func (h5 *HDF5) printType(name string, attr attribute, origNames map[string]bool) string {
 	switch attr.class {
 	case typeFixedPoint:
 		prefix := ""
@@ -4193,7 +4303,7 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 
 	case typeOpaque:
 		signature := fmt.Sprintf("opaque(%d)", attr.length)
-		namedType := h5.findSignature(signature, origNames)
+		namedType := h5.findSignature(signature, name, origNames, h5.printType)
 		if namedType != "" {
 			return namedType
 		}
@@ -4203,12 +4313,12 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 		// TODO: find name of type
 		members := make([]string, len(attr.children))
 		for i, cattr := range attr.children {
-			ty := h5.printType(cattr, origNames)
-			members[i] = fmt.Sprintf("%s %s", cattr.name, ty)
+			ty := h5.printType(name, cattr, origNames)
+			members[i] = fmt.Sprintf("%s %s", ty, cattr.name)
 		}
 		interior := strings.Join(members, "; ")
 		signature := fmt.Sprintf("compound { %s; };", interior)
-		namedType := h5.findSignature(signature, origNames)
+		namedType := h5.findSignature(signature, name, origNames, h5.printType)
 		if namedType != "" {
 			return namedType
 		}
@@ -4219,14 +4329,14 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 		assert(len(attr.children) == 1, "enum should have one child")
 		enumAttr := attr.children[0]
 		assert(len(enumAttr.children) == 0, "no recursion")
-		ty := h5.printType(enumAttr, origNames)
+		ty := h5.printType(name, enumAttr, origNames)
 		list := make([]string, len(enumAttr.enumNames))
 		for i, name := range enumAttr.enumNames {
 			list[i] = fmt.Sprintf("%s = %v", name, enumAttr.enumValues[i])
 		}
 		interior := strings.Join(list, ", ")
 		signature := fmt.Sprintf("%s enum { %s }", ty, interior)
-		namedType := h5.findSignature(signature, origNames)
+		namedType := h5.findSignature(signature, name, origNames, h5.printType)
 		if namedType != "" {
 			return namedType
 		}
@@ -4239,12 +4349,12 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 			return "string"
 		}
 		vAttr := attr.children[0]
-		ty := h5.printType(vAttr, origNames)
+		ty := h5.printType(name, vAttr, origNames)
 		if ty == "" {
 			return "vlen"
 		}
 		signature := fmt.Sprintf("%s(*)", ty)
-		namedType := h5.findSignature(signature, origNames)
+		namedType := h5.findSignature(signature, name, origNames, h5.printType)
 		if namedType != "" {
 			return namedType
 		}
@@ -4252,17 +4362,138 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 
 	case typeArray:
 		arrayAttr := attr.children[0]
-		ty := h5.printType(arrayAttr, origNames)
+		ty := h5.printType(name, arrayAttr, origNames)
 		if ty == "" {
 			return "array"
 		}
-		dStr := make([]string, len(attr.dimensions))
-		for i, d := range attr.dimensions {
+		dStr := make([]string, len(arrayAttr.dimensions))
+		for i, d := range arrayAttr.dimensions {
 			dStr[i] = fmt.Sprintf("%d", d)
 		}
 		dims := strings.Join(dStr, ",")
 		signature := fmt.Sprintf("%s(%s)", ty, dims)
-		namedType := h5.findSignature(signature, origNames)
+		namedType := h5.findSignature(signature, name, origNames, h5.printType)
+		if namedType != "" {
+			return namedType
+		}
+		return signature
+
+	case typeBitField:
+		// Not NetCDF
+		return "bitfield"
+
+	case typeReference:
+		// Not NetCDF
+		return "reference"
+	}
+	fail(fmt.Sprint("bogus type not handled: ", attr.class, attr.length))
+	panic("never gets here")
+}
+
+func (h5 *HDF5) printGoType(typeName string, attr attribute, origNames map[string]bool) string {
+	switch attr.class {
+	case typeFixedPoint:
+		prefix := ""
+		if !attr.signed {
+			prefix = "u"
+		}
+		switch attr.length {
+		case 1:
+			return prefix + "int8"
+		case 2:
+			return prefix + "int16"
+		case 4:
+			return prefix + "int32"
+		case 8:
+			return prefix + "int64"
+		}
+
+	case typeFloatingPoint:
+		switch attr.length {
+		case 4:
+			return "float32"
+		case 8:
+			return "float64"
+		}
+
+	case typeString:
+		return "string"
+
+	case typeOpaque:
+		signature := fmt.Sprintf("[%d]uint8", attr.length) // TODO
+		namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+		if namedType != "" {
+			return namedType
+		}
+		return signature
+
+	case typeCompound:
+		// TODO: find name of type
+		members := make([]string, len(attr.children))
+		for i, cattr := range attr.children {
+			ty := h5.printGoType(typeName, cattr, origNames)
+			members[i] = fmt.Sprintf("\t%s %s", cattr.name, ty)
+		}
+		interior := strings.Join(members, "\n")
+		signature := fmt.Sprintf("struct {\n%s\n}\n", interior)
+		namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+		if namedType != "" {
+			return namedType
+		}
+		return signature
+
+	case typeEnumerated:
+		// TODO: find name of type
+		assert(len(attr.children) == 1, "enum should have one child")
+		enumAttr := attr.children[0]
+		assert(len(enumAttr.children) == 0, "no recursion")
+		ty := h5.printGoType(typeName, enumAttr, origNames)
+		list := make([]string, len(enumAttr.enumNames))
+		for i, enumName := range enumAttr.enumNames {
+			if i == 0 {
+				list[i] = fmt.Sprintf("\t%s %s = %v", enumName, typeName, enumAttr.enumValues[i])
+			} else {
+				list[i] = fmt.Sprintf("\t%s = %v", enumName, enumAttr.enumValues[i])
+			}
+		}
+		interior := strings.Join(list, "\n")
+		signature := fmt.Sprintf("%s\nconst (\n%s\n)\n", ty, interior)
+		namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+		if namedType != "" {
+			return namedType
+		}
+		return signature
+
+	case typeVariableLength:
+		if attr.vtType == 1 {
+			// It's a string
+			return "string"
+		}
+		vAttr := attr.children[0]
+		ty := h5.printGoType(typeName, vAttr, origNames)
+		if ty == "" {
+			return "vlen"
+		}
+		signature := fmt.Sprintf("[]%s", ty)
+		namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+		if namedType != "" {
+			return namedType
+		}
+		return signature
+
+	case typeArray:
+		arrayAttr := attr.children[0]
+		ty := h5.printGoType(typeName, arrayAttr, origNames)
+		if ty == "" {
+			return "array"
+		}
+		dStr := make([]string, len(arrayAttr.dimensions))
+		for i, d := range arrayAttr.dimensions {
+			dStr[i] = fmt.Sprintf("[%d]", d)
+		}
+		dims := strings.Join(dStr, "")
+		signature := fmt.Sprintf("%s%s", dims, ty)
+		namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
 		if namedType != "" {
 			return namedType
 		}

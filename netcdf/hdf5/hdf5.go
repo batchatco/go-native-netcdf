@@ -58,7 +58,7 @@ var (
 const ncpKey = "_NCProperties"
 
 var (
-	ErrBadMagic                = errors.New("bad magic number -- not an HDF5 file")
+	ErrBadMagic                = errors.New("bad magic number")
 	ErrUnsupportedFilter       = errors.New("unsupported filter found")
 	ErrUnknownCompression      = errors.New("unknown compression")
 	ErrInternal                = errors.New("internal error")
@@ -192,26 +192,25 @@ const (
 )
 
 type attribute struct {
-	name           string
-	value          interface{}
-	class          uint8
-	attrType       uint8       // always zero?  consider removing
-	vtType         uint8       // for variable length
-	signed         bool        // for fixed-point
-	children       []attribute // for variable and compound, TODO also need dimensions
-	enumNames      []string
-	enumValues     []interface{}
-	addr           uint64 // for reference
-	length         uint32 // datatype length
-	dimensionality uint8  // for compound
-	layout         []uint64
-	dimensions     []uint64 // for compound
-	isSlice        bool
-	firstDim       int64 // first dimension if getting slice (fake objects only)
-	lastDim        int64 // last dimension if getting slice (fake objects only)
-	endian         binary.ByteOrder
-	dtversion      uint8
-	creationOrder  uint64
+	name          string
+	value         interface{}
+	class         uint8
+	attrType      uint8       // always zero?  consider removing
+	vtType        uint8       // for variable length
+	signed        bool        // for fixed-point
+	children      []attribute // for variable and compound, TODO also need dimensions
+	enumNames     []string
+	enumValues    []interface{}
+	addr          uint64 // for reference
+	length        uint32 // datatype length
+	layout        []uint64
+	dimensions    []uint64 // for compound
+	isSlice       bool
+	firstDim      int64 // first dimension if getting slice (fake objects only)
+	lastDim       int64 // last dimension if getting slice (fake objects only)
+	endian        binary.ByteOrder
+	dtversion     uint8
+	creationOrder uint64
 }
 
 type compoundField interface{}
@@ -252,7 +251,6 @@ type object struct {
 	fillValueOld     []byte
 	isGroup          bool
 	creationOrder    uint64
-	isSorted         bool
 	attrListIsSorted bool
 }
 
@@ -1055,6 +1053,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		}
 		var arrayAttr attribute
 		h5.printDatatype(obj, bf, nil, 0, &arrayAttr)
+		arrayAttr.dimensions = dimensions
 		attr.children = append(attr.children, arrayAttr)
 		if df != nil && df.Rem() > 0 {
 			logger.Info("Using an array in an attribute")
@@ -3108,7 +3107,6 @@ func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) int
 		logger.Info("float32 value=", value, "rem=", bf.(remReader).Rem())
 		return value
 	}
-	logger.Info("alloc more floats")
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		values := make([]float32, thisDim)
@@ -3160,7 +3158,6 @@ func padBytesCheck(obf io.Reader, pad32 int, round bool,
 	} else {
 		extra = pad32
 	}
-	logger.Info(cbf.Count(), "Alloc extra=", extra)
 	if extra > 0 {
 		logger.Info(cbf.Count(), "prepad", extra, "bytes")
 		b := make([]byte, extra)
@@ -3999,14 +3996,13 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		return enumerated{values}
 
 	case typeArray:
-		// TODO: this probably isn't right
 		logger.Info("orig dimensions=", attr.dimensions)
 		logger.Info("Array length=", attr.length)
 		logger.Info("Array dimensions=", dimensions)
 		arrayAttr := attr.children[0]
 		logger.Info("child dimensions=", arrayAttr.dimensions)
 		logger.Info("childlength=", arrayAttr.length)
-		newDimensions := append(dimensions, uint64(attr.length/arrayAttr.length))
+		newDimensions := append(dimensions, arrayAttr.dimensions...)
 		arrayAttr.dimensions = newDimensions
 		logger.Info("new dimensions=", newDimensions)
 		cbf := bf.(remReader)
@@ -4069,7 +4065,6 @@ func (h5 *HDF5) findVariable(varName string) *object {
 	for _, a := range obj.attrlist {
 		switch a.name {
 		case "CLASS":
-			logger.Info("Found CLASS")
 			hasClass = true
 		case "NAME":
 			nameValue := a.value.(string)
@@ -4083,7 +4078,6 @@ func (h5 *HDF5) findVariable(varName string) *object {
 		}
 	}
 	if hasClass && !hasCoordinates && !hasName {
-		logger.Info(obj.name, "skip because is a dimension")
 		return nil
 	}
 	if obj.objAttr.dimensions == nil {
@@ -4139,7 +4133,6 @@ func (h5 *HDF5) findSignature(signature string, origNames map[string]bool) strin
 		for _, a := range obj.attrlist {
 			switch a.name {
 			case "CLASS":
-				logger.Info("Found CLASS")
 				hasClass = true
 			case "NAME":
 				nameValue := a.value.(string)
@@ -4153,14 +4146,12 @@ func (h5 *HDF5) findSignature(signature string, origNames map[string]bool) strin
 			}
 		}
 		if hasClass && !hasCoordinates && !hasName {
-			logger.Info(obj.name, "skip because is a dimension")
 			continue
 		}
 		if obj.objAttr.dimensions != nil {
 			// this is a variable
 			continue
 		}
-		logger.Info("This is a type", obj.name)
 		origNames[varName] = true
 		sig := h5.printType(obj.objAttr, origNames)
 		origNames[varName] = false
@@ -4260,7 +4251,6 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 		return signature
 
 	case typeArray:
-		// this never appears in NetCDF
 		arrayAttr := attr.children[0]
 		ty := h5.printType(arrayAttr, origNames)
 		if ty == "" {
@@ -4279,9 +4269,11 @@ func (h5 *HDF5) printType(attr attribute, origNames map[string]bool) string {
 		return signature
 
 	case typeBitField:
+		// Not NetCDF
 		return "bitfield"
 
 	case typeReference:
+		// Not NetCDF
 		return "reference"
 	}
 	fail(fmt.Sprint("bogus type not handled: ", attr.class, attr.length))
@@ -4592,7 +4584,6 @@ func (h5 *HDF5) ListVariables() []string {
 				for _, a := range o.attrlist {
 					switch a.name {
 					case "CLASS":
-						logger.Info("Found CLASS")
 						hasClass = true
 					case "NAME":
 						nameValue := a.value.(string)

@@ -929,6 +929,37 @@ func TestCompound(t *testing.T) {
 	checkAll(t, nc, values)
 }
 
+func TestArray(t *testing.T) {
+	// Arrays are only used implicitly in NetCDF4.
+	genName := ncGen(t, "testarray")
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+
+	values := keyValList{
+		keyVal{"c", "comp",
+			api.Variable{
+				Values: []compound{
+					{
+						[]int32{1, 2, 3},
+						[][]float32{{4, 5, 6}, {7, 8, 9}}},
+					{
+						[]int32{10, 11, 12},
+						[][]float32{{13, 14, 15}, {16, 17, 18}}}},
+				Dimensions: []string{"dim"},
+				Attributes: nilMap},
+		},
+	}
+	checkAll(t, nc, values)
+}
+
 func TestSimple(t *testing.T) {
 	genName := ncGen(t, "testsimple")
 	if genName == "" {
@@ -1282,6 +1313,43 @@ func TestEnum(t *testing.T) {
 	checkAll(t, nc, enum)
 }
 
+func TestBitfield(t *testing.T) {
+	// BitFields are not part of NetCDF.  They are in HDF5 though.
+	fileName := "testdata/bitfield.h5"
+
+	// First check that they don't work by default
+	nc, err := Open(fileName)
+	if err == nil {
+		t.Error("Bitfields should produce error")
+		nc.Close()
+		return
+	}
+
+	// Enable bitfields and try again
+	allowBitfields = true
+	defer func() {
+		allowBitfields = false
+	}()
+	nc, err = Open(fileName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+
+	attrs, err := util.NewOrderedMap(
+		[]string{"bitfield"},
+		map[string]interface{}{
+			"bitfield": []byte{0, 1, 2, 3, 4, 5, 6, 7},
+		})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	got := nc.Attributes()
+	checkAllAttrs(t, got, attrs)
+}
+
 func TestNCProperties(t *testing.T) {
 	fileName := "testenum" // base filename without extension
 	genName := ncGen(t, fileName)
@@ -1394,10 +1462,10 @@ func checkAllAttrOption(t *testing.T, nc api.Group, values keyValList, hasAttr b
 		if !values.check(t, name, ty, *vr) {
 			t.Error("mismatch")
 		}
-		t.Log("var type for var", name, "=", ty)
 		for _, a := range vr.Attributes.Keys() {
-			ty := h5.findVarAttrType(name, a)
-			t.Log("attr type for var", name, "attr", a, "=", ty)
+			// TODO check attribute types
+			_ = h5.findVarAttrType(name, a)
+			//t.Log("attr type for var", name, "attr", a, "=", ty)
 		}
 	}
 }

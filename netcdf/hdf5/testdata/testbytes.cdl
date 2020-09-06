@@ -1,8 +1,8 @@
-netcdf x {
+netcdf testbyts {
 dimensions:
   d1 = 1;
   d2 = 2;
-  
+
 variables:
   byte b;
   ubyte ub;
@@ -13,7 +13,7 @@ variables:
   char c;
   char c2(d1);
   char c3(d2);
-  
+
 data:
   b = 1;
   ub = 2;

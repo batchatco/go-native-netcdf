@@ -1305,6 +1305,10 @@ func TestEnum(t *testing.T) {
 			Values:     enumerated{[]int8{0, 1, 2, 3, 4, 5}},
 			Dimensions: []string{"dim"},
 			Attributes: nilMap}},
+		{"j", "junk", api.Variable{
+			Values:     enumerated{[]int64{1, 2, 3, 4, 5, 6}},
+			Dimensions: []string{"dim"},
+			Attributes: nilMap}},
 		{"nodim", "color", api.Variable{
 			Values:     enumerated{int8(2)},
 			Dimensions: nil,
@@ -1443,6 +1447,14 @@ func checkAttr(t *testing.T, name string, gotAttr api.AttributeMap, expAttr api.
 
 func checkAllAttrOption(t *testing.T, nc api.Group, values keyValList, hasAttr bool) {
 	t.Helper()
+	h5, _ := nc.(*HDF5)
+	types := h5.listTypes()
+	for _, typeName := range types {
+		val, err := h5.GetVariable(typeName)
+		if err == nil {
+			t.Errorf("types are not variables got=(%s)", val)
+		}
+	}
 	vars := nc.ListVariables()
 	if len(vars) != len(values) {
 		t.Error("mismatch", len(vars), len(values), vars, values)

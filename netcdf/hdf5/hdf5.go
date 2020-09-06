@@ -44,6 +44,7 @@ const (
 	parseTime                       = false
 	parseCreationOrder              = false
 	parseMultiDimensionalReferences = false
+	floatEnums                      = false
 )
 
 // For some specific things that aren't useful and the code is disabled.
@@ -180,7 +181,7 @@ var htts = []string{
 	"Driver Info",
 	"Attribute Info",
 	"Object Reference Count",
-	"Metadata	Cache	Image	Message", // unofficial
+	"Metadata Cache Image Message", // unofficial
 }
 
 // types of data layout classes
@@ -597,12 +598,10 @@ func getString(b []byte) string {
 func readNullTerminatedName(padding int, bf io.Reader) string {
 	var name []byte
 	nullFound := false
-	plen := 0
 	for !nullFound {
 		b := read8(bf)
-		plen++
 		if b == 0 {
-			logger.Info("namelen=", plen-1)
+			logger.Info("namelen=", len(name))
 			nullFound = true
 			break
 		}
@@ -618,7 +617,6 @@ func readNullTerminatedName(padding int, bf io.Reader) string {
 		logger.Info("pad", extra)
 		if extra > 0 {
 			checkZeroes(bf, extra)
-			plen += extra
 		}
 	}
 	return string(name)
@@ -673,8 +671,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		paddingType := (bitFields >> 1) & 0x3
 		signed := (bitFields >> 3) & 0x1
 		attr.signed = signed == 0x1
-		logger.Infof("byteOrder=%d paddingType=%d, signed=%d signedbool=%v",
-			byteOrder, paddingType, signed, attr.signed)
+		logger.Infof("byteOrder=%d paddingType=%d, signed=%d", byteOrder, paddingType, signed)
 		if byteOrder != 0 {
 			attr.endian = binary.BigEndian
 		} else {
@@ -689,6 +686,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			bitPrecision := read16(bf)
 			logger.Infof("bitOffset=%d bitPrecision=%d blen=%d", bitOffset, bitPrecision,
 				bf.Count())
+			checkVal(0, bitOffset, "bit offset must be zero")
 		}
 		if df == nil {
 			logger.Infof("no data")
@@ -711,15 +709,18 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		}
 		if ((bitFields >> 1) & 0x1) == 0x1 {
 			logger.Info("* low pad")
+			fail("low pad not supported")
 		}
 		if ((bitFields >> 2) & 0x1) == 0x1 {
 			logger.Info("* high pad")
+			fail("high pad not supported")
 		}
 		if ((bitFields >> 3) & 0x1) == 0x1 {
 			logger.Info("* internal pad")
+			fail("internal pad not supported")
 		}
-		mantissa := (bitFields >> 4) & 0x3
-		logger.Info("* mantissa:", mantissa)
+		mantissaNormalization := (bitFields >> 4) & 0x3
+		logger.Info("* mantissa normalization:", mantissaNormalization)
 		sign := (bitFields >> 8) & 0xff
 		logger.Info("* sign: ", sign)
 		assert(bf.Rem() >= 12,
@@ -740,6 +741,24 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			mantissaLocation,
 			mantissaSize,
 			exponentBias)
+		checkVal(0, bitOffset, "bit offset must be zero")
+		checkVal(2, mantissaNormalization, "mantissa normalization must be 2")
+		switch dtlength {
+		case 4:
+			checkVal(31, sign, "float32 sign location must be 31")
+			checkVal(32, bitPrecision, "float32 precision must be 32")
+			checkVal(23, exponentLocation, "float32 exponent location must be 23")
+			checkVal(8, exponentSize, "float32 exponent size must be 8")
+			checkVal(127, exponentBias, "float32 exponent bias must be 127")
+		case 8:
+			checkVal(63, sign, "float64 sign location must be 63")
+			checkVal(64, bitPrecision, "float64 precision must be 64")
+			checkVal(52, exponentLocation, "float64 exponent location must be 52")
+			checkVal(11, exponentSize, "float64 exponent size must be 11")
+			checkVal(1023, exponentBias, "float64 exponent bias must be 1023")
+		default:
+			fail("bad dtlength")
+		}
 		if df == nil {
 			logger.Infof("no data")
 			break
@@ -809,7 +828,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			b := make([]byte, df.Rem())
 			read(df, b)
 			logger.Infof("bitfield value: %x", b)
-			logger.Warn("Bitfields ignored")
+			logger.Infof("Bitfields ignored")
 			thrower.Throw(ErrBitfield)
 		}
 		if df.Rem() >= int64(dtlength) {
@@ -969,12 +988,12 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		for i := uint32(0); i < numberOfMembers; i++ {
 			values[i] = h5.getDataAttr(bf, enumAttr)
 			switch values[i].(type) {
-			case uint64, int64, float64:
-			case uint32, int32, float32:
+			case uint64, int64:
+			case uint32, int32:
 			case uint16, int16:
 			case uint8, int8:
 			default:
-				// TODO: figure out what to do for other types
+				// Other enumeration types are not supported in NetCDF
 				fail("unknown enumeration type")
 			}
 		}
@@ -1298,24 +1317,9 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 		logger.Info("cset=", cset)
 	}
 
-	lenlen := uint64(0)
-	switch flags & 0x3 {
-	case 0:
-		logger.Info("byte size")
-		b := read8(bf)
-		lenlen = uint64(b)
-	case 1:
-		logger.Info("short size")
-		s := read16(bf)
-		lenlen = uint64(s)
-	case 2:
-		logger.Info("int size")
-		i := read32(bf)
-		lenlen = uint64(i)
-	case 3:
-		logger.Info("int64 size")
-		lenlen = read64(bf)
-	}
+	size := 1 << (flags & 0x3)
+	b := readEnc(bf, uint8(size))
+	lenlen := uint64(b)
 	logger.Infof("lenlen=0x%x", lenlen)
 	linkName := make([]byte, lenlen)
 	if lenlen > 0 {
@@ -2153,13 +2157,7 @@ func (h5 *HDF5) readFilterPipeline(obj *object, obf io.Reader) {
 			b := make([]byte, nameLength)
 			read(bf, b)
 			logger.Infof("filter name=%s", getString(b))
-
-			roundup := (nameLength + 7) & ^uint16(7)
-			pad := roundup - nameLength
-			for i := 0; i < int(pad); i++ {
-				z := read8(bf)
-				checkVal(0, z, "zero pad")
-			}
+			padBytes(bf, 7)
 		}
 		cdv := make([]uint32, nCDV)
 		for i := 0; i < int(nCDV); i++ {
@@ -2524,6 +2522,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			save := obj.objAttr.dimensions
 			obj.objAttr = h5.readDatatype(obj, f)
 			h5.sharedAttrs[obj.addr] = &obj.objAttr
+			logger.Info("before, after", save, obj.objAttr.dimensions)
 			obj.objAttr.dimensions = save
 			logger.Info("dimensions are", obj.objAttr.dimensions)
 
@@ -2641,8 +2640,9 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 				checkZeroes(f, int(rem))
 			} else {
 				switch headerType {
-				case typeDatatype: // TODO: what are we not parsing?
-					logger.Warnf("%d junk bytes at end of record type=%s", rem,
+				case typeDatatype:
+					// This happens with compound data, for as yet unknown reasons.
+					logger.Infof("%d junk bytes at end of record type=%s", rem,
 						headerTypeToString(int(headerType)))
 					checkZeroes(f, int(rem))
 				default:
@@ -3971,7 +3971,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 	case typeEnumerated:
 		enumAttr := attr.children[0]
 		switch enumAttr.class {
-		case typeFixedPoint: // fixed-point
+		case typeFixedPoint:
 			switch enumAttr.length {
 			case 1:
 				values = allocInt8s(bf, dimensions, enumAttr.signed)
@@ -3984,16 +3984,19 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 			default:
 				fail(fmt.Sprintf("bad size: %d", enumAttr.length))
 			}
-
-		case typeFloatingPoint: // floating-point
-			switch enumAttr.length {
-			case 4:
-				values = allocFloats(bf, dimensions, enumAttr.endian)
-			case 8:
-				values = allocDoubles(bf, dimensions, enumAttr.endian)
-			default:
-				fail(fmt.Sprintf("bad size: %d", attr.length))
+		case typeFloatingPoint:
+			if floatEnums {
+				// >Floating point enums are not part of NetCDF.
+				switch enumAttr.length {
+				case 4:
+					values = allocFloats(bf, dimensions, enumAttr.endian)
+				case 8:
+					values = allocDoubles(bf, dimensions, enumAttr.endian)
+				default:
+					fail(fmt.Sprintf("bad size: %d", attr.length))
+				}
 			}
+			fallthrough
 		default:
 			fail(fmt.Sprint("can't handle this class: ", enumAttr.class))
 		}
@@ -4062,7 +4065,7 @@ func (h5 *HDF5) findVariable(varName string) *object {
 	if !has {
 		return nil
 	}
-	logger.Info("Trying to find variable", varName, "group", h5.groupName, "child=", obj.name)
+	logger.Info("Found variable", varName, "group", h5.groupName, "child=", obj.name)
 	hasClass := false
 	hasCoordinates := false
 	hasName := false
@@ -4131,30 +4134,13 @@ func (h5 *HDF5) getType(typeName string) string {
 	if !has {
 		return ""
 	}
-	logger.Info("Trying to find type", typeName, "group", h5.groupName, "child=", obj.name)
-	hasClass := false
-	hasCoordinates := false
-	hasName := false
-	for _, a := range obj.attrlist {
-		switch a.name {
-		case "CLASS":
-			hasClass = true
-		case "NAME":
-			nameValue := a.value.(string)
-			if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
-				logger.Info("found name", nameValue)
-				hasName = true
-			}
-		case "_Netcdf4Coordinates":
-			logger.Info("Found _Netcdf4Coordinates")
-			hasCoordinates = true
-		}
-	}
-	if hasClass && !hasCoordinates && !hasName {
+	logger.Info("Found type", typeName, "group", h5.groupName, "child=", obj.name)
+	if len(obj.attrlist) != 0 {
+		logger.Info("types don't have attributes")
 		return ""
 	}
 	if obj.objAttr.dimensions != nil {
-		// it's a variable
+		logger.Info("this is a variable")
 		return ""
 	}
 	origNames := map[string]bool{typeName: true}
@@ -4167,30 +4153,13 @@ func (h5 *HDF5) getGoType(typeName string) string {
 	if !has {
 		return ""
 	}
-	logger.Info("Trying to find type", typeName, "group", h5.groupName, "child=", obj.name)
-	hasClass := false
-	hasCoordinates := false
-	hasName := false
-	for _, a := range obj.attrlist {
-		switch a.name {
-		case "CLASS":
-			hasClass = true
-		case "NAME":
-			nameValue := a.value.(string)
-			if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
-				logger.Info("found name", nameValue)
-				hasName = true
-			}
-		case "_Netcdf4Coordinates":
-			logger.Info("Found _Netcdf4Coordinates")
-			hasCoordinates = true
-		}
-	}
-	if hasClass && !hasCoordinates && !hasName {
+	logger.Info("Found type", typeName, "group", h5.groupName, "child=", obj.name)
+	if len(obj.attrlist) != 0 {
+		logger.Info("types don't have attributes")
 		return ""
 	}
 	if obj.objAttr.dimensions != nil {
-		// it's a variable
+		logger.Info("this is a variable")
 		return ""
 	}
 	origNames := map[string]bool{typeName: true}
@@ -4708,7 +4677,7 @@ func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 	defer thrower.RecoverError(&err)
 	found := h5.findVariable(varName)
 	if found == nil {
-		logger.Warnf("variable %s not found", varName)
+		logger.Infof("variable %s not found", varName)
 		return nil, ErrNotFound
 	}
 	data := h5.getData(found)

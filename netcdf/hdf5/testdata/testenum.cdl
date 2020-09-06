@@ -8,6 +8,14 @@ types:
     BLUE = 4,
     MAGENTA = 5
   };
+  int64 enum junk {
+    FIRST = 1,
+    SECOND = 2,
+    THIRD = 3,
+    FOURTH = 4,
+    FIFTH = 5,
+    SIXTH = 6
+  };
 
 dimensions:
   dim = 6;
@@ -15,9 +23,12 @@ dimensions:
 variables:
   color nodim;
   color c(dim);
+  junk j(dim);
 
 data:
   nodim = GREEN;
 
   c = RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA;
+
+  j = FIRST, SECOND, THIRD, FOURTH, FIFTH, SIXTH;
 }

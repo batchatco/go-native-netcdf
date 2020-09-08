@@ -554,6 +554,26 @@ func TestTypes(t *testing.T) {
 	checkAll(t, nc, values)
 }
 
+// big-endian
+func TestTypesBE(t *testing.T) {
+	fileName := "testdata/testtypesbe.nc" // base filename without extension
+	nc, err := Open(fileName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	values2 := keyValList{}
+	for i := range values {
+		if strings.HasPrefix(values[i].name, "str") {
+			continue
+		}
+		values2 = append(values2, values[i])
+		values2[len(values2)-1].val.Dimensions = []string{}
+	}
+	checkAll(t, nc, values2)
+}
+
 func TestGlobalAttrs(t *testing.T) {
 	genName := ncGen(t, "testattrs")
 	if genName == "" {
@@ -694,6 +714,10 @@ func TestGroups(t *testing.T) {
 	checkGroup(nc, []int32{2})
 
 	groups := nc.ListSubgroups()
+	if groups == nil {
+		t.Error("groups  missing")
+		return
+	}
 	if groups[0] != "a" {
 		t.Error("group a missing")
 		return

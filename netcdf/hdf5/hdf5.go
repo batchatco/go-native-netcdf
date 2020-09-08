@@ -1,4 +1,4 @@
-//Package hdf5 implements HDF5 for NetCDF
+// Package hdf5 implements HDF5 for NetCDF
 package hdf5
 
 import (
@@ -43,10 +43,9 @@ const (
 
 // For some specific things that don't seem to happen
 const (
-	parseTime                       = false
-	parseCreationOrder              = false
-	parseMultiDimensionalReferences = false
-	floatEnums                      = false
+	parseTime          = false
+	parseCreationOrder = false
+	floatEnums         = false
 )
 
 // For some specific things that aren't useful and the code is disabled.
@@ -68,7 +67,7 @@ var (
 	ErrNotFound                = errors.New("not found")
 	ErrFletcherChecksum        = errors.New("fletcher checksum failure")
 	ErrVersion                 = errors.New("hdf5 version not supported")
-	ErrLinkType                = errors.New("link type not unsupported")
+	ErrLinkType                = errors.New("link type not supported")
 	ErrVirtualStorage          = errors.New("virtual storage not supported")
 	ErrTruncated               = errors.New("file is too small, may be truncated")
 	ErrOffsetSize              = errors.New("only 64-bit offsets are supported")
@@ -81,6 +80,10 @@ var (
 	ErrIndirectBlocks          = errors.New("indirect blocks not implemented")
 	ErrBitfield                = errors.New("bitfields not supported")
 	ErrArrays                  = errors.New("arrays not supported")
+	ErrExternal                = errors.New("external data files not supported")
+	ErrFloatingPoint           = errors.New("non-standard floating point not handled")
+	ErrFixedPoint              = errors.New("non-standard fixed-point not handled")
+	ErrReference               = errors.New("unsupported reference type")
 )
 
 const (
@@ -149,11 +152,10 @@ const (
 	typeSymbolTableMessage
 	typeObjectModificationTime
 	typeBtreeKValues
-	// 20-23
+	// 20-22
 	typeDriverInfo
 	typeAttributeInfo
 	typeObjectReferenceCount
-	typeMetadataCacheImage // unofficial
 )
 
 var htts = []string{
@@ -179,11 +181,10 @@ var htts = []string{
 	"Symbol Table Message",
 	"Object Modification Time",
 	"B-tree ‘K’ Values",
-	// 20-23
+	// 20-22
 	"Driver Info",
 	"Attribute Info",
 	"Object Reference Count",
-	"Metadata Cache Image Message", // unofficial
 }
 
 // types of data layout classes
@@ -354,7 +355,9 @@ func SetLogLevel(level int) int {
 
 func (h5 *HDF5) newSeek(addr uint64, size int64) remReader {
 	logger.Infof("Seek to 0x%x", addr)
-	assert(int64(addr) <= h5.fileSize, "bad seek")
+	assert(int64(addr)+size <= h5.fileSize,
+		fmt.Sprintf("bad seek addr=0x%x size=%d addr+size=0x%x fileSize=0x%x",
+			addr, size, int64(addr)+size, h5.fileSize))
 	r := h5.file.seekAt(int64(addr))
 	if size == 0 {
 		size = h5.fileSize - int64(addr)
@@ -409,6 +412,10 @@ func readEnc(r io.Reader, e uint8) uint64 {
 		return uint64(read8(r))
 	case 2:
 		return uint64(read16(r))
+	case 3:
+		high := read8(r)
+		low := read16(r)
+		return uint64(uint32(high)<<16) | uint64(low)
 	case 4:
 		return uint64(read32(r))
 	case 8:
@@ -492,6 +499,7 @@ func (h5 *HDF5) readSuperblock() {
 
 		s := read16(bf)
 		logger.Info("Group leaf node k", s)
+		assert(s == 4, "Group leaf node K assumed to be 4 always")
 		s = read16(bf)
 		logger.Info("Group internal node k", s)
 
@@ -559,18 +567,18 @@ func (h5 *HDF5) readSuperblock() {
 		checkVal(0, reserved, "reserved sb")
 		if cacheType == 1 {
 			btreeAddr := read64(bf)
-			nameHeapAddr := read64(bf)
-			logger.Infof("btree addr=0x%x name heap addr=0x%x", btreeAddr, nameHeapAddr)
+			heapAddr := read64(bf)
+			logger.Infof("btree addr=0x%x heap addr=0x%x", btreeAddr, heapAddr)
 		}
 		h5.rootAddr = objectHeaderAddress
-		//panic("Versions < 2 not supported")
 	} else {
 		h5.checkChecksum(0, 44)
 	}
 	if sbExtension != invalidAddress {
 		logger.Info("superblock extension not supported")
 		if parseSBExtension {
-			_ = h5.readDataObjectHeader(sbExtension)
+			obj := &object{}
+			h5.readDataObjectHeader(obj, sbExtension)
 		} else {
 			thrower.Throw(ErrSuperblock)
 		}
@@ -581,9 +589,8 @@ func checkMagic(bf io.Reader, len int, magic string) {
 	b := make([]byte, len)
 	read(bf, b)
 	found := string(b)
-	printableFound := fmt.Sprintf("%q", found)
 	assertError(found == magic, ErrBadMagic,
-		fmt.Sprint("bad magic=", printableFound))
+		fmt.Sprintf("bad magic=%q expected=%q", found, magic))
 }
 
 func getString(b []byte) string {
@@ -679,14 +686,14 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		} else {
 			attr.endian = binary.LittleEndian
 		}
-		checkVal(0, paddingType, "padding must be zero")
+		assertError(paddingType == 0, ErrFixedPoint, "padding must be zero")
 		logger.Info("len properties", bf.Rem())
 		assert(bf.Rem() > 0, "properties should be here")
 		bitOffset := read16(bf)
 		bitPrecision := read16(bf)
 		logger.Infof("bitOffset=%d bitPrecision=%d blen=%d", bitOffset, bitPrecision,
 			bf.Count())
-		checkVal(0, bitOffset, "bit offset must be zero")
+		assertError(bitOffset == 0, ErrFixedPoint, "bit offset must be zero")
 		if df == nil {
 			logger.Infof("no data")
 			break
@@ -697,7 +704,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 
 	case typeFloatingPoint:
 		logger.Info("* floating-point")
-		checkVal(1, dtversion, "Only support version 1 of float")
+		assertError(dtversion == 1, ErrFloatingPoint, "Only support version 1 of float")
 		endian := ((bitFields >> 5) & 0x2) | (bitFields & 0x1)
 		switch endian {
 		case 0:
@@ -708,11 +715,11 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			fail(fmt.Sprint("unhandled byte order: ", endian))
 		}
 		loPad := ((bitFields >> 1) & 0x1) == 0x1
-		assert(!loPad, "low pad not supported")
+		assertError(!loPad, ErrFloatingPoint, "low pad not supported")
 		hiPad := ((bitFields >> 2) & 0x1) == 0x1
-		assert(!hiPad, "high pad not supported")
+		assertError(!hiPad, ErrFloatingPoint, "high pad not supported")
 		intPad := ((bitFields >> 3) & 0x1) == 0x1
-		assert(!intPad, "internal pad not supported")
+		assertError(!intPad, ErrFloatingPoint, "internal pad not supported")
 		mantissaNormalization := (bitFields >> 4) & 0x3
 		logger.Info("* mantissa normalization:", mantissaNormalization)
 		sign := (bitFields >> 8) & 0xff
@@ -735,23 +742,24 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			mantissaLocation,
 			mantissaSize,
 			exponentBias)
-		checkVal(0, bitOffset, "bit offset must be zero")
-		checkVal(2, mantissaNormalization, "mantissa normalization must be 2")
+		assertError(bitOffset == 0, ErrFloatingPoint, "bit offset must be zero")
+		assertError(mantissaNormalization == 2, ErrFloatingPoint, "mantissa normalization must be 2")
 		switch dtlength {
 		case 4:
-			checkVal(31, sign, "float32 sign location must be 31")
-			checkVal(32, bitPrecision, "float32 precision must be 32")
-			checkVal(23, exponentLocation, "float32 exponent location must be 23")
-			checkVal(8, exponentSize, "float32 exponent size must be 8")
-			checkVal(127, exponentBias, "float32 exponent bias must be 127")
+			assertError(sign == 31, ErrFloatingPoint, "float32 sign location must be 31")
+			assertError(bitPrecision == 32, ErrFloatingPoint, "float32 precision must be 32")
+			assertError(exponentLocation == 23, ErrFloatingPoint, "float32 exponent location must be 23")
+			assertError(exponentSize == 8, ErrFloatingPoint, "float32 exponent size must be 8")
+			assertError(exponentBias == 127, ErrFloatingPoint, "float32 exponent bias must be 127")
 		case 8:
-			checkVal(63, sign, "float64 sign location must be 63")
-			checkVal(64, bitPrecision, "float64 precision must be 64")
-			checkVal(52, exponentLocation, "float64 exponent location must be 52")
-			checkVal(11, exponentSize, "float64 exponent size must be 11")
-			checkVal(1023, exponentBias, "float64 exponent bias must be 1023")
+			assertError(sign == 63, ErrFloatingPoint, "float64 sign location must be 63")
+			assertError(bitPrecision == 64, ErrFloatingPoint, "float64 precision must be 64")
+			assertError(exponentLocation == 52, ErrFloatingPoint, "float64 exponent location must be 52")
+			assertError(exponentSize == 11, ErrFloatingPoint, "float64 exponent size must be 11")
+			assertError(exponentBias == 1023, ErrFloatingPoint, "float64 exponent bias must be 1023")
 		default:
-			fail("bad dtlength")
+			logger.Error("bad dtlenth for fp", dtlength)
+			thrower.Throw(ErrFloatingPoint)
 		}
 		if df == nil {
 			logger.Infof("no data")
@@ -762,7 +770,6 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		attr.value = h5.getDataAttr(df, *attr)
 
 	case typeTime:
-		logger.Fatal("time code has never been executed before and does nothing")
 		// uncomment the following to enable
 		if parseTime {
 			logger.Info("time, len(data)=", df.Rem())
@@ -781,6 +788,8 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			if df.Rem() > 0 {
 				fail("time")
 			}
+		} else {
+			logger.Fatal("time code has never been executed before and does nothing")
 		}
 	case typeString:
 		logger.Info("string")
@@ -895,7 +904,9 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 				checkZeroes(bf, 3)
 				perm := read32(bf)
 				logger.Info("permutation", perm)
-				checkVal(0, perm, "permutation")
+				if perm != 0 {
+					logger.Warn("permutation field should be zero")
+				}
 				reserved := read32(bf)
 				checkVal(0, reserved, "reserved dt")
 				compoundAttribute.dimensions = make([]uint64, 4)
@@ -939,9 +950,9 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		logger.Info("* reference")
 		checkVal(1, dtversion, "Only support version 1 of reference")
 		rType := bitFields & 0xf
-		checkVal(0, rType, "rtype must be zero")
+		assertError(rType == 0, ErrReference, "rtype must be zero")
 		logger.Info("* rtype=object")
-		checkVal(0, bitFields, "reserved must be zero")
+		warnAssert((bitFields & ^uint32(0xf)) == 0, "reserved must be zero")
 		if df == nil {
 			logger.Infof("no data")
 			break
@@ -956,7 +967,6 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		attr.addr = addr
 
 	case typeEnumerated:
-		logger.Info("enumeration, not fully working")
 		logger.Info("blen begin", bf.Count())
 		var enumAttr attribute
 		h5.printDatatype(obj, bf, nil, 0, &enumAttr)
@@ -1203,7 +1213,8 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 func (h5 *HDF5) getSharedAttr(addr uint64) *attribute {
 	oa := h5.sharedAttrs[addr]
 	if oa == nil {
-		obj := h5.readDataObjectHeader(addr)
+		obj := &object{}
+		h5.readDataObjectHeader(obj, addr)
 		oa = &obj.objAttr
 		h5.sharedAttrs[addr] = oa
 	}
@@ -1333,15 +1344,22 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 		checkZeroes(bf, int(bf.Rem()))
 	}
 	logger.Infof("hard link=0x%x", hardAddr)
-	obj := h5.readDataObjectHeader(hardAddr)
+	_, has := parent.children[string(linkName)]
+	assert(!has, "duplicate object")
+	if hasAddr(h5.rootObject, hardAddr) {
+		logger.Warn("ignore duplicate object")
+		logger.Infof("done with name=%s", string(linkName))
+		return
+	}
+	obj := &object{}
 	obj.name = string(linkName)
+	parent.children[obj.name] = obj
 	obj.creationOrder = co
+	obj.addr = hardAddr
+	h5.readDataObjectHeader(obj, hardAddr)
 	logger.Info("obj name", obj.name)
 	logger.Infof("object (0x%x, %s) from parent (0x%x, %s)\n",
 		obj.addr, obj.name, parent.addr, parent.name)
-	_, has := parent.children[obj.name]
-	assert(!has, "duplicate object")
-	parent.children[obj.name] = obj
 	h5.dumpObject(obj)
 	logger.Infof("done with name=%s", string(linkName))
 }
@@ -1574,9 +1592,12 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 		}
 		dso := uint64(0)
 		sizes := uint64(dtSize)
-		for d := int(dimensionality) - 2; d >= 0; d-- {
-			dso += offsets[d] * sizes
-			sizes *= parent.objAttr.dimensions[d]
+		if parent.objAttr.dimensions != nil {
+			for d := int(dimensionality) - 2; d >= 0; d-- {
+				dso += offsets[d] * sizes
+				logger.Info("d=", d, "dim=", dimensionality, "parent dim=", parent.objAttr.dimensions)
+				sizes *= parent.objAttr.dimensions[d]
+			}
 		}
 		pending := dataBlock{addr, uint64(sizeChunk), 0, 0, filterMask, nil, nil}
 		pending.dsOffset = dso
@@ -1883,6 +1904,162 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 		h5.readHeapDirectBlock(link, rootBlockAddress, flags, startingBlockSize)
 	}
 }
+func (h5 *HDF5) readLocalHeap(addr uint64, offset uint64) string {
+	bf := h5.newSeek(addr, 0)
+	checkMagic(bf, 4, "HEAP")
+	version := read8(bf)
+	checkVal(0, version, "version 0 expected for local heap")
+	reserved := readEnc(bf, 3)
+	logger.Infof("reserved=0x%x", reserved)
+	checkVal(0, reserved, "reserved must be zero")
+	dsSize := read64(bf)
+	flOffset := read64(bf)
+	dsAddr := read64(bf)
+	logger.Infof("dsSize=%d flOffset=0x%x dsAddr=0x%x", dsSize, flOffset, dsAddr)
+	bff := h5.newSeek(dsAddr+offset, int64(dsSize)-int64(offset))
+	return readNullTerminatedName(0, bff)
+}
+
+func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, heapAddr uint64) {
+	bf := h5.newSeek(addr, int64(size)*8)
+	checkMagic(bf, 4, "SNOD")
+	version := read8(bf)
+	checkVal(1, version, "version 1 expected for symbol table leaf")
+	reserved := read8(bf)
+	checkVal(0, reserved, "reserved must be zero")
+	numSymbols := read16(bf)
+	logger.Info("number of symbols", numSymbols)
+	for i := 0; i < int(numSymbols); i++ {
+		logger.Info("Start: count=", bf.Count(), "rem=", bf.Rem())
+		if bf.Rem() < 24 {
+			logger.Info(i, "not enough space to read another entry", bf.Rem())
+			break
+		}
+		linkNameOffset := read64(bf) // 8
+		logger.Infof("%d: link name offset=0x%x", i, linkNameOffset)
+		linkName := h5.readLocalHeap(heapAddr, linkNameOffset)
+		logger.Infof("%d: link name=%s", i, linkName)
+		assert(len(linkName) > 0, "namelen cannot be zero")
+		objectHeaderAddress := read64(bf) // 16
+		logger.Infof("local symbol table entry=%d header addr=0x%x",
+			linkNameOffset, objectHeaderAddress)
+		cacheType := read32(bf) // 20
+		logger.Info("cacheType", cacheType)
+		reserved2 := read32(bf) // 24
+		checkVal(0, reserved2, "reserved sb")
+		assert(cacheType <= 2, "invalid cache type")
+		switch cacheType {
+		case 0:
+			rem := int(16)
+			if bf.Rem() < 16 {
+				rem = int(bf.Rem())
+			}
+			logger.Info("no data is cached")
+			checkZeroes(bf, rem)
+		case 1:
+			btreeAddr := read64(bf)
+			nameHeapAddr := read64(bf)
+			logger.Infof("btree addr=0x%x name heap addr=0x%x", btreeAddr, nameHeapAddr)
+		case 2:
+			offset := read32(bf)
+			checkZeroes(bf, 12)
+			logger.Info("Symbolic link offset", offset)
+			thrower.Throw(ErrLinkType)
+		}
+		_, has := parent.children[linkName]
+		assert(!has, "duplicate object")
+		if hasAddr(h5.rootObject, objectHeaderAddress) {
+			logger.Warn("ignore duplicate object")
+			logger.Infof("done with name=%s", string(linkName))
+			return
+		}
+		obj := &object{}
+		obj.addr = objectHeaderAddress
+
+		obj.name = linkName
+		//obj.creationOrder = co
+		//logger.Info("obj name", obj.name)
+		logger.Infof("object (0x%x, %s) from symbol table, parent (0x%x, %s)\n",
+			obj.addr, obj.name, parent.addr, parent.name)
+		parent.children[obj.name] = obj
+		obj.isGroup = true
+		h5.readDataObjectHeader(obj, objectHeaderAddress)
+		logger.Infof("STE=%+v rem=%v", obj, bf.Rem())
+		//b := make([]byte, bf.Rem())
+		//read(bf, b)
+		//logger.Infof("rembytes=0x%x", b)
+		h5.dumpObject(obj)
+		logger.Infof("done with name=%s", obj.name)
+	}
+}
+
+func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
+	bf := h5.newSeek(addr, 0) // TODO: figure out size
+
+	checkMagic(bf, 4, "TREE") // "SNOD"
+	nodeType := read8(bf)
+	nodeLevel := read8(bf)
+	entriesUsed := read16(bf)
+	leftAddress := read64(bf)
+	rightAddress := read64(bf)
+	logger.Infof("type=%v level=%v entries=%v left=0x%x right=0x%x",
+		nodeType, nodeLevel, entriesUsed, leftAddress, rightAddress)
+	if nodeLevel > 0 {
+		logger.Infof("Start level %d", nodeLevel)
+	}
+	if leftAddress != invalidAddress || rightAddress != invalidAddress {
+		fail("Siblings unexpected")
+	}
+	assert(nodeType == 0, "what we expect")
+	type keyAddr struct {
+		key  uint64
+		addr uint64
+	}
+	keyAddrs := []keyAddr{}
+	for i := uint16(0); i < entriesUsed; i++ {
+		key := read64(bf)
+		childAddr := read64(bf)
+		logger.Info("key, childaddr", key, childAddr)
+		keyAddrs = append(keyAddrs, keyAddr{key, childAddr})
+	}
+	lastKey := read64(bf)
+	sort.SliceStable(keyAddrs, func(i, j int) bool {
+		return keyAddrs[i].key < keyAddrs[j].key
+	})
+	var prevKey uint64
+	prevAddr := invalidAddress
+	for i, v := range keyAddrs {
+		if prevAddr != invalidAddress {
+			logger.Infof("%d: key=%d prevKey=%d size=%d addr=0x%x", i,
+				v.key, prevKey, v.key-prevKey, prevAddr)
+		}
+		prevKey = v.key
+		prevAddr = v.addr
+	}
+	if prevAddr != invalidAddress {
+		logger.Infof("last: key=%d prevKey=%d size=%d addr=0x%x",
+			lastKey, prevKey, lastKey-prevKey, prevAddr)
+	}
+	prevAddr = invalidAddress
+	for i, v := range keyAddrs {
+		if prevAddr != invalidAddress {
+			logger.Infof("%d: key=%d prevKey=%d size=%d addr=0x%x", i,
+				v.key, prevKey, v.key-prevKey, prevAddr)
+			if lastKey > prevKey {
+				h5.readSymbolTableLeaf(parent, prevAddr, (v.key - prevKey), heapAddr)
+			}
+		}
+		prevKey = v.key
+		prevAddr = v.addr
+	}
+	if prevAddr != invalidAddress {
+		logger.Infof("last: key=%d prevKey=%d size=%d addr=0x%x",
+			lastKey, prevKey, lastKey-prevKey, prevAddr)
+		if lastKey > prevKey {
+			h5.readSymbolTableLeaf(parent, prevAddr, (lastKey - prevKey), heapAddr)
+		}
+	}
+}
 
 func (h5 *HDF5) readBTree(parent *object, addr uint64) {
 	bf := h5.newSeek(addr, 0) // TODO: figure out size
@@ -1949,8 +2126,13 @@ func (h5 *HDF5) readLinkInfo(bf io.Reader) *linkInfo {
 	}
 }
 
+func hexPrint(addr uint64) string {
+	return fmt.Sprintf("0x%x", addr)
+}
+
 func (h5 *HDF5) isMagic(magic string, addr uint64) bool {
-	assert(addr != 0 && addr != invalidAddress, "invalid address for checking magic number")
+	assert(addr != 0 && addr != invalidAddress,
+		fmt.Sprint("invalid address for checking magic number: ", hexPrint(addr)))
 	if addr+4 > uint64(h5.fileSize) {
 		logger.Error("seeking past end of file -- probably a truncated file")
 		thrower.Throw(ErrCorrupted)
@@ -2035,7 +2217,7 @@ func (h5 *HDF5) readGroupInfo(obf io.Reader) {
 
 func headerTypeToString(ty int) string {
 	if ty < 0 || ty >= len(htts) {
-		return fmt.Sprintf("unknown header type %d", ty)
+		return fmt.Sprintf("unknown header type 0x%x", ty)
 	}
 	return htts[ty]
 }
@@ -2450,7 +2632,11 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Infof("rem=%v size=%v", bf.Rem(), size)
 			used := bf.Count() - nReadSave
 			logger.Infof("used %d bytes", used)
-			assert(int64(size) <= bf.Rem(), "not enough space")
+			//assert(int64(size) <= bf.Rem(), "not enough space")
+			if int64(size) > bf.Rem() {
+				logger.Error("not enough space") // XXX, debugging hack
+				return
+			}
 		}
 		if version > 1 {
 			nReadSave = bf.Count()
@@ -2472,7 +2658,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			continue
 		}
 		if version == 1 {
-			logger.Info("About to read,v=", version)
+			logger.Info("About to read v=", version)
 		}
 		f := newResetReader(bf, int64(size))
 		switch headerType {
@@ -2481,6 +2667,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Infof("nil -- do nothing (%d bytes)", size)
 
 		case typeDataspace:
+			obj.isGroup = false
 			obj.objAttr.dimensions, _ = h5.readDataspace(f)
 			logger.Info("dimensions are", obj.objAttr.dimensions)
 
@@ -2491,6 +2678,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			obj.isGroup = true
 
 		case typeDatatype:
+			obj.isGroup = false
 			logger.Info("Datatype")
 			// hacky: fix
 			save := obj.objAttr.dimensions
@@ -2501,6 +2689,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Info("dimensions are", obj.objAttr.dimensions)
 
 		case typeDataStorageFillValueOld:
+			obj.isGroup = false
 			logger.Info("Fill value old")
 			sz := read32(f)
 			logger.Info("Fill value old size", sz)
@@ -2511,6 +2700,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 
 		case typeDataStorageFillValue:
 			// this may not be used in netcdf
+			obj.isGroup = false
 			fv := h5.readFillValue(f)
 			if fv == nil {
 				logger.Info("undefined or default fill value")
@@ -2524,9 +2714,11 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			h5.readLinkDirectFrom(obj, f, size, 0)
 
 		case typeExternalDataFiles:
-			fail("We don't handle external data files")
+			logger.Error("We don't handle external data files")
+			thrower.Throw(ErrExternal)
 
 		case typeDataLayout:
+			obj.isGroup = false
 			h5.readDataLayout(obj, f)
 
 		case typeBogus:
@@ -2545,10 +2737,23 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			h5.readAttribute(obj, f, 0)
 
 		case typeObjectComment:
-			fail("comment not handled")
+			comment := readNullTerminatedName(0, f)
+			logger.Info("Comment=", comment)
 
 		case typeObjectModificationTimeOld:
-			fail("old mod time not handled")
+			get := func(size int) string {
+				b := make([]byte, size)
+				read(f, b)
+				return string(b)
+			}
+			year := get(4)    // 4
+			month := get(2)   //6
+			day := get(2)     //8
+			hour := get(2)    // 10
+			minute := get(2)  // 12
+			second := get(2)  // 14
+			checkZeroes(f, 2) // 16
+			logger.Infof("Old mod time %s-%s-%s %s:%s:%s", year, month, day, hour, minute, second)
 
 		case typeSharedMessageTable:
 			assertError(false, ErrSuperblock, "shared message table not handled")
@@ -2562,11 +2767,13 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			heapAddr = read64(f)
 			logger.Infof("Symbol table btree=0x%x heap=0x%x", btreeAddr, heapAddr)
 
+			h5.readSymbolTable(obj, btreeAddr, heapAddr)
+
 		case typeObjectModificationTime:
 			// this may not be used in netcdf
 			logger.Info("Object Modification Time")
 			v := read8(f)
-			logger.Info("object modification time verstion=", v)
+			logger.Info("object modification time version=", v)
 			for i := 0; i < 3; i++ {
 				z := read8(f)
 				checkVal(0, z, "zero")
@@ -2590,20 +2797,10 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			refCount := read32(f)
 			logger.Info("Reference count:", refCount)
 
-		case typeMetadataCacheImage:
-			// Used in superblock version 2 (not supported)
-			v := read8(bf)
-			logger.Info("metadata cache image version=", v)
-			offset := read64(bf)
-			length := read64(bf)
-			logger.Info("metadata cache image offset=0x%x length=%d\n", offset, length)
-			thrower.Throw(ErrSuperblock)
-
 		default:
 			b := make([]byte, f.Rem())
 			read(f, b)
 			logger.Warnf("Unknown header type 0x%x data=%x", headerType, b)
-			fail(fmt.Sprintf("UNHANDLED header type: %s", headerTypeToString(int(headerType))))
 		}
 		logger.Info("mid chunksize", chunkSize, "nRead", bf.Count(), "rem",
 			bf.Rem())
@@ -2666,15 +2863,17 @@ func (h5 *HDF5) readContinuation(obj *object, obf io.Reader, version uint8, ohFl
 	}
 }
 
-func (h5 *HDF5) readDataObjectHeader(addr uint64) *object {
+func (h5 *HDF5) readDataObjectHeader(obj *object, addr uint64) {
 	// Hacky: there must be a better way to determine V1 object headers
 	if h5.isMagic("OHDR", addr) {
-		return h5.readDataObjectHeaderV2(addr)
+		h5.readDataObjectHeaderV2(obj, addr)
+		return
 	}
-	return h5.readDataObjectHeaderV1(addr)
+	h5.readDataObjectHeaderV1(obj, addr)
 }
 
-func (h5 *HDF5) readDataObjectHeaderV2(addr uint64) *object {
+func (h5 *HDF5) readDataObjectHeaderV2(obj *object, addr uint64) {
+	obj.addr = addr
 	logger.Infof("read object header %x", addr)
 	bf := h5.newSeek(addr, 0) // TODO: figure out size
 	checkMagic(bf, 4, "OHDR")
@@ -2734,12 +2933,10 @@ func (h5 *HDF5) readDataObjectHeaderV2(addr uint64) *object {
 	newOffset := addr + uint64(bf.Count())
 
 	// Read fields that object header and continuation blocks have in common
-	var obj object
 	logger.Info("size of chunk=", chunkSize)
 	obj.children = make(map[string]*object)
-	obj.addr = addr
 	start := bf.Count()
-	h5.readCommon(&obj, bf, version, ohFlags, newOffset, chunkSize)
+	h5.readCommon(obj, bf, version, ohFlags, newOffset, chunkSize)
 	used := bf.Count() - start
 	assert(used == int64(chunkSize),
 		fmt.Sprintf("readCommon should read %d bytes, read %d, delta %d",
@@ -2752,10 +2949,10 @@ func (h5 *HDF5) readDataObjectHeaderV2(addr uint64) *object {
 	//		fmt.Sprintf("nread not matching count: %v %v", nRead, cbf.Count()))
 	h5.checkChecksum(addr, int(bf.Count()))
 	logger.Infof("obj %s at addr 0x%x\n", obj.name, obj.addr)
-	return &obj
 }
 
-func (h5 *HDF5) readDataObjectHeaderV1(addr uint64) *object {
+func (h5 *HDF5) readDataObjectHeaderV1(obj *object, addr uint64) {
+	obj.addr = addr
 	logger.Infof("v1 addr=0x%x", addr)
 	bf := h5.newSeek(addr, 0) // TODO: figure out size
 	version := read8(bf)
@@ -2773,9 +2970,7 @@ func (h5 *HDF5) readDataObjectHeaderV1(addr uint64) *object {
 		"header size", headerSize)
 
 	// Read fields that object header and continuation blocks have in common
-	var obj object
 	obj.children = make(map[string]*object)
-	obj.addr = addr
 	count := bf.Count()
 	logger.Info("count = ", count)
 	rounded := (count + 7) & ^int64(7)
@@ -2783,9 +2978,8 @@ func (h5 *HDF5) readDataObjectHeaderV1(addr uint64) *object {
 	if padding > 0 {
 		checkZeroes(bf, int(padding))
 	}
-	h5.readCommon(&obj, bf, version, 0, addr+uint64(bf.Count()), uint64(headerSize))
+	h5.readCommon(obj, bf, version, 0, addr+uint64(bf.Count()), uint64(headerSize))
 	logger.Info("done reading chunks")
-	return &obj
 }
 
 func (h5 *HDF5) Close() {
@@ -2881,7 +3075,8 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		sharedAttrs: make(map[uint64]*attribute)}
 	h5.readSuperblock()
 	assert(h5.rootAddr != invalidAddress, "No root address")
-	h5.rootObject = h5.readDataObjectHeader(h5.rootAddr)
+	h5.rootObject = &object{}
+	h5.readDataObjectHeader(h5.rootObject, h5.rootAddr)
 	h5.groupObject = h5.rootObject
 	h5.groupObject.isGroup = true
 	h5.dumpObject(h5.rootObject)
@@ -3213,7 +3408,10 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			// TODO: we compute maxPad, but don't use it (just any pad causes a tail pad of 7).
 			// TODO: figure out if this is correct.
 			logger.Info("maxpad", maxPad, "count=", cbf.Count())
-			padBytes(cbf, maxPad)
+			if !padBytesCheck(cbf, maxPad, true /*round*/, logger.Info) {
+				logger.Info("3. padbytes problem, file:", h5.fname, "pad=", maxPad)
+			}
+			//padBytes(cbf, maxPad)
 		}
 		return compound(varray)
 	}
@@ -3332,28 +3530,25 @@ func (h5 *HDF5) allocReferences(bf io.Reader, dimLengths []uint64) interface{} {
 		logger.Infof("Reference addr 0x%x", addr)
 		return int64(addr)
 	}
-	logger.Fatal("this reference code has never been executed before")
 	// uncomment the following to enable
-	if parseMultiDimensionalReferences {
-		thisDim := dimLengths[0]
-		if len(dimLengths) == 1 {
-			values := make([]int64, thisDim)
-			for i := range values {
-				var addr uint64
-				err := binary.Read(bf, binary.LittleEndian, &addr)
-				thrower.ThrowIfError(err)
-				logger.Infof("Reference addr 0x%x", addr)
-				values[i] = int64(addr)
-			}
-			return values
+
+	thisDim := dimLengths[0]
+	if len(dimLengths) == 1 {
+		values := make([]int64, thisDim)
+		for i := range values {
+			var addr uint64
+			err := binary.Read(bf, binary.LittleEndian, &addr)
+			thrower.ThrowIfError(err)
+			logger.Infof("Reference addr 0x%x", addr)
+			values[i] = int64(addr)
 		}
-		vals := makeSlices(reflect.TypeOf(int64(0)), dimLengths)
-		for i := uint64(0); i < thisDim; i++ {
-			vals.Index(int(i)).Set(reflect.ValueOf(h5.allocReferences(bf, dimLengths[1:])))
-		}
-		return vals.Interface()
+		return values
 	}
-	panic("should not get here")
+	vals := makeSlices(reflect.TypeOf(int64(0)), dimLengths)
+	for i := uint64(0); i < thisDim; i++ {
+		vals.Index(int(i)).Set(reflect.ValueOf(h5.allocReferences(bf, dimLengths[1:])))
+	}
+	return vals.Interface()
 }
 
 func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {
@@ -3579,11 +3774,14 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			fmt.Sprintf("filter mask = 0x%x", val.filterMask))
 		logger.Infof("block %d is 0x%x, len %d (%d, %d), mask 0x%x",
 			i, val.offset, val.length, val.dsOffset, val.dsLength, val.filterMask)
-		var bf remReader
+		var bf io.Reader
 		canSeek := false
 		if val.rawData != nil {
 			bf = newResetReaderFromBytes(val.rawData[skipBegin : dsLength+skipBegin])
 		} else {
+			logger.Infof("offset=0x%x length=%d offset+length=0x%x filesize=0x%x",
+				valOffset, val.length,
+				valOffset+val.length, h5.fileSize)
 			bf = h5.newSeek(valOffset, int64(val.length))
 			canSeek = true
 		}
@@ -3636,18 +3834,28 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	sort.Sort(byOffset{segments})
 	readers := make([]io.Reader, 0)
 	off := firstOffset
+	remOffset := invalidAddress
 	logger.Info("firstoffset=", firstOffset, "lastOffset=", lastOffset)
 	for i := 0; i < len(segments); i++ {
 		r := segments[i].r
-		assertError(segments[i].offset <= off,
-			ErrCorrupted, fmt.Sprint("this only happens in corrupted files (1)",
-				" segoff=", segments[i].offset, " off=", off))
-		logger.Info("Reader at offset", segments[i].offset, "length", segments[i].length)
-		readers = append(readers, newResetReader(r, int64(segments[i].length)))
-		off = segments[i].offset + segments[i].length
-		if off >= lastOffset {
-			break
+		if segments[i].offset > off {
+			extra := segments[i].offset - off
+			logger.Infof("Fill value reader at offset 0x%x length %d", segments[i].offset-extra,
+				extra)
+			readers = append(readers, makeFillValueReader(obj, nil, int64(extra)))
+			off += extra
 		}
+		logger.Infof("Reader at offset 0x%x length %d", segments[i].offset, segments[i].length)
+		readers = append(readers, newResetReader(r, int64(segments[i].length)))
+		off += segments[i].length
+		remOffset = segments[i].offset + segments[i].length
+	}
+	if size > offset && remOffset != invalidAddress {
+		extra := size - offset
+		logger.Infof("Fill value reader at end offset 0x%x length %d",
+			remOffset-extra, extra)
+		readers = append(readers, makeFillValueReader(obj, nil, int64(extra)))
+		off += extra
 	}
 	assertError(off <= lastOffset, ErrCorrupted,
 		fmt.Sprintf("this only happens in corrupted files (2) %d %d", off, lastOffset))
@@ -4026,6 +4234,29 @@ func (h5 *HDF5) Attributes() api.AttributeMap {
 	return getAttributes(h5.rootObject.attrlist)
 }
 
+func hasAddr(obj *object, addr uint64) bool {
+	if obj == nil {
+		return false
+	}
+	if addr == obj.addr {
+		return true
+	}
+	if obj.children == nil {
+		return false
+	}
+	for _, o := range obj.children {
+		if o.addr == addr {
+			return true
+		}
+		if len(o.children) > 0 {
+			if hasAddr(o, addr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (h5 *HDF5) findVariable(varName string) *object {
 	obj, has := h5.groupObject.children[varName]
 	if !has {
@@ -4169,6 +4400,9 @@ func (h5 *HDF5) listTypes() []string {
 func (h5 *HDF5) findSignature(signature string, name string, origNames map[string]bool,
 	printer func(name string, attr attribute, origNames map[string]bool) string) string {
 	for varName, obj := range h5.groupObject.children {
+		if obj.isGroup {
+			continue
+		}
 		if origNames[varName] {
 			continue
 		}

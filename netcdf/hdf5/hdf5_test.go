@@ -921,7 +921,7 @@ func TestByte(t *testing.T) {
 	}
 	c3 := vr.Values.(string)
 	if c3 != "ab" {
-		t.Error("value should be \"ab\"")
+		t.Error("got=", c3, "exp=", "ab")
 		return
 	}
 }

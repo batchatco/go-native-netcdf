@@ -3447,8 +3447,7 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 		var bff remReader
 		if length == 0 {
 			// If there's no value to read, we fake one to get the type.
-			fakeAttr := attr
-			fakeAttr.dimensions = nil
+			attr.dimensions = nil
 			s = make([]byte, attr.length)
 		} else {
 			s = h5.readGlobalHeap(addr, index)

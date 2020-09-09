@@ -895,7 +895,6 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 					logger.Infof("[32] byteOffset=0x%x", byteOffset)
 				}
 			}
-			logger.Info(i, "compound byte offset=", byteOffset)
 			var compoundAttribute attribute
 			compoundAttribute.name = name
 			if dtversion == 1 {
@@ -1904,6 +1903,7 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 		h5.readHeapDirectBlock(link, rootBlockAddress, flags, startingBlockSize)
 	}
 }
+
 func (h5 *HDF5) readLocalHeap(addr uint64, offset uint64) string {
 	bf := h5.newSeek(addr, 0)
 	checkMagic(bf, 4, "HEAP")
@@ -1921,13 +1921,16 @@ func (h5 *HDF5) readLocalHeap(addr uint64, offset uint64) string {
 }
 
 func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, heapAddr uint64) {
-	bf := h5.newSeek(addr, int64(size)*8)
+	bf := h5.newSeek(addr, int64(size))
 	checkMagic(bf, 4, "SNOD")
 	version := read8(bf)
 	checkVal(1, version, "version 1 expected for symbol table leaf")
 	reserved := read8(bf)
 	checkVal(0, reserved, "reserved must be zero")
 	numSymbols := read16(bf)
+	used := bf.Count()
+	thisSize := 8 * int64(size)
+	bf = h5.newSeek(addr+uint64(used), thisSize-used)
 	logger.Info("number of symbols", numSymbols)
 	for i := 0; i < int(numSymbols); i++ {
 		logger.Info("Start: count=", bf.Count(), "rem=", bf.Rem())
@@ -3169,7 +3172,7 @@ func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signe
 		var value uint32
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		logger.Info("int32 value=", value)
+		logger.Infof("int=%d (0x%x)", value, value)
 		if signed {
 			return int32(value)
 		}
@@ -3273,7 +3276,6 @@ func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) int
 		var value float32
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		logger.Info("float32 value=", value, "rem=", bf.(remReader).Rem())
 		return value
 	}
 	thisDim := dimLengths[0]
@@ -3295,7 +3297,6 @@ func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) in
 		var value float64
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		logger.Info("float64 value=", value)
 		return value
 	}
 	thisDim := dimLengths[0]
@@ -3355,7 +3356,7 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 	class := typeNames[attr.class]
 
 	logger.Info(cbf.Count(), "Alloc compounds", dimLengths, class, "length=", length,
-		"nchildren=", len(attr.children))
+		"nchildren=", len(attr.children), "rem=", bf.(remReader).Rem())
 	dtlen := uint32(0)
 	for i := range attr.children {
 		dtlen += attr.children[i].length
@@ -3374,8 +3375,9 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 		for i := range attr.children {
 			pad := 0
 			logger.Info(cbf.Count(), cbf.Rem(), "Alloc compound child length",
+				attr.children[i].name,
 				dimLengths,
-				attr.children[i].length)
+				attr.children[i].length, "rem=", cbf.Rem())
 			switch attr.children[i].class {
 			case typeFixedPoint, typeFloatingPoint:
 				switch attr.children[i].length {
@@ -3427,19 +3429,19 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 }
 
 func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute) interface{} {
-	logger.Info("allocVariable", dimLengths)
+	logger.Info("allocVariable", dimLengths, "count=", bf.(remReader).Count())
 	if len(dimLengths) == 0 {
 		var length uint32
 		var addr uint64
 		var index uint32
-
 		err := binary.Read(bf, binary.LittleEndian, &length)
 		thrower.ThrowIfError(err)
 		err = binary.Read(bf, binary.LittleEndian, &addr)
 		thrower.ThrowIfError(err)
 		err = binary.Read(bf, binary.LittleEndian, &index)
 		thrower.ThrowIfError(err)
-		logger.Infof("length %d addr 0x%x index %d\n", length, addr, index)
+		logger.Infof("length %d(0x%x) addr 0x%x index %d(0x%x)\n",
+			length, length, addr, index, index)
 		var val0 interface{}
 		var s []byte
 		var bff remReader
@@ -3447,14 +3449,12 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 			// If there's no value to read, we fake one to get the type.
 			fakeAttr := attr
 			fakeAttr.dimensions = nil
-			b := make([]byte, attr.length)
-			bf := newResetReaderFromBytes(b)
-			val0 = h5.getDataAttr(bf, fakeAttr)
+			s = make([]byte, attr.length)
 		} else {
 			s = h5.readGlobalHeap(addr, index)
-			bff = newResetReaderFromBytes(s)
-			val0 = h5.getDataAttr(bff, attr)
 		}
+		bff = newResetReaderFromBytes(s)
+		val0 = h5.getDataAttr(bff, attr)
 		t := reflect.ValueOf(val0).Type()
 		sl := reflect.MakeSlice(reflect.SliceOf(t), int(length), int(length))
 		if length > 0 {
@@ -3530,7 +3530,6 @@ func (h5 *HDF5) allocReferences(bf io.Reader, dimLengths []uint64) interface{} {
 		logger.Infof("Reference addr 0x%x", addr)
 		return int64(addr)
 	}
-	// uncomment the following to enable
 
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
@@ -3772,8 +3771,8 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 
 		assert(val.filterMask == 0,
 			fmt.Sprintf("filter mask = 0x%x", val.filterMask))
-		logger.Infof("block %d is 0x%x, len %d (%d, %d), mask 0x%x",
-			i, val.offset, val.length, val.dsOffset, val.dsLength, val.filterMask)
+		logger.Infof("block %d is 0x%x, len %d (%d, %d), mask 0x%x size %d",
+			i, val.offset, val.length, val.dsOffset, val.dsLength, val.filterMask, size)
 		var bf io.Reader
 		canSeek := false
 		if val.rawData != nil {
@@ -3824,11 +3823,15 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 				thrower.ThrowIfError(err)
 			}
 		}
-		segments = append(segments,
-			&segment{
-				offset: offset + skipBegin,
-				length: dsLength - (skipBegin + skipEnd),
-				r:      bf})
+		thisSeg := &segment{
+			offset: offset + skipBegin,
+			length: dsLength - (skipBegin + skipEnd),
+			r:      bf}
+		if int64(thisSeg.offset+thisSeg.length) > h5.fileSize {
+			logger.Warn("Offset past file size", hexPrint(thisSeg.offset), thisSeg.length,
+				hexPrint(thisSeg.offset+thisSeg.length), hexPrint(uint64(h5.fileSize)))
+		}
+		segments = append(segments, thisSeg)
 		offset += dsLength
 	}
 	sort.Sort(byOffset{segments})
@@ -3860,7 +3863,8 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	assertError(off <= lastOffset, ErrCorrupted,
 		fmt.Sprintf("this only happens in corrupted files (2) %d %d", off, lastOffset))
 
-	return newResetReader(io.MultiReader(readers...), int64(size)), size
+	r := newResetReader(io.MultiReader(readers...), int64(size))
+	return r, size
 }
 
 func calcAttrSize(attr *attribute) int64 {
@@ -3894,15 +3898,17 @@ func calcAttrSize(attr *attribute) int64 {
 		if pad > maxPad {
 			maxPad = pad
 		}
-		size += calcAttrSize(&c)
+		attrSize := calcAttrSize(&c)
 		size = (size + pad) & ^pad
+		size += attrSize
 	}
 	size = (size + maxPad) & ^maxPad
 	if size < int64(attr.length) {
+		// packed
 		size = int64(attr.length)
 	}
-	for _, d := range attr.dimensions {
-		size *= int64(d)
+	for i := range attr.dimensions {
+		size *= int64(attr.dimensions[i])
 	}
 	return size
 }
@@ -4047,7 +4053,12 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 	attr := &obj.objAttr
 	sz := calcAttrSize(attr)
 	logger.Info("about to getdataattr rem=", bf.(remReader).Rem(), "size=", sz)
-	var bff remReader
+	if sz > bf.(remReader).Rem() {
+		length := sz - bf.(remReader).Rem()
+		logger.Info("Add fill value reader", length)
+		bf = makeFillValueReader(obj, bf, sz)
+	}
+	var bff io.Reader
 	if attr.isSlice {
 		assert(attr.lastDim >= attr.firstDim, "bad slice params")
 		var chunkSize int64
@@ -4869,6 +4880,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 	err = ErrInternal
 	defer thrower.RecoverError(&err)
+	logger.Info("get variable", varName)
 	found := h5.findVariable(varName)
 	if found == nil {
 		logger.Infof("variable %s not found", varName)

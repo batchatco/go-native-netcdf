@@ -585,6 +585,7 @@ func TestGlobalAttrs(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	defer nc.Close()
 	exp, err := util.NewOrderedMap(
 		[]string{"c", "str", "f32", "f64", "i8", "ui8", "i16", "ui16", "i32", "ui32", "i64", "ui64",
 			"col", "all"},
@@ -610,12 +611,36 @@ func TestGlobalAttrs(t *testing.T) {
 	}
 	got := nc.Attributes()
 	checkAllAttrs(t, got, exp)
+
+	gTypes := map[string]interface{}{
+		"c":    "string",
+		"str":  "string",
+		"f32":  "float",
+		"f64":  "double",
+		"i8":   "byte",
+		"ui8":  "ubyte",
+		"i16":  "short",
+		"ui16": "ushort",
+		"i32":  "int",
+		"ui32": "uint",
+		"i64":  "int64",
+		"ui64": "uint64",
+		"col":  "color",
+		"all":  "alltypes",
+	}
+
 	h5, _ := nc.(*HDF5)
 	for _, a := range got.Keys() {
 		ty := h5.findGlobalAttrType(a)
-		t.Log("global attr type for", a, "=", ty)
+		exp, has := gTypes[a]
+		if has {
+			if exp != ty {
+				t.Error("global attr", a, "type got=", ty, "exp=", exp)
+			}
+		} else {
+			t.Error("type not found for", a)
+		}
 	}
-	defer nc.Close()
 }
 
 func checkAllAttrs(t *testing.T, got api.AttributeMap, exp api.AttributeMap) {
@@ -625,7 +650,7 @@ func checkAllAttrs(t *testing.T, got api.AttributeMap, exp api.AttributeMap) {
 	for _, key := range exp.Keys() {
 		used[key] = true
 		if !checkAttr(t, key, got, exp) {
-			t.Error("values did not match")
+			t.Errorf("values did not match")
 			errors = true
 		}
 	}
@@ -1122,6 +1147,30 @@ func TestVariableLength(t *testing.T) {
 			Attributes: nilMap}},
 	}
 	checkAll(t, nc, vars)
+	expAttrs, err := util.NewOrderedMap([]string{"Tricky", "Vint"},
+		map[string]interface{}{
+			"Tricky": compound{
+				int32(1),
+				[][]int32{
+					// The numbers here are the same as what ncdump shows.
+					// ncgen has a bug.
+					{int32(0), int32(0)},              // should be 2,3
+					{int32(-295104496), int32(22052)}, // should be 4,5
+					{int32(6), int32(7)}},
+			},
+			"Vint": [][]int32{
+				{}, // zero
+				{1},
+				{2, 3},
+				{4, 5, 6},
+				{7, 8, 9, 10},
+				{11, 12, 13, 14, 15}}})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	got := nc.Attributes()
+	checkAllAttrs(t, got, expAttrs)
 }
 
 func TestUnlimitedEmpty(t *testing.T) {
@@ -1443,7 +1492,7 @@ func (kl keyValList) check(t *testing.T, name string, baseType string,
 		return false
 	}
 	if kv.baseType != baseType {
-		t.Log("Type mismatch got=", baseType, "exp=", kv.baseType)
+		t.Logf("Type mismatch got=%#v exp=%#v", baseType, kv.baseType)
 		return false
 	}
 	return true

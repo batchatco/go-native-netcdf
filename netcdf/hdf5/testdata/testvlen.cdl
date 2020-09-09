@@ -1,13 +1,23 @@
 netcdf testvlen {
 types:
   int(*) vint;
-
+  compound easy {
+    int firstEasy;
+    int secondEasy;
+  };
+  easy(*) easyVlen;
+  compound tricky {
+    int trickyInt;
+    easyVlen trickVlen;
+  };
 dimensions:
   dim = 6;
 
 variables:
   vint v(dim);
   vint v2(dim);
+  tricky :Tricky = {1, {{2, 3}, {4, 5}, {6,7}}};
+  vint :Vint = {}, {1}, {2,3}, {4,5,6}, {7,8,9,10}, {11,12,13,14,15};
 
 data:
   v = {}, {1}, {2,3}, {4,5,6}, {7,8,9,10}, {11,12,13,14,15};

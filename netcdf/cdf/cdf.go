@@ -106,6 +106,19 @@ func (cdf *CDF) ListSubgroups() []string {
 	return nil
 }
 
+// ListTypes just returns an empty list because there are no user-defined types in CDF
+func (cdf *CDF) ListTypes() []string {
+	return []string{}
+}
+
+func (cdf *CDF) GetType(name string) (string, bool) {
+	return "", false
+}
+
+func (cdf *CDF) GetGoType(name string) (string, bool) {
+	return "", false
+}
+
 // SetLogLevel sets the logging level to the given level, and returns
 // the old level. This is for internal debugging use. The log messages
 // are not expected to make much sense to anyone but the developers.

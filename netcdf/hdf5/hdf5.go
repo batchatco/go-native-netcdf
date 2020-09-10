@@ -196,6 +196,17 @@ const (
 	classVirtual
 )
 
+// for padBytesCheck()
+const (
+	dontRound = false // the number is the number of pad bytes to check for
+	round     = true  // the numbers is the byte-boundary to check up to (1, 3 or 7).
+)
+
+var (
+	logFunc   = logger.Fatal // logging function for padBytesCheck()
+	maybeFail = fail         // fail function, can be disabled for testing
+)
+
 type attribute struct {
 	name          string
 	value         interface{}
@@ -267,12 +278,13 @@ type HDF5 struct {
 	file      *raFile
 	groupName string // fully-qualified
 
-	rootAddr    uint64
-	root        *linkInfo
-	attribute   *linkInfo
-	rootObject  *object
-	groupObject *object
-	sharedAttrs map[uint64]*attribute
+	rootAddr      uint64
+	root          *linkInfo
+	attribute     *linkInfo
+	rootObject    *object
+	groupObject   *object
+	sharedAttrs   map[uint64]*attribute
+	registrations map[string]interface{}
 }
 
 type linkInfo struct {
@@ -294,6 +306,21 @@ var (
 	logger = internal.NewLogger()
 	log    = "don't use the log package" // prevents usage of standard log package
 )
+
+func setNonStandard(non bool) bool {
+	old := allowNonStandard
+	allowNonStandard = non
+	if allowNonStandard {
+		logFunc = logger.Info
+		maybeFail = func(msg string) {
+			logger.Warn(msg)
+		}
+	} else {
+		logFunc = logger.Fatal
+		maybeFail = fail
+	}
+	return old
+}
 
 func init() {
 	_ = log // silence warning
@@ -635,12 +662,12 @@ func readNullTerminatedName(bf io.Reader, padding int) string {
 	return string(name)
 }
 
+func padBytes(bf io.Reader, pad32 int) {
+	padBytesCheck(bf, pad32, round, logFunc)
+}
+
 func checkZeroes(bf io.Reader, len int) {
-	logFunc := logger.Warn
-	if allowNonStandard {
-		logFunc = logger.Info
-	}
-	padBytesCheck(bf, len, false /*don't round*/, logFunc)
+	padBytesCheck(bf, len, dontRound, logFunc)
 }
 
 // Assumes it is an Attribute
@@ -913,10 +940,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 				perm := read32(bf)
 				logger.Info("permutation", perm)
 				if perm != 0 {
-					if !allowNonStandard {
-						fail("permutation field should be zero")
-					}
-					logger.Warn("permutation field should be zero")
+					maybeFail("permutation field should be zero")
 				}
 				reserved := read32(bf)
 				checkVal(0, reserved, "reserved dt")
@@ -1801,7 +1825,7 @@ func checkVal(expected, actual interface{}, comment string) {
 		fmt.Sprintf("expected %v != actual %v (%v)", expected, actual, comment))
 }
 
-func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) []byte {
+func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) (remReader, uint64) {
 	bf := h5.newSeek(heapAddress, 0) // TODO: figure out size
 	checkMagic(bf, 4, "GCOL")
 	version := read8(bf)
@@ -1827,11 +1851,10 @@ func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) []byte {
 			asize := (osize + 7) & ^uint64(0x7)
 			assert(asize <= csize, "adjusted size too big")
 			csize -= asize
-			b := make([]byte, osize)
-			read(bf, b)
 			if hoi == uint16(index) {
-				return b
+				return newResetReader(bf, int64(osize)), osize
 			}
+			skip(bf, int64(osize))
 			l := osize
 			if l > 8 {
 				l = 8
@@ -1840,7 +1863,7 @@ func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) []byte {
 			skip(bf, int64(rem))
 		}
 	}
-	return nil
+	return nil, 0
 }
 
 func (h5 *HDF5) readHeap(link *linkInfo) {
@@ -2290,9 +2313,7 @@ func (h5 *HDF5) readDataspace(obf io.Reader) ([]uint64, int64) {
 		}
 		fail("permutation indices not supported")
 	}
-	if bf.Rem() > 0 {
-		logger.Error("Junk bytes: ", bf.Rem())
-	}
+	warnAssert(bf.Rem() == 0, fmt.Sprint("Junk bytes: ", bf.Rem()))
 	return ret, count
 }
 
@@ -2812,10 +2833,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		default:
 			b := make([]byte, f.Rem())
 			read(f, b)
-			if !allowNonStandard {
-				fail(fmt.Sprintf("Unknown header type 0x%x data=%x", headerType, b))
-			}
-			logger.Warnf("Unknown header type 0x%x data=%x", headerType, b)
+			maybeFail(fmt.Sprintf("Unknown header type 0x%x data=%x", headerType, b))
 		}
 		logger.Info("mid chunksize", chunkSize, "nRead", bf.Count(), "rem",
 			bf.Rem())
@@ -2825,18 +2843,10 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 				// allowed for padding up to 8-byte boundary
 				checkZeroes(f, int(rem))
 			} else {
-				switch headerType {
-				case typeDatatype:
-					// This happens with compound data, for as yet unknown reasons.
-					logger.Infof("%d junk bytes at end of record type=%s", rem,
-						headerTypeToString(int(headerType)))
-					checkZeroes(f, int(rem))
-				default:
-					logger.Errorf("%d junk bytes at end of record type=%s", rem,
-						headerTypeToString(int(headerType)))
-					checkZeroes(f, int(rem))
-					fail("junk at end of record")
-				}
+				// This happens with compound data, for as yet unknown reasons.
+				logger.Infof("%d junk bytes at end of record type=%s", rem,
+					headerTypeToString(int(headerType)))
+				checkZeroes(f, int(rem))
 			}
 		}
 	}
@@ -3080,16 +3090,18 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		logger.Info("Opened", fname)
 	}
 	h5 := &HDF5{
-		fname:       fname,
-		fileSize:    fileSize,
-		groupName:   "/",
-		file:        newRaFile(file),
-		rootAddr:    0,
-		root:        nil,
-		attribute:   nil,
-		rootObject:  nil,
-		groupObject: nil,
-		sharedAttrs: make(map[uint64]*attribute)}
+		fname:         fname,
+		fileSize:      fileSize,
+		groupName:     "/",
+		file:          newRaFile(file),
+		rootAddr:      0,
+		root:          nil,
+		attribute:     nil,
+		rootObject:    nil,
+		groupObject:   nil,
+		sharedAttrs:   make(map[uint64]*attribute),
+		registrations: make(map[string]interface{}),
+	}
 	h5.readSuperblock()
 	assert(h5.rootAddr != invalidAddress, "No root address")
 	h5.rootObject = &object{}
@@ -3357,10 +3369,6 @@ func padBytesCheck(obf io.Reader, pad32 int, round bool,
 	return success
 }
 
-func padBytes(bf io.Reader, pad32 int) {
-	padBytesCheck(bf, pad32, true /*round*/, logger.Fatal)
-}
-
 func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute) interface{} {
 	length := int64(attr.length)
 	class := typeNames[attr.class]
@@ -3388,8 +3396,8 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			lastOffset = uint64(byteOffset) + clen
 			if int64(byteOffset) > cbf.Count() {
 				length := int64(byteOffset) - cbf.Count()
-				logger.Info("pad to offset", length)
-				checkZeroes(cbf, int(length))
+				logger.Info("skip to offset", length)
+				skip(cbf, int64(length))
 			}
 			clength := uint64(c.length)
 			for _, d := range c.dimensions {
@@ -3404,14 +3412,8 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 				rem = uint64(bf.(remReader).Rem())
 			}
 			if rem > 0 {
-				logger.Info("pad at end", rem)
-				logFunc := logger.Warn
-				if allowNonStandard {
-					logFunc = logger.Info
-				}
-				if !padBytesCheck(bf, int(rem), true /*round*/, logFunc) {
-					logger.Info("1. padbytes problem, file:", h5.fname, "pad=", rem)
-				}
+				logger.Info("skip at end", rem)
+				skip(cbf, int64(rem))
 			}
 		}
 		logger.Info(bf.(remReader).Count(), "return compound count=", bf.(remReader).Count())
@@ -3450,10 +3452,10 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 			// If there's no value to read, we fake one to get the type.
 			attr.dimensions = nil
 			s = make([]byte, attr.length)
+			bff = newResetReaderFromBytes(s)
 		} else {
-			s = h5.readGlobalHeap(addr, index)
+			bff, _ = h5.readGlobalHeap(addr, index)
 		}
-		bff = newResetReaderFromBytes(s)
 		val0 = h5.getDataAttr(bff, attr)
 		t := reflect.ValueOf(val0).Type()
 		sl := reflect.MakeSlice(reflect.SliceOf(t), int(length), int(length))
@@ -3568,7 +3570,9 @@ func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {
 		if length == 0 {
 			return ""
 		}
-		s := h5.readGlobalHeap(addr, uint32(index))
+		bff, sz := h5.readGlobalHeap(addr, index)
+		s := make([]byte, sz)
+		read(bff, s)
 		logger.Info("string=", string(s))
 		return getString(s) // TODO: should be s[:length]
 	}
@@ -3592,7 +3596,9 @@ func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {
 				values[i] = ""
 				continue
 			}
-			s := h5.readGlobalHeap(addr, index)
+			bff, sz := h5.readGlobalHeap(addr, index)
+			s := make([]byte, sz)
+			read(bff, s)
 			values[i] = getString(s) // TODO: should be s[:length]
 		}
 		return values
@@ -3685,7 +3691,6 @@ func (r *unshuffleReader) Read(p []byte) (int, error) {
 
 func newFletcher32Reader(r io.Reader, size uint64) remReader {
 	assert(size >= 4, "bad size for fletcher")
-	assert(size%2 != 1, "bad mod for fletcher")
 	b := make([]byte, size-4)
 	read(r, b)
 	var checksum uint32
@@ -3693,6 +3698,10 @@ func newFletcher32Reader(r io.Reader, size uint64) remReader {
 	bf := newResetReaderFromBytes(b)
 	values := make([]uint16, len(b)/2)
 	binary.Read(bf, binary.BigEndian, values)
+	if len(b)%2 == 1 {
+		last := uint16(b[len(b)-1])
+		values = append(values, last<<8)
+	}
 	calcedSum := fletcher32(values)
 	if calcedSum != checksum {
 		logger.Error("calced sum=", calcedSum, "file sum=", checksum)
@@ -4274,47 +4283,58 @@ func (h5 *HDF5) findType(varName string) string {
 	return h5.printType(varName, obj.objAttr, origNames)
 }
 
-func (h5 *HDF5) getType(typeName string) string {
+func (h5 *HDF5) GetType(typeName string) (string, bool) {
 	obj, has := h5.groupObject.children[typeName]
 	if !has {
-		return ""
+		return "", false
 	}
 	logger.Info("Found type", typeName, "group", h5.groupName, "child=", obj.name)
 	if len(obj.attrlist) != 0 {
 		logger.Info("types don't have attributes")
-		return ""
+		return "", false
 	}
 	if obj.objAttr.dimensions != nil {
 		logger.Info("this is a variable")
-		return ""
+		return "", false
+	}
+	if obj.isGroup {
+		logger.Info("this is a group")
+		return "", false
 	}
 	origNames := map[string]bool{typeName: true}
 	sig := h5.printType(typeName, obj.objAttr, origNames)
-	return sig
+	return sig, true
 }
 
-func (h5 *HDF5) getGoType(typeName string) string {
+func (h5 *HDF5) GetGoType(typeName string) (string, bool) {
 	obj, has := h5.groupObject.children[typeName]
 	if !has {
-		return ""
+		return "", false
 	}
 	logger.Info("Found type", typeName, "group", h5.groupName, "child=", obj.name)
 	if len(obj.attrlist) != 0 {
 		logger.Info("types don't have attributes")
-		return ""
+		return "", false
 	}
 	if obj.objAttr.dimensions != nil {
 		logger.Info("this is a variable")
-		return ""
+		return "", false
+	}
+	if obj.isGroup {
+		logger.Info("this is a group")
+		return "", false
 	}
 	origNames := map[string]bool{typeName: true}
 	sig := h5.printGoType(typeName, obj.objAttr, origNames)
-	return fmt.Sprintf("type %s %s", typeName, sig)
+	return fmt.Sprintf("type %s %s", typeName, sig), true
 }
 
-func (h5 *HDF5) listTypes() []string {
+func (h5 *HDF5) ListTypes() []string {
 	var ret []string
 	for typeName, obj := range h5.groupObject.children {
+		if obj.isGroup {
+			continue
+		}
 		hasClass := false
 		hasCoordinates := false
 		hasName := false
@@ -4427,14 +4447,13 @@ func (h5 *HDF5) printType(name string, attr attribute, origNames map[string]bool
 		return signature
 
 	case typeCompound:
-		// TODO: find name of type
 		members := make([]string, len(attr.children))
 		for i, cattr := range attr.children {
 			ty := h5.printType(name, cattr, origNames)
-			members[i] = fmt.Sprintf("%s %s", ty, cattr.name)
+			members[i] = fmt.Sprintf("\t%s %s;\n", ty, cattr.name)
 		}
-		interior := strings.Join(members, "; ")
-		signature := fmt.Sprintf("compound { %s; };", interior)
+		interior := strings.Join(members, "")
+		signature := fmt.Sprintf("compound {\n%s};", interior)
 		namedType := h5.findSignature(signature, name, origNames, h5.printType)
 		if namedType != "" {
 			return namedType
@@ -4442,7 +4461,6 @@ func (h5 *HDF5) printType(name string, attr attribute, origNames map[string]bool
 		return signature
 
 	case typeEnumerated:
-		// TODO: find name of type
 		assert(len(attr.children) == 1, "enum should have one child")
 		enumAttr := attr.children[0]
 		assert(len(enumAttr.children) == 0, "no recursion")
@@ -4450,10 +4468,10 @@ func (h5 *HDF5) printType(name string, attr attribute, origNames map[string]bool
 		assert(ty != "", "unable to parse enum attr")
 		list := make([]string, len(enumAttr.enumNames))
 		for i, name := range enumAttr.enumNames {
-			list[i] = fmt.Sprintf("%s = %v", name, enumAttr.enumValues[i])
+			list[i] = fmt.Sprintf("\t%s = %v", name, enumAttr.enumValues[i])
 		}
-		interior := strings.Join(list, ", ")
-		signature := fmt.Sprintf("%s enum { %s }", ty, interior)
+		interior := strings.Join(list, ",\n")
+		signature := fmt.Sprintf("%s enum {\n%s\n}", ty, interior)
 		namedType := h5.findSignature(signature, name, origNames, h5.printType)
 		if namedType != "" {
 			return namedType
@@ -4557,7 +4575,6 @@ func (h5 *HDF5) printGoType(typeName string, attr attribute, origNames map[strin
 		return signature
 
 	case typeEnumerated:
-		// TODO: find name of type
 		assert(len(attr.children) == 1, "enum should have one child")
 		enumAttr := attr.children[0]
 		assert(len(enumAttr.children) == 0, "no recursion")

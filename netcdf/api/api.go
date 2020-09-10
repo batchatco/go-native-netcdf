@@ -13,6 +13,11 @@ type AttributeMap interface {
 	Keys() []string
 	// Indexed lookup
 	Get(key string) (val interface{}, has bool)
+
+        // May add these in the future.
+        // GetType(key string) (string, bool)
+         
+        // GetGoType(key string) (string, bool)
 }
 
 type Variable struct {
@@ -37,6 +42,10 @@ type VarGetter interface {
 	Dimensions() []string
 
 	Attributes() AttributeMap
+
+        // May add thise in the future
+	// Type() string
+	// GoType() string
 }
 
 type Group interface {
@@ -48,9 +57,9 @@ type Group interface {
 
 	GetVariable(name string) (*Variable, error)
 
-	// GetVarGetter is an EXPERIMENTAL function that returns an interface that allows you to get
+	// GetVarGetter is an function that returns an interface that allows you to get
 	// smaller slices of a variable, in case the variable is very large and you want to
-	// reduce memory usage. This API is experimental and could change or disappear.
+	// reduce memory usage.
 	GetVarGetter(name string) (VarGetter, error)
 
 	ListSubgroups() []string
@@ -58,8 +67,17 @@ type Group interface {
 	// group can "/" for top-level
 	GetGroup(group string) (g Group, err error)
 
+	// Experimental API to get user-defined type information
+         
+        // List types returns the user-defined type names.
+	ListTypes() []string
+        
+        // GetType gets the CDL description of the type and sets the bool to true if found.
+	GetType(string) (string, bool)
+
+        // GettGoType gets the Go description of the type and sets the bool to true if found.
+	GetGoType(string) (string, bool)
+
 	// TODO: there should be a Dimensions() call also because some dimensions are
 	// in the file, but don't get used by any variables. So they can't be returned in any way.
-	//
-	// This is also true of user-defined types.  The names cannot be returned currently.
 }

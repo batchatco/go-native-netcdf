@@ -554,7 +554,7 @@ func TestTypes(t *testing.T) {
 	checkAll(t, nc, values)
 }
 
-// big-endian
+// Big-endian test. Also uses old file format style (symbol table)
 func TestTypesBE(t *testing.T) {
 	fileName := "testdata/testtypesbe.nc" // base filename without extension
 	nc, err := Open(fileName)
@@ -745,6 +745,21 @@ func TestGroups(t *testing.T) {
 	}
 	if groups[0] != "a" {
 		t.Error("group a missing")
+		return
+	}
+	vr, err := nc.GetVariable("a")
+	if err == nil {
+		t.Error("groups are not variables", vr)
+		return
+	}
+	ty, has := nc.GetGoType("a")
+	if has {
+		t.Error("groups are not go types", ty)
+		return
+	}
+	ty, has = nc.GetType("a")
+	if has {
+		t.Error("groups are not types", ty)
 		return
 	}
 	nca, err := nc.GetGroup("a")
@@ -1520,10 +1535,9 @@ func checkAttr(t *testing.T, name string, gotAttr api.AttributeMap, expAttr api.
 
 func checkAllAttrOption(t *testing.T, nc api.Group, values keyValList, hasAttr bool) {
 	t.Helper()
-	h5, _ := nc.(*HDF5)
-	types := h5.listTypes()
+	types := nc.ListTypes()
 	for _, typeName := range types {
-		val, err := h5.GetVariable(typeName)
+		val, err := nc.GetVariable(typeName)
 		if err == nil {
 			t.Errorf("types are not variables got=(%s)", val)
 		}

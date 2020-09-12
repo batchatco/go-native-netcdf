@@ -106,9 +106,40 @@ func (cdf *CDF) ListSubgroups() []string {
 	return nil
 }
 
+// ListDimensions lists the names of the dimensions.
+func (cdf *CDF) ListDimensions() []string {
+	var ret []string
+	for _, d := range cdf.dimensions {
+		ret = append(ret, d.name)
+	}
+	return ret
+}
+
+// GetDimension returns the value of the named dimension.
+func (cdf *CDF) GetDimension(name string) (uint64, bool) {
+	for _, d := range cdf.dimensions {
+		if d.name == name {
+			return d.dimLength, true
+		}
+	}
+	return 0, false
+}
+
 // ListTypes just returns an empty list because there are no user-defined types in CDF
 func (cdf *CDF) ListTypes() []string {
 	return []string{}
+}
+
+// GetType always returns false.
+// There are no user-defined types in CDF
+func (cdf *CDF) GetType(name string) (string, bool) {
+	return "", false
+}
+
+// GetGoType always returns false.
+// There are no user-defined types in CDF
+func (cdf *CDF) GetGoType(name string) (string, bool) {
+	return "", false
 }
 
 // SetLogLevel sets the logging level to the given level, and returns
@@ -327,18 +358,6 @@ func (cdf *CDF) getNElems(bf io.Reader, expectedField uint32) uint64 {
 			ErrCorruptedFile)
 	}
 	return nElems
-}
-
-// GetType always returns false.
-// There are no user-defined types in CDF
-func (cdf *CDF) GetType(name string) (string, bool) {
-	return "", false
-}
-
-// GetGoType always returns false.
-// There are no user-defined types in CDF
-func (cdf *CDF) GetGoType(name string) (string, bool) {
-	return "", false
 }
 
 func (cdf *CDF) getAttrList(bf io.Reader) *util.OrderedMap {

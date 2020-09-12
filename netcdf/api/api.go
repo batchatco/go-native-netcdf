@@ -41,9 +41,9 @@ type VarGetter interface {
 
 	Attributes() AttributeMap
 
-        // Type returns the base type in CDL format, not including dimensions
+	// Type returns the base type in CDL format, not including dimensions
 	Type() string
-        // GoType returns the base type in Go format.
+	// GoType returns the base type in Go format.
 	GoType() string
 }
 
@@ -77,6 +77,7 @@ type Group interface {
 	// GettGoType gets the Go description of the type and sets the bool to true if found.
 	GetGoType(string) (string, bool)
 
-	// TODO: there should be a Dimensions() call also because some dimensions are
-	// in the file, but don't get used by any variables. So they can't be returned in any way.
+	ListDimensions() []string
+
+	GetDimension(string) (uint64, bool)
 }

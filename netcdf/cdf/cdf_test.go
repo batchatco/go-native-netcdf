@@ -1208,3 +1208,33 @@ func TestReservedWord(t *testing.T) {
 		}
 	}
 }
+
+func TestDimensions(t *testing.T) {
+	fileName := "testdata/testunlimited" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	defer os.Remove(genName)
+
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	dims := nc.ListDimensions()
+	if len(dims) != 2 || dims[0] != "d1" || dims[1] != "d2" {
+		t.Error("Dimensions are wrong", dims)
+		return
+	}
+	d1, has1 := nc.GetDimension("d1")
+	d2, has2 := nc.GetDimension("d2")
+	if !has1 || !has2 {
+		t.Error("Missing dimensions")
+	}
+	if d1 != 0 || d2 != 1 {
+		t.Error("Dimension values are wrong", d1, d2)
+	}
+}

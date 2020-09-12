@@ -4381,6 +4381,69 @@ func (h5 *HDF5) ListTypes() []string {
 	return ret
 }
 
+func (h5 *HDF5) ListDimensions() []string {
+	var ret []string
+	for _, obj := range h5.groupObject.children {
+		if obj.isGroup {
+			continue
+		}
+		hasClass := false
+		hasCoordinates := false
+		hasName := false
+		for _, a := range obj.attrlist {
+			switch a.name {
+			case "CLASS":
+				hasClass = true
+			case "NAME":
+				nameValue := a.value.(string)
+				if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
+					logger.Info("found name", nameValue)
+					hasName = true
+				}
+			case "_Netcdf4Coordinates":
+				logger.Info("Found _Netcdf4Coordinates")
+				hasCoordinates = true
+			}
+		}
+		if hasClass && !hasCoordinates && !hasName {
+			ret = append(ret, obj.name)
+		}
+	}
+	return ret
+}
+
+func (h5 *HDF5) GetDimension(name string) (uint64, bool) {
+	for _, obj := range h5.groupObject.children {
+		if obj.isGroup {
+			continue
+		}
+		hasClass := false
+		hasCoordinates := false
+		hasName := false
+		for _, a := range obj.attrlist {
+			switch a.name {
+			case "CLASS":
+				hasClass = true
+			case "NAME":
+				nameValue := a.value.(string)
+				if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
+					logger.Info("found name", nameValue)
+					hasName = true
+				}
+			case "_Netcdf4Coordinates":
+				logger.Info("Found _Netcdf4Coordinates")
+				hasCoordinates = true
+			}
+		}
+		if hasClass && !hasCoordinates && !hasName {
+			if obj.name == name {
+				return obj.objAttr.dimensions[0], true
+			}
+		}
+	}
+	return 0, false
+}
+
 func (h5 *HDF5) findSignature(signature string, name string, origNames map[string]bool,
 	printer func(name string, attr attribute, origNames map[string]bool) string) string {
 	for varName, obj := range h5.groupObject.children {
@@ -4469,7 +4532,7 @@ func (h5 *HDF5) printType(name string, attr attribute, origNames map[string]bool
 			members[i] = fmt.Sprintf("\t%s %s;\n", ty, cattr.name)
 		}
 		interior := strings.Join(members, "")
-		signature := fmt.Sprintf("compound {\n%s};", interior)
+		signature := fmt.Sprintf("compound {\n%s}", interior)
 		namedType := h5.findSignature(signature, name, origNames, h5.printType)
 		if namedType != "" {
 			return namedType
@@ -4993,7 +5056,7 @@ func (h5 *HDF5) ListVariables() []string {
 						hasCoordinates = true
 					}
 					if hasClass && !hasCoordinates && !hasName {
-						logger.Info(o.name, "skip because is a dimension")
+						logger.Info("skip because", o.name, "is a dimension=", o.objAttr.dimensions)
 						continue
 					}
 				}

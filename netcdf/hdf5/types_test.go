@@ -161,21 +161,21 @@ func TestListTypes(t *testing.T) {
 	type expected map[string]string
 	expAll := map[string]expected{
 		"testarray": {
-			"comp": "compound {\n\tint(3) iArray;\n\tfloat(2,3) fArray;\n};",
+			"comp": "compound {\n\tint(3) iArray;\n\tfloat(2,3) fArray;\n}",
 		},
 		"testattrs": {
-			"alltypes": "compound {\n\tbyte b;\n\tshort s;\n\tint i;\n\tfloat f;\n\tdouble d;\n};",
+			"alltypes": "compound {\n\tbyte b;\n\tshort s;\n\tint i;\n\tfloat f;\n\tdouble d;\n}",
 			"color":    "byte enum {\n\tRED = 0,\n\tYELLOW = 1,\n\tGREEN = 2,\n\tCYAN = 3,\n\tBLUE = 4,\n\tMAGENTA = 5\n}",
 		},
 		"testcompounds": {
 
-			"alltypes":  "compound {\n\tbyte b;\n\tshort s;\n\tint i;\n\tfloat f;\n\tdouble d;\n};",
-			"sametypes": "compound {\n\tint a;\n\tint b;\n\tint c;\n};",
-			"includes":  "compound {\n\talltypes a;\n\tstring s;\n};",
+			"alltypes":  "compound {\n\tbyte b;\n\tshort s;\n\tint i;\n\tfloat f;\n\tdouble d;\n}",
+			"sametypes": "compound {\n\tint a;\n\tint b;\n\tint c;\n}",
+			"includes":  "compound {\n\talltypes a;\n\tstring s;\n}",
 		},
 		"testempty": {
 			"opaque5":  "opaque(5)",
-			"alltypes": "compound {\n\tbyte b;\n\tshort s;\n\tint i;\n\tfloat f;\n\tdouble d;\n};",
+			"alltypes": "compound {\n\tbyte b;\n\tshort s;\n\tint i;\n\tfloat f;\n\tdouble d;\n}",
 		},
 		"testenum": {
 			"color": "byte enum {\n\tRED = 0,\n\tYELLOW = 1,\n\tGREEN = 2,\n\tCYAN = 3,\n\tBLUE = 4,\n\tMAGENTA = 5\n}",
@@ -186,14 +186,14 @@ func TestListTypes(t *testing.T) {
 			"opaque5": "opaque(5)",
 		},
 		"testsimple": {
-			"AAA": "compound {\n\tshort s;\n\tint i;\n};",
-			"BBB": "compound {\n\tfloat x;\n\tdouble y;\n};",
+			"AAA": "compound {\n\tshort s;\n\tint i;\n}",
+			"BBB": "compound {\n\tfloat x;\n\tdouble y;\n}",
 		},
 		"testvlen": {
 			"vint":     "int(*)",
-			"easy":     "compound {\n\tint firstEasy;\n\tint secondEasy;\n};",
+			"easy":     "compound {\n\tint firstEasy;\n\tint secondEasy;\n}",
 			"easyVlen": "easy(*)",
-			"tricky_t": "compound {\n\tint trickyInt;\n\teasyVlen trickVlen;\n};",
+			"tricky_t": "compound {\n\tint trickyInt;\n\teasyVlen trickVlen;\n}",
 		},
 	}
 	for fileName, m := range expAll {

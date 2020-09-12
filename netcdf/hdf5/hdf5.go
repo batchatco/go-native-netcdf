@@ -618,8 +618,10 @@ func checkMagic(bf io.Reader, len int, magic string) {
 	b := make([]byte, len)
 	read(bf, b)
 	found := string(b)
-	assertError(found == magic, ErrBadMagic,
-		fmt.Sprintf("bad magic=%q expected=%q", found, magic))
+	if found != magic {
+		logger.Infof("bad magic=%q expected=%q", found, magic)
+		thrower.Throw(ErrBadMagic)
+	}
 }
 
 func getString(b []byte) string {

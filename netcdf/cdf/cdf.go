@@ -463,9 +463,10 @@ func (cdf *CDF) readHeader() (err error) {
 
 	// magic
 	b := readBytes(bf, 4)
-	assert(string(b[:3]) == "CDF",
-		fmt.Sprintf("not cdf: %q", string(b[:3])),
-		ErrNotCDF)
+	if string(b[:3]) != "CDF" {
+		logger.Infof("not cdf: %q", string(b[:3]))
+		thrower.Throw(ErrNotCDF)
+	}
 	version := b[3]
 	switch version {
 	case 1, 2, 5: // classic, 64-bit offset, 64-bit types

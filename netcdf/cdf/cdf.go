@@ -698,10 +698,12 @@ func (cdf *CDF) getVarCommon(name string) (api.VarGetter, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(dimLengths) > 0 {
-			dimLengths[0] = uint64(nChunks)
+		dimLengthsCopy := make([]uint64, len(dimLengths))
+		copy(dimLengthsCopy, dimLengths)
+		if len(dimLengthsCopy) > 0 {
+			dimLengthsCopy[0] = uint64(nChunks)
 		}
-		converted := cdf.convert(data, dimLengths, varFound.vType)
+		converted := cdf.convert(data, dimLengthsCopy, varFound.vType)
 		if converted == nil {
 			thrower.Throw(ErrInternal)
 		}

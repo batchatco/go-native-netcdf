@@ -41,9 +41,9 @@ type VarGetter interface {
 
 	Attributes() AttributeMap
 
-	// Type returns the base type in CDL format, not including dimensions
+	// Type returns the base type in CDL format, not including dimensions.
 	Type() string
-	// GoType returns the base type in Go format.
+	// GoType returns the base type in Go format, not including dimensions.
 	GoType() string
 }
 

@@ -79,9 +79,7 @@ func TestSlicer(t *testing.T) {
 			}
 			if !exp.check(t, "tid", slicer, slice) {
 				t.Error("value mismatch", "sliceSize=", sliceSize)
-				t.Error("slice=", slice)
-			} else {
-				t.Log("OK sliceSize=", sliceSize)
+				return
 			}
 		}
 	}

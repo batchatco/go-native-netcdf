@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
-	"github.com/batchatco/go-native-netcdf/netcdf/util"
 )
 
 const errorNcGen = "Error running ncgen command from netcdf package"
@@ -24,7 +23,13 @@ type keyVal struct {
 
 type keyValList []keyVal
 
-var nilMap = &util.OrderedMap{}
+var nilMap, _ = newTypedAttributeMap(nil, []string{}, map[string]interface{}{})
+
+func makeFill(fill interface{}) api.AttributeMap {
+	ret, _ := newTypedAttributeMap(nil, []string{"_FillValue"},
+		map[string]interface{}{"_FillValue": fill})
+	return ret
+}
 
 var values = keyValList{
 	{"str", "string", api.Variable{
@@ -307,136 +312,135 @@ var fills2 = keyValList{
 	{"str", "string", api.Variable{
 		Values:     "#",
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill("#")}},
 	{"strx1", "string", api.Variable{
 		Values:     []string{"#"},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill("#")}},
 	{"strx2", "string", api.Variable{
 		Values:     [][]string{{"#", "#"}, {"#", "#"}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
-
+		Attributes: makeFill("#")}},
 	{"f32", "float", api.Variable{
 		Values:     float32(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(float32(0))}},
 	{"f32x1", "float", api.Variable{
 		Values:     []float32{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(float32(0))}},
 	{"f32x2", "float", api.Variable{
 		Values:     [][]float32{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(float32(0))}},
 	{"f64", "double", api.Variable{
 		Values:     float64(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(float64(0))}},
 	{"f64x1", "double", api.Variable{
 		Values:     []float64{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(float64(0))}},
 	{"f64x2", "double", api.Variable{
 		Values:     [][]float64{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(float64(0))}},
 	{"i8", "byte", api.Variable{
 		Values:     int8(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(int8(0))}},
 	{"i8x1", "byte", api.Variable{
 		Values:     []int8{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(int8(0))}},
 	{"i8x2", "byte", api.Variable{
 		Values:     [][]int8{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(int8(0))}},
 	{"ui8", "ubyte", api.Variable{
 		Values:     uint8(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(uint8(0))}},
 	{"ui8x1", "ubyte", api.Variable{
 		Values:     []uint8{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(uint8(0))}},
 	{"ui8x2", "ubyte", api.Variable{
 		Values:     [][]uint8{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(uint8(0))}},
 	{"i16", "short", api.Variable{
 		Values:     int16(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(int16(0))}},
 	{"i16x1", "short", api.Variable{
 		Values:     []int16{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(int16(0))}},
 	{"i16x2", "short", api.Variable{
 		Values:     [][]int16{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(int16(0))}},
 	{"ui16", "ushort", api.Variable{
 		Values:     uint16(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(uint16(0))}},
 	{"ui16x1", "ushort", api.Variable{
 		Values:     []uint16{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(uint16(0))}},
 	{"ui16x2", "ushort", api.Variable{
 		Values:     [][]uint16{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(uint16(0))}},
 	{"i32", "int", api.Variable{
 		Values:     int32(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(int32(0))}},
 	{"i32x1", "int", api.Variable{
 		Values:     []int32{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(int32(0))}},
 	{"i32x2", "int", api.Variable{
 		Values:     [][]int32{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(int32(0))}},
 	{"ui32", "uint", api.Variable{
 		Values:     uint32(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(uint32(0))}},
 	{"ui32x1", "uint", api.Variable{
 		Values:     []uint32{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(uint32(0))}},
 	{"ui32x2", "uint", api.Variable{
 		Values:     [][]uint32{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(uint32(0))}},
 	{"i64", "int64", api.Variable{
 		Values:     int64(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(int64(0))}},
 	{"i64x1", "int64", api.Variable{
 		Values:     []int64{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(int64(0))}},
 	{"i64x2", "int64", api.Variable{
 		Values:     [][]int64{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(int64(0))}},
 	{"ui64", "uint64", api.Variable{
 		Values:     uint64(0),
 		Dimensions: nil,
-		Attributes: nilMap}},
+		Attributes: makeFill(uint64(0))}},
 	{"ui64x1", "uint64", api.Variable{
 		Values:     []uint64{0},
 		Dimensions: []string{"dim"},
-		Attributes: nilMap}},
+		Attributes: makeFill(uint64(0))}},
 	{"ui64x2", "uint64", api.Variable{
 		Values:     [][]uint64{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
-		Attributes: nilMap}},
+		Attributes: makeFill(uint64(0))}},
 }
 
 func genIsNewer(genName string, srcName string) bool {
@@ -586,7 +590,7 @@ func TestGlobalAttrs(t *testing.T) {
 		return
 	}
 	defer nc.Close()
-	exp, err := util.NewOrderedMap(
+	exp, err := newTypedAttributeMap(nc.(*HDF5),
 		[]string{"c", "str", "f32", "f64", "i8", "ui8", "i16", "ui16", "i32", "ui32", "i64", "ui64",
 			"col", "all"},
 		map[string]interface{}{
@@ -603,14 +607,19 @@ func TestGlobalAttrs(t *testing.T) {
 			"i64":  int64(9),
 			"ui64": uint64(10),
 			"col":  enumerated{int8(3)},
-			"all":  compound{int8('0'), int16(1), int32(2), float32(3), float64(4)},
+			"all": compound{
+				{"b", int8('0')},
+				{"s", int16(1)},
+				{"i", int32(2)},
+				{"f", float32(3)},
+				{"d", float64(4)}},
 		})
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	got := nc.Attributes()
-	checkAllAttrs(t, got, exp)
+	checkAllAttrs(t, "<global>", got, exp)
 
 	gTypes := map[string]interface{}{
 		"c":    "string",
@@ -629,9 +638,11 @@ func TestGlobalAttrs(t *testing.T) {
 		"all":  "alltypes",
 	}
 
-	h5, _ := nc.(*HDF5)
 	for _, a := range got.Keys() {
-		ty := h5.findGlobalAttrType(a)
+		ty, has := nc.Attributes().GetType(a)
+		if !has {
+			t.Error("can't find type for attribute", a)
+		}
 		exp, has := gTypes[a]
 		if has {
 			if exp != ty {
@@ -643,14 +654,17 @@ func TestGlobalAttrs(t *testing.T) {
 	}
 }
 
-func checkAllAttrs(t *testing.T, got api.AttributeMap, exp api.AttributeMap) {
+func checkAllAttrs(t *testing.T, name string, got api.AttributeMap, exp api.AttributeMap) {
 	t.Helper()
 	errors := false
 	used := map[string]bool{}
 	for _, key := range exp.Keys() {
 		used[key] = true
 		if !checkAttr(t, key, got, exp) {
-			t.Errorf("values did not match")
+			g, _ := got.Get(key)
+			e, _ := exp.Get(key)
+			t.Error(name, "values did not match", key, "(in exp)",
+				"got=", g, "exp=", e)
 			errors = true
 		}
 	}
@@ -659,7 +673,9 @@ func checkAllAttrs(t *testing.T, got api.AttributeMap, exp api.AttributeMap) {
 			continue
 		}
 		if !checkAttr(t, key, got, exp) {
-			t.Error("values did not match")
+			g, _ := got.Get(key)
+			e, _ := exp.Get(key)
+			t.Error(name, "values did not match", key, "(in got)", "got=", g, "exp=", e)
 			errors = true
 		}
 	}
@@ -955,26 +971,34 @@ func TestCompound(t *testing.T) {
 	defer nc.Close()
 
 	vals := []compound{
-		{compound{
-			int8('0'),
-			int16(1),
-			int32(2),
-			float32(3.0),
-			float64(4.0)},
-			"a",
-		},
-		{compound{
-			int8('1'),
-			int16(2),
-			int32(3),
-			float32(4.0),
-			float64(5.0)},
-			"b",
-		},
+		compound{
+			compoundField{
+				Name: "a",
+				Val: compound{
+					{"b", int8('0')},
+					{"s", int16(1)},
+					{"i", int32(2)},
+					{"f", float32(3.0)},
+					{"d", float64(4.0)}}},
+			compoundField{
+				Name: "s",
+				Val:  "a"}},
+		compound{
+			compoundField{
+				Name: "a",
+				Val: compound{
+					{"b", int8('1')},
+					{"s", int16(2)},
+					{"i", int32(3)},
+					{"f", float32(4.0)},
+					{"d", float64(5.0)}}},
+			compoundField{
+				Name: "s",
+				Val:  "b"}},
 	}
 	samevals := []compound{
-		{int32(0), int32(1), int32(2)},
-		{int32(3), int32(4), int32(5)},
+		{{"a", int32(0)}, {"b", int32(1)}, {"c", int32(2)}},
+		{{"a", int32(3)}, {"b", int32(4)}, {"c", int32(5)}},
 	}
 	values := keyValList{
 		keyVal{"v", "includes",
@@ -1012,11 +1036,20 @@ func TestArray(t *testing.T) {
 			api.Variable{
 				Values: []compound{
 					{
-						[]int32{1, 2, 3},
-						[][]float32{{4, 5, 6}, {7, 8, 9}}},
+						compoundField{
+							Name: "iArray",
+							Val:  []int32{1, 2, 3}},
+						compoundField{
+							Name: "fArray",
+							Val:  [][]float32{{4, 5, 6}, {7, 8, 9}}}},
 					{
-						[]int32{10, 11, 12},
-						[][]float32{{13, 14, 15}, {16, 17, 18}}}},
+						compoundField{
+							Name: "iArray",
+							Val:  []int32{10, 11, 12}},
+						compoundField{
+							Name: "fArray",
+							Val:  [][]float32{{13, 14, 15}, {16, 17, 18}}}},
+				},
 				Dimensions: []string{"dim"},
 				Attributes: nilMap},
 		},
@@ -1040,13 +1073,17 @@ func TestSimple(t *testing.T) {
 	values := keyValList{
 		keyVal{"anA", "AAA",
 			api.Variable{
-				Values:     compound{int16(55), int32(5280)},
+				Values: compound{
+					{Name: "s", Val: int16(55)},
+					{Name: "i", Val: int32(5280)}},
 				Dimensions: []string{},
 				Attributes: nilMap},
 		},
 		keyVal{"aB", "BBB",
 			api.Variable{
-				Values:     compound{float32(98.6), float64(-273.3)},
+				Values: compound{
+					{Name: "x", Val: float32(98.6)},
+					{Name: "y", Val: float64(-273.3)}},
 				Dimensions: []string{},
 				Attributes: nilMap},
 		},
@@ -1137,6 +1174,44 @@ func TestVariableLength(t *testing.T) {
 		return
 	}
 	defer nc.Close()
+
+	trickyAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky"},
+		map[string]interface{}{
+			"Tricky": compound{
+				{Name: "trickyInt", Val: int32(1)},
+				{Name: "trickVlen", Val: [][]compoundField{
+					{
+						// The numbers here are the same as what ncdump shows.
+						// ncgen has a bug.
+						{Name: "firstEasy", Val: int32(1058171152)},
+						{Name: "secondEasy", Val: int32(22039)}},
+
+					//{int32(-295104496), int32(22052)}, // should be 4,5
+					{
+						{Name: "firstEasy", Val: int32(1057251344)},
+						{Name: "secondEasy", Val: int32(22039)}},
+					{
+						{Name: "firstEasy", Val: int32(6)},
+						{Name: "secondEasy", Val: int32(7)}}}},
+			}})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	vintAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Vint"},
+		map[string]interface{}{
+			"Vint": [][]int32{
+				{}, // zero
+				{1},
+				{2, 3},
+				{4, 5, 6},
+				{7, 8, 9, 10},
+				{11, 12, 13, 14, 15}}})
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	vars := keyValList{
 		{"v", "vint", api.Variable{
 			Values: [][]int32{
@@ -1148,7 +1223,7 @@ func TestVariableLength(t *testing.T) {
 				{11, 12, 13, 14, 15},
 			},
 			Dimensions: []string{"dim"},
-			Attributes: nilMap}},
+			Attributes: trickyAttrs}},
 		{"v2", "vint", api.Variable{
 			Values: [][]int32{
 				{11, 12, 13, 14, 15},
@@ -1159,20 +1234,28 @@ func TestVariableLength(t *testing.T) {
 				{}, // zero
 			},
 			Dimensions: []string{"dim"},
-			Attributes: nilMap}},
+			Attributes: vintAttrs}},
 	}
 	checkAll(t, nc, vars)
-	expAttrs, err := util.NewOrderedMap([]string{"Tricky", "Vint"},
+	expAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky", "Vint"},
 		map[string]interface{}{
 			"Tricky": compound{
-				int32(1),
-				[][]int32{
-					// The numbers here are the same as what ncdump shows.
-					// ncgen has a bug.
-					{int32(0), int32(0)},              // should be 2,3
-					{int32(-295104496), int32(22052)}, // should be 4,5
-					{int32(6), int32(7)}},
-			},
+				{Name: "trickyInt", Val: int32(1)},
+				{Name: "trickVlen", Val: [][]compoundField{
+					{
+						// The numbers here are the same as what ncdump shows.
+						// ncgen has a bug.
+						{Name: "firstEasy", Val: int32(0)},
+						{Name: "secondEasy", Val: int32(0)}},
+
+					//{int32(-295104496), int32(22052)}, // should be 4,5
+					{
+						{Name: "firstEasy", Val: int32(1057251344)},
+						{Name: "secondEasy", Val: int32(22039)}},
+					{
+						{Name: "firstEasy", Val: int32(6)},
+						{Name: "secondEasy", Val: int32(7)}}},
+				}},
 			"Vint": [][]int32{
 				{}, // zero
 				{1},
@@ -1185,7 +1268,7 @@ func TestVariableLength(t *testing.T) {
 		return
 	}
 	got := nc.Attributes()
-	checkAllAttrs(t, got, expAttrs)
+	checkAllAttrs(t, "<TestVariableLength>", got, expAttrs)
 }
 
 func TestUnlimitedEmpty(t *testing.T) {
@@ -1429,7 +1512,7 @@ func TestBitfield(t *testing.T) {
 	}
 	defer nc.Close()
 
-	attrs, err := util.NewOrderedMap(
+	attrs, err := newTypedAttributeMap(nc.(*HDF5),
 		[]string{"bitfield"},
 		map[string]interface{}{
 			"bitfield": []byte{0, 1, 2, 3, 4, 5, 6, 7},
@@ -1439,7 +1522,7 @@ func TestBitfield(t *testing.T) {
 		return
 	}
 	got := nc.Attributes()
-	checkAllAttrs(t, got, attrs)
+	checkAllAttrs(t, "<testbitfields>", got, attrs)
 }
 
 func TestNCProperties(t *testing.T) {
@@ -1497,10 +1580,10 @@ func (kl keyValList) check(t *testing.T, name string, baseType string,
 	if !reflect.DeepEqual(val.Values, kv.val.Values) {
 		t.Logf("var deepequal name=%s got=%#v exp=%#v", name,
 			val.Values, kv.val.Values)
-		t.Logf("types got type=%T exp type=%T", val.Values, kv.val.Values)
+		t.Logf("types name=%s got type=%T exp type=%T", name, val.Values, kv.val.Values)
 		return false
 	}
-	checkAllAttrs(t, val.Attributes, kv.val.Attributes)
+	checkAllAttrs(t, name, val.Attributes, kv.val.Attributes)
 	if !reflect.DeepEqual(val.Dimensions, kv.val.Dimensions) &&
 		!(len(val.Dimensions) == 0 && len(kv.val.Dimensions) == 0) {
 		t.Log("dims", name, val.Dimensions, kv.val.Dimensions)
@@ -1548,23 +1631,25 @@ func checkAllAttrOption(t *testing.T, nc api.Group, values keyValList, hasAttr b
 		return
 	}
 	for _, name := range vars {
-		vr, err := nc.GetVariable(name)
+		getter, err := nc.GetVarGetter(name)
 		if err != nil {
 			t.Error(err)
 			return
 		}
-		if !hasAttr {
-			vr.Attributes = nilMap
+		val, err := getter.Values()
+		if err != nil {
+			t.Error(err)
+			return
 		}
-		h5, _ := nc.(*HDF5)
-		ty := h5.findType(name)
-		if !values.check(t, name, ty, *vr) {
+		ty := getter.Type()
+		attr := getter.Attributes()
+		v := api.Variable{
+			Values:     val,
+			Dimensions: getter.Dimensions(),
+			Attributes: attr,
+		}
+		if !values.check(t, name, ty, v) {
 			t.Error("mismatch")
-		}
-		for _, a := range vr.Attributes.Keys() {
-			// TODO check attribute types
-			_ = h5.findVarAttrType(name, a)
-			//t.Log("attr type for var", name, "attr", a, "=", ty)
 		}
 	}
 }

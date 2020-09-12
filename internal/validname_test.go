@@ -8,6 +8,7 @@ func TestGood(t *testing.T) {
 		"a",
 		"1",
 		"0°",
+		"byter",
 	}
 	for i := range goodStrings {
 		if !IsValidNetCDFName(goodStrings[i]) {
@@ -27,6 +28,10 @@ func TestBad(t *testing.T) {
 		"°",
 		"°C",
 		"\x08",
+		"byte", "char", "string",
+		"short", "int", "int64", "int64",
+		"ushort", "uint", "uint64", "uint64",
+		"float", "double",
 	}
 	for i := range badStrings {
 		if IsValidNetCDFName(badStrings[i]) {

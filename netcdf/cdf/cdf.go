@@ -111,14 +111,6 @@ func (cdf *CDF) ListTypes() []string {
 	return []string{}
 }
 
-func (cdf *CDF) GetType(name string) (string, bool) {
-	return "", false
-}
-
-func (cdf *CDF) GetGoType(name string) (string, bool) {
-	return "", false
-}
-
 // SetLogLevel sets the logging level to the given level, and returns
 // the old level. This is for internal debugging use. The log messages
 // are not expected to make much sense to anyone but the developers.
@@ -335,6 +327,18 @@ func (cdf *CDF) getNElems(bf io.Reader, expectedField uint32) uint64 {
 			ErrCorruptedFile)
 	}
 	return nElems
+}
+
+// GetType always returns false.
+// There are no user-defined types in CDF
+func (cdf *CDF) GetType(name string) (string, bool) {
+	return "", false
+}
+
+// GetGoType always returns false.
+// There are no user-defined types in CDF
+func (cdf *CDF) GetGoType(name string) (string, bool) {
+	return "", false
 }
 
 func (cdf *CDF) getAttrList(bf io.Reader) *util.OrderedMap {
@@ -711,16 +715,101 @@ func (cdf *CDF) getVarCommon(name string) (api.VarGetter, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(dimLengths) > 0 {
-			dimLengths[0] = uint64(nChunks)
+		dimLengthsCopy := make([]uint64, len(dimLengths))
+		copy(dimLengthsCopy, dimLengths)
+		if len(dimLengthsCopy) > 0 {
+			dimLengthsCopy[0] = uint64(nChunks)
 		}
-		converted := cdf.convert(data, dimLengths, varFound.vType)
+		converted := cdf.convert(data, dimLengthsCopy, varFound.vType)
 		if converted == nil {
 			thrower.Throw(ErrInternal)
 		}
 		return converted, nil
 	}
-	return internal.NewSlicer(getSlice, length, dimNames, varFound.attrs), nil
+	return internal.NewSlicer(getSlice, length, dimNames, varFound.attrs,
+		cdlType(varFound.vType), goType(varFound.vType)), nil
+}
+
+func goType(vType uint32) string {
+	switch vType {
+	case typeByte:
+		return "int8"
+
+	case typeChar:
+		return "string"
+
+	case typeShort:
+		return "int16"
+
+	case typeInt:
+		return "int32"
+
+	case typeFloat:
+		return "float32"
+
+	case typeDouble:
+		return "float64"
+
+	case typeUByte:
+		return "uint8"
+
+	case typeUShort:
+		return "uint16"
+
+	case typeUInt:
+		return "uint32"
+
+	case typeUInt64:
+		return "uint64"
+
+	case typeInt64:
+		return "int64"
+
+	default:
+		fail("unknown type", ErrUnknownType)
+	}
+	panic("never gets here")
+}
+
+func cdlType(vType uint32) string {
+	switch vType {
+	case typeByte:
+		return "byte"
+
+	case typeChar:
+		return "char"
+
+	case typeShort:
+		return "short"
+
+	case typeInt:
+		return "int"
+
+	case typeFloat:
+		return "float"
+
+	case typeDouble:
+		return "double"
+
+	case typeUByte:
+		return "ubyte"
+
+	case typeUShort:
+		return "ushort"
+
+	case typeUInt:
+		return "uint"
+
+	case typeUInt64:
+		return "uint64"
+
+	case typeInt64:
+		return "int64"
+
+	default:
+		fail("unknown type", ErrUnknownType)
+	}
+	panic("never gets here")
 }
 
 func (cdf *CDF) GetVarGetter(name string) (slicer api.VarGetter, err error) {

@@ -14,10 +14,8 @@ type AttributeMap interface {
 	// Indexed lookup
 	Get(key string) (val interface{}, has bool)
 
-        // May add these in the future.
-        // GetType(key string) (string, bool)
-         
-        // GetGoType(key string) (string, bool)
+	GetType(key string) (string, bool)
+	GetGoType(key string) (string, bool)
 }
 
 type Variable struct {
@@ -43,9 +41,10 @@ type VarGetter interface {
 
 	Attributes() AttributeMap
 
-        // May add thise in the future
-	// Type() string
-	// GoType() string
+        // Type returns the base type in CDL format, not including dimensions
+	Type() string
+        // GoType returns the base type in Go format.
+	GoType() string
 }
 
 type Group interface {
@@ -68,14 +67,14 @@ type Group interface {
 	GetGroup(group string) (g Group, err error)
 
 	// Experimental API to get user-defined type information
-         
-        // List types returns the user-defined type names.
+
+	// List types returns the user-defined type names.
 	ListTypes() []string
-        
-        // GetType gets the CDL description of the type and sets the bool to true if found.
+
+	// GetType gets the CDL description of the type and sets the bool to true if found.
 	GetType(string) (string, bool)
 
-        // GettGoType gets the Go description of the type and sets the bool to true if found.
+	// GettGoType gets the Go description of the type and sets the bool to true if found.
 	GetGoType(string) (string, bool)
 
 	// TODO: there should be a Dimensions() call also because some dimensions are

@@ -9,7 +9,7 @@ const (
 	// It may contain any character after that except control and slash.
 	pattern = `^[\pL\pN_][^\pC/]*$`
 	// It may not end with a whitespace character.
-	antiPattern = `\pZ$`
+	antiPattern = `(\pZ|^(u?byte|char|string|u?short|u?int|u?int64|uint64|float|double))$`
 )
 
 var (

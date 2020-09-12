@@ -1,0 +1,13 @@
+netcdf testattrtypes {
+
+variables:
+  int :i = 0;
+  float :f = 0;
+  double :d = 0;
+  string :s = "a";
+
+  int :i1 = 0, 0 ;
+  float :f1 =  0, 0;
+  double :d1 =  0, 0;
+  string :s1 =  "a", "b";
+}

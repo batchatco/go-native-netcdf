@@ -6,7 +6,7 @@ types:
     int secondEasy;
   };
   easy(*) easyVlen;
-  compound tricky {
+  compound tricky_t {
     int trickyInt;
     easyVlen trickVlen;
   };
@@ -15,8 +15,12 @@ dimensions:
 
 variables:
   vint v(dim);
+  tricky_t v:Tricky = {1, {{2, 3}, {4, 5}, {6,7}}};
+
   vint v2(dim);
-  tricky :Tricky = {1, {{2, 3}, {4, 5}, {6,7}}};
+  vint v2:Vint = {}, {1}, {2,3}, {4,5,6}, {7,8,9,10}, {11,12,13,14,15};
+
+  tricky_t :Tricky = {1, {{2, 3}, {4, 5}, {6,7}}};
   vint :Vint = {}, {1}, {2,3}, {4,5,6}, {7,8,9,10}, {11,12,13,14,15};
 
 data:

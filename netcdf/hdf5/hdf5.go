@@ -20,7 +20,6 @@ import (
 
 	"github.com/batchatco/go-native-netcdf/internal"
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
-	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
 )
 
@@ -229,7 +228,10 @@ type attribute struct {
 	creationOrder uint64
 }
 
-type compoundField interface{}
+type compoundField struct {
+	Name string
+	Val  interface{}
+}
 type compound []compoundField
 
 type enumerated struct {
@@ -3404,7 +3406,8 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 				clength *= d
 			}
 			ccbf := newResetReader(cbf, int64(clength))
-			varray[i] = h5.getDataAttr(ccbf, c)
+			varray[i].Val = h5.getDataAttr(ccbf, c)
+			varray[i].Name = c.name
 		}
 		if lastOffset < uint64(length) {
 			rem := uint64(length) - lastOffset
@@ -3875,11 +3878,11 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	}
 	assertError(off <= lastOffset, ErrCorrupted,
 		fmt.Sprintf("this only happens in corrupted files (2) %d %d", off, lastOffset))
-
 	r := newResetReader(io.MultiReader(readers...), int64(size))
 	return r, size
 }
 
+// Not including any slice changes
 func calcAttrSize(attr *attribute) int64 {
 	size := int64(attr.length)
 	for _, d := range attr.dimensions {
@@ -4184,11 +4187,11 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 func (h5 *HDF5) Attributes() api.AttributeMap {
 	// entry point, panic can bubble up
 	if h5.rootObject == nil {
-		nilMap, _ := util.NewOrderedMap(nil, nil)
+		nilMap, _ := newTypedAttributeMap(h5, nil, nil)
 		return nilMap
 	}
 	h5.rootObject.sortAttrList()
-	return getAttributes(h5.rootObject.attrlist)
+	return h5.getAttributes(h5.rootObject.attrlist)
 }
 
 func hasAddr(obj *object, addr uint64) bool {
@@ -4239,6 +4242,7 @@ func (h5 *HDF5) findVariable(varName string) *object {
 		}
 	}
 	if hasClass && !hasCoordinates && !hasName {
+		logger.Info("doesn't have name")
 		return nil
 	}
 	if obj.objAttr.dimensions == nil {
@@ -4254,22 +4258,34 @@ func (h5 *HDF5) findGlobalAttrType(attrName string) string {
 			continue
 		}
 		origNames := map[string]bool{}
-		return h5.printType(attrName, attr, origNames)
+		base := h5.printType(attrName, attr, origNames)
+		dims := ""
+		if len(attr.dimensions) == 1 && attr.dimensions[0] == 1 {
+		} else {
+			for i := 0; i < len(attr.dimensions); i++ {
+				dims += "(*)"
+			}
+		}
+		return base + dims
 	}
 	return ""
 }
 
-func (h5 *HDF5) findVarAttrType(varName string, attrName string) string {
-	obj := h5.findVariable(varName)
-	if obj == nil {
-		return ""
-	}
-	for _, attr := range obj.attrlist {
+func (h5 *HDF5) findGlobalAttrGoType(attrName string) string {
+	for _, attr := range h5.rootObject.attrlist {
 		if attr.name != attrName {
 			continue
 		}
 		origNames := map[string]bool{}
-		return h5.printType(varName, attr, origNames)
+		base := h5.printGoType(attrName, attr, origNames)
+		dims := ""
+		if len(attr.dimensions) == 1 && attr.dimensions[0] == 1 {
+		} else {
+			for i := 0; i < len(attr.dimensions); i++ {
+				dims += "[]"
+			}
+		}
+		return dims + base
 	}
 	return ""
 }
@@ -4639,7 +4655,7 @@ func (h5 *HDF5) printGoType(typeName string, attr attribute, origNames map[strin
 	panic("never gets here")
 }
 
-func getAttributes(unfiltered []attribute) api.AttributeMap {
+func (h5 *HDF5) getAttributes(unfiltered []attribute) api.AttributeMap {
 	filtered := make(map[string]interface{})
 	keys := make([]string, 0)
 	for _, val := range unfiltered {
@@ -4746,7 +4762,7 @@ func getAttributes(unfiltered []attribute) api.AttributeMap {
 			keys = append(keys, val.name)
 		}
 	}
-	om, err := util.NewOrderedMap(keys, filtered)
+	om, err := newTypedAttributeMap(h5, keys, filtered)
 	thrower.ThrowIfError(err)
 	om.Hide(ncpKey)
 	return om
@@ -4809,8 +4825,8 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 			logger.Infof("value is %T %v", a.value, a.value)
 			for k, v := range a.value.([]compound) {
 				vals2 := v
-				v0 := vals2[0].(int64)
-				v1 := vals2[1].(int32)
+				v0 := vals2[0].Val.(int64)
+				v1 := vals2[1].Val.(int32)
 				logger.Infof("single ref %d 0x%x %d %s", k, v0, v1, ob.name)
 			}
 		}
@@ -4846,7 +4862,7 @@ func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 	}
 	found.sortAttrList()
 	dims := h5.getDimensions(found)
-	attrs := getAttributes(found.attrlist)
+	attrs := h5.getAttributes(found.attrlist)
 	return &api.Variable{
 			Values:     data,
 			Dimensions: dims,
@@ -4862,7 +4878,26 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 		return nil, ErrNotFound
 	}
 	found.sortAttrList()
+	d := int64(0)
+	fakeEnd := false
+	switch {
+	case found.objAttr.dimensions == nil:
+		d = 1
+		fakeEnd = true
+	case len(found.objAttr.dimensions) == 0:
+		d = 1
+		fakeEnd = true
+	default:
+		d = int64(found.objAttr.dimensions[0])
+	}
 	getSlice := func(begin, end int64) (interface{}, error) {
+		if begin == 0 && end == 1 && fakeEnd {
+			data := h5.getData(found)
+			if data == nil {
+				return nil, ErrNotFound
+			}
+			return data, nil
+		}
 		if end < begin {
 			return nil, errors.New("invalid slice parameters")
 		}
@@ -4877,10 +4912,12 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 		return data, nil
 	}
 	dims := h5.getDimensions(found)
-	attrs := getAttributes(found.attrlist)
-	return internal.NewSlicer(getSlice, int64(found.objAttr.dimensions[0]),
-		dims,
-		attrs), nil
+	attrs := h5.getAttributes(found.attrlist)
+	origNames := map[string]bool{varName: true}
+	ty := h5.printType(varName, found.objAttr, origNames)
+	origNames = map[string]bool{varName: true}
+	goTy := h5.printGoType(varName, found.objAttr, origNames)
+	return internal.NewSlicer(getSlice, d, dims, attrs, ty, goTy), nil
 }
 
 func (h5 *HDF5) ListSubgroups() []string {

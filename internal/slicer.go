@@ -1,12 +1,16 @@
 package internal
 
-import "github.com/batchatco/go-native-netcdf/netcdf/api"
+import (
+	"github.com/batchatco/go-native-netcdf/netcdf/api"
+)
 
 type slice struct {
 	getSlice func(begin, end int64) (interface{}, error)
 	length   int64
 	dimNames []string
 	attrs    api.AttributeMap
+	cdlType  string
+	goType   string
 }
 
 func (sl *slice) GetSlice(begin, end int64) (interface{}, error) {
@@ -29,11 +33,23 @@ func (sl *slice) Dimensions() []string {
 	return sl.dimNames
 }
 
+func (sl *slice) Type() string {
+	return sl.cdlType
+}
+
+func (sl *slice) GoType() string {
+	return sl.goType
+}
+
 func NewSlicer(getSlice func(begin, end int64) (interface{}, error),
-	length int64, dimNames []string, attributes api.AttributeMap) api.VarGetter {
+	length int64, dimNames []string, attributes api.AttributeMap,
+	cdlType string, goType string) api.VarGetter {
 	return &slice{
 		getSlice: getSlice,
 		length:   length,
 		dimNames: dimNames,
-		attrs:    attributes}
+		attrs:    attributes,
+		cdlType:  cdlType,
+		goType:   goType,
+	}
 }

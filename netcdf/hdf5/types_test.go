@@ -4,6 +4,159 @@ import (
 	"testing"
 )
 
+func TestAttrTypes(t *testing.T) {
+	fileName := "testvlen"
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error("Error opening", fileName, ":", errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error("Error opening", genName, ":", err)
+		return
+	}
+	defer nc.Close()
+	aName := "Tricky"
+	at, has := nc.Attributes().GetType(aName)
+	if !has {
+		t.Error("Can't find type for attribute", aName)
+		return
+	}
+	tName := "tricky_t"
+	if at != tName {
+		t.Error("wrong type for attribute", aName, "got=", at, "exp=", tName)
+	}
+}
+
+func TestGlobalAttrTypes(t *testing.T) {
+	fileName := "testvlen"
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error("Error opening", fileName, ":", errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error("Error opening", genName, ":", err)
+		return
+	}
+	defer nc.Close()
+	aName := "Tricky"
+	at, has := nc.Attributes().GetType(aName)
+	if !has {
+		t.Error("Can't find type for attribute", aName)
+		return
+	}
+	tName := "tricky_t"
+	if at != tName {
+		t.Error("wrong type for attribute", aName, "got=", at, "exp=", tName)
+	}
+}
+
+func TestLocalAttrTypes(t *testing.T) {
+	fileName := "testvlen"
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error("Error opening", fileName, ":", errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error("Error opening", genName, ":", err)
+		return
+	}
+	defer nc.Close()
+
+	type vatt struct {
+		varName    string
+		attrName   string
+		typeName   string
+		goTypeName string
+	}
+	vatts := []vatt{
+		{"v", "Tricky", "tricky_t", "tricky_t"},
+		{"v2", "Vint", "vint(*)", "[]vint"},
+	}
+	for _, v := range vatts {
+		vg, err := nc.GetVarGetter(v.varName)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		at := vg.Attributes()
+		tt, has := at.GetType(v.attrName)
+		if !has {
+			t.Error("missing attr", v.attrName)
+			continue
+		}
+		if tt != v.typeName {
+			t.Error("wrong type for attribute", v.attrName, ",", tt)
+		}
+		gt, has := at.GetGoType(v.attrName)
+		if !has {
+			t.Error("missing attr", v.attrName)
+			continue
+		}
+		if gt != v.goTypeName {
+			t.Error("wrong go type for attribute", v.attrName, ",", gt)
+		}
+	}
+}
+
+func TestVarTypes(t *testing.T) {
+	fileName := "testvtypes"
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error("Error opening", fileName, ":", errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error("Error opening", genName, ":", err)
+		return
+	}
+	defer nc.Close()
+
+	type vatt struct {
+		varName    string
+		typeName   string
+		goTypeName string
+	}
+	vatts := []vatt{
+		{"cl", "color", "color"},
+		{"e", "easy", "easy"},
+		{"ev", "easyVlen", "easyVlen"},
+		{"t", "tricky_t", "tricky_t"},
+		{"c", "string", "string"},
+		{"b", "byte", "int8"},
+		{"ub", "ubyte", "uint8"},
+		{"s", "short", "int16"},
+		{"us", "ushort", "uint16"},
+		{"i", "int", "int32"},
+		{"ui", "uint", "uint32"},
+		{"i64", "int64", "int64"},
+		{"ui64", "uint64", "uint64"},
+		{"f", "float", "float32"},
+		{"d", "double", "float64"},
+	}
+	for _, v := range vatts {
+		vg, err := nc.GetVarGetter(v.varName)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		tt := vg.Type()
+		if tt != v.typeName {
+			t.Error("wrong type for var", v.varName, ",", tt)
+		}
+		gt := vg.GoType()
+		if gt != v.goTypeName {
+			t.Error("wrong go type for var", v.varName, ",", gt)
+		}
+	}
+}
+
 func TestListTypes(t *testing.T) {
 	type expected map[string]string
 	expAll := map[string]expected{
@@ -40,7 +193,7 @@ func TestListTypes(t *testing.T) {
 			"vint":     "int(*)",
 			"easy":     "compound {\n\tint firstEasy;\n\tint secondEasy;\n};",
 			"easyVlen": "easy(*)",
-			"tricky":   "compound {\n\tint trickyInt;\n\teasyVlen trickVlen;\n};",
+			"tricky_t": "compound {\n\tint trickyInt;\n\teasyVlen trickVlen;\n};",
 		},
 	}
 	for fileName, m := range expAll {
@@ -115,7 +268,7 @@ func TestGoTypes(t *testing.T) {
 			"vint":     "type vint []int32",
 			"easy":     "type easy struct {\n\tfirstEasy int32\n\tsecondEasy int32\n}\n",
 			"easyVlen": "type easyVlen []easy",
-			"tricky":   "type tricky struct {\n\ttrickyInt int32\n\ttrickVlen easyVlen\n}\n",
+			"tricky_t": "type tricky_t struct {\n\ttrickyInt int32\n\ttrickVlen easyVlen\n}\n",
 		},
 	}
 	for fileName, m := range expAll {

@@ -1,0 +1,40 @@
+netcdf testvtypes {
+types:
+  byte enum color {
+    RED = 0,
+    YELLOW = 1,
+    GREEN = 2,
+    CYAN = 3,
+    BLUE = 4,
+    MAGENTA = 5
+  };
+  int(*) vint;
+  compound easy {
+    int firstEasy;
+    int secondEasy;
+  };
+  easy(*) easyVlen;
+  compound tricky_t {
+    int trickyInt;
+    easyVlen trickVlen;
+  };
+dimensions:
+  dim = 6;
+
+variables:
+  color cl;
+  easy e;
+  easyVlen ev;
+  tricky_t t;
+  string c;
+  byte b;
+  ubyte ub;
+  short s;
+  ushort us;
+  int i;
+  uint ui;
+  int64 i64;
+  uint64 ui64;
+  float f;
+  double d;
+}

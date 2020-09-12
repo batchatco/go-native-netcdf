@@ -37,8 +37,7 @@ func TestSlicer(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	h5, _ := nc.(*HDF5)
-	baseType := h5.findType("tid")
+	baseType := slicer.Type()
 	// Grab slices of various sizes (including 0 and 4) and see if they match expected.
 	for sliceSize := 0; sliceSize <= 4; sliceSize++ {
 		for i := 0; i < (4 - sliceSize); i++ {

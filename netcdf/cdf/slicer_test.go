@@ -24,7 +24,7 @@ func TestSlicer(t *testing.T) {
 		{10, 11, 12, 13, 14},
 		{15, 16, 17, 18, 19}}
 	contents := keyValList{
-		{"tid", api.Variable{
+		{"tid", "ubyte", "uint8", api.Variable{
 			Values:     tidValues,
 			Attributes: nilMap,
 			Dimensions: []string{"lat", "lon"}}},
@@ -51,6 +51,17 @@ func TestSlicer(t *testing.T) {
 		t.Error(err)
 		return
 	}
+
+	varType := slicer.Type()
+	if varType != "ubyte" {
+		t.Error("Type() is wrong", varType)
+	}
+
+	varType = slicer.GoType()
+	if varType != "uint8" {
+		t.Error("GoType() is wrong", varType)
+	}
+
 	// Grab slices of various sizes (including 0 and 4) and see if they match expected.
 	for sliceSize := 0; sliceSize <= 4; sliceSize++ {
 		for i := 0; i < (4 - sliceSize); i++ {
@@ -59,18 +70,19 @@ func TestSlicer(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			got := api.Variable{
-				Values:     slice,
-				Dimensions: slicer.Dimensions(),
-				Attributes: slicer.Attributes()}
 			tid := contents[0]
 			exp := keyValList{
-				{tid.name, api.Variable{
+				{tid.name, "ubyte", "uint8", api.Variable{
 					Values:     tidValues[i : i+sliceSize],
 					Dimensions: tid.val.Dimensions,
 					Attributes: tid.val.Attributes}},
 			}
-			exp.check(t, "tid", got)
+			if !exp.check(t, "tid", slicer, slice) {
+				t.Error("value mismatch", "sliceSize=", sliceSize)
+				t.Error("slice=", slice)
+			} else {
+				t.Log("OK sliceSize=", sliceSize)
+			}
 		}
 	}
 }

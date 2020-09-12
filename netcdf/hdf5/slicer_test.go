@@ -57,7 +57,7 @@ func TestSlicer(t *testing.T) {
 					Dimensions: tid.val.Dimensions,
 					Attributes: tid.val.Attributes}},
 			}
-			if !exp.check(t, "tid", baseType, got) {
+			if !exp.check(t, "tid", baseType, got, true) {
 				t.Error("fail")
 			}
 		}

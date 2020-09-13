@@ -178,8 +178,10 @@ func TestListTypes(t *testing.T) {
 			"alltypes": "compound {\n\tbyte b;\n\tshort s;\n\tint i;\n\tfloat f;\n\tdouble d;\n}",
 		},
 		"testenum": {
-			"color": "byte enum {\n\tRED = 0,\n\tYELLOW = 1,\n\tGREEN = 2,\n\tCYAN = 3,\n\tBLUE = 4,\n\tMAGENTA = 5\n}",
-			"junk":  "int64 enum {\n\tFIRST = 1,\n\tSECOND = 2,\n\tTHIRD = 3,\n\tFOURTH = 4,\n\tFIFTH = 5,\n\tSIXTH = 6\n}",
+			"color":  "byte enum {\n\tRED = 0,\n\tYELLOW = 1,\n\tGREEN = 2,\n\tCYAN = 3,\n\tBLUE = 4,\n\tMAGENTA = 5\n}",
+			"junk":   "int64 enum {\n\tFIRST = 1,\n\tSECOND = 2,\n\tTHIRD = 3,\n\tFOURTH = 4,\n\tFIFTH = 5,\n\tSIXTH = 6\n}",
+			"color2": "ushort enum {\n\tBLACK = 0,\n\tWHITE = 1\n}",
+			"junk2":  "int enum {\n\tSEVENTH = 7,\n\tEIGHTH = 8\n}",
 		},
 		"testgroups": {},
 		"testopaque": {
@@ -254,8 +256,10 @@ func TestGoTypes(t *testing.T) {
 			"alltypes": "type alltypes struct {\n\tb int8\n\ts int16\n\ti int32\n\tf float32\n\td float64\n}\n",
 		},
 		"testenum": {
-			"color": "type color int8\nconst (\n\tRED color = 0\n\tYELLOW = 1\n\tGREEN = 2\n\tCYAN = 3\n\tBLUE = 4\n\tMAGENTA = 5\n)\n",
-			"junk":  "type junk int64\nconst (\n\tFIRST junk = 1\n\tSECOND = 2\n\tTHIRD = 3\n\tFOURTH = 4\n\tFIFTH = 5\n\tSIXTH = 6\n)\n",
+			"color":  "type color int8\nconst (\n\tRED color = 0\n\tYELLOW = 1\n\tGREEN = 2\n\tCYAN = 3\n\tBLUE = 4\n\tMAGENTA = 5\n)\n",
+			"junk":   "type junk int64\nconst (\n\tFIRST junk = 1\n\tSECOND = 2\n\tTHIRD = 3\n\tFOURTH = 4\n\tFIFTH = 5\n\tSIXTH = 6\n)\n",
+			"color2": "type color2 uint16\nconst (\n\tBLACK color2 = 0\n\tWHITE = 1\n)\n",
+			"junk2":  "type junk2 int32\nconst (\n\tSEVENTH junk2 = 7\n\tEIGHTH = 8\n)\n",
 		},
 		"testgroups": {},
 		"testopaque": {

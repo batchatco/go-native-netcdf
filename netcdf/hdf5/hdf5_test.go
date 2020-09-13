@@ -1485,7 +1485,67 @@ func TestEnum(t *testing.T) {
 			Values:     enumerated{int8(2)},
 			Dimensions: nil,
 			Attributes: nilMap}},
+		{"c2", "color2", api.Variable{
+			Values:     enumerated{uint16(0)},
+			Dimensions: nil,
+			Attributes: nilMap}},
+		{"j2", "junk2", api.Variable{
+			Values:     enumerated{int32(7)},
+			Dimensions: nil,
+			Attributes: nilMap}},
 	}
+	checkAll(t, nc, enum)
+}
+
+func TestEnum2(t *testing.T) {
+	fileName := "testenum" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	h5 := nc.(*HDF5)
+	type color int8
+	var zc color
+	type junk int64
+	var zj junk
+	type color2 uint16
+	var zc2 color2
+	type junk2 int32
+	var zj2 junk2
+	h5.register("color", zc)
+	h5.register("junk", zj)
+	h5.register("color2", zc2)
+	h5.register("junk2", zj2)
+	defer nc.Close()
+	enum := keyValList{
+		{"c", "color", api.Variable{
+			Values:     []color{0, 1, 2, 3, 4, 5},
+			Dimensions: []string{"dim"},
+			Attributes: nilMap}},
+		{"j", "junk", api.Variable{
+			Values:     []junk{1, 2, 3, 4, 5, 6},
+			Dimensions: []string{"dim"},
+			Attributes: nilMap}},
+		{"nodim", "color", api.Variable{
+			Values:     color(2),
+			Dimensions: nil,
+			Attributes: nilMap}},
+		{"c2", "color2", api.Variable{
+			Values:     color2(0),
+			Dimensions: nil,
+			Attributes: nilMap}},
+		{"j2", "junk2", api.Variable{
+			Values:     junk2(7),
+			Dimensions: nil,
+			Attributes: nilMap}},
+	}
+
 	checkAll(t, nc, enum)
 }
 

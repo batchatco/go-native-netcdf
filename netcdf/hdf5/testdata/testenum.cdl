@@ -8,13 +8,21 @@ types:
     BLUE = 4,
     MAGENTA = 5
   };
+  ushort enum color2 {
+    BLACK = 0,
+    WHITE = 1
+  };
   int64 enum junk {
-    FIRST = 1,
+    FIRST = 1L,
     SECOND = 2,
     THIRD = 3,
     FOURTH = 4,
     FIFTH = 5,
     SIXTH = 6
+  };
+  int enum junk2 {
+    SEVENTH = 7,
+    EIGHTH = 8
   };
 
 dimensions:
@@ -24,11 +32,17 @@ variables:
   color nodim;
   color c(dim);
   junk j(dim);
+  color2 c2;
+  junk2 j2;
 
 data:
   nodim = GREEN;
 
   c = RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA;
 
+  c2 = BLACK;
+
   j = FIRST, SECOND, THIRD, FOURTH, FIFTH, SIXTH;
+
+  j2 = SEVENTH;
 }

@@ -3129,9 +3129,13 @@ func (h5 *HDF5) dumpObject(obj *object) {
 	}
 }
 
-func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool) interface{} {
+func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool,
+	cast reflect.Type) interface{} {
 	if len(dimLengths) == 0 {
 		value := read8(bf)
+		if cast != nil {
+			return reflect.ValueOf(value).Convert(cast).Interface()
+		}
 		if signed {
 			return int8(value)
 		}
@@ -3140,33 +3144,45 @@ func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool) interface{} {
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		var values interface{}
-		if signed {
-			values = make([]int8, thisDim)
+		if cast != nil {
+			values = reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
 		} else {
-			values = make([]uint8, thisDim)
+			if signed {
+				values = make([]int8, thisDim)
+			} else {
+				values = make([]uint8, thisDim)
+			}
 		}
 		err := binary.Read(bf, binary.LittleEndian, values)
 		thrower.ThrowIfError(err)
 		return values
 	}
 	var ty reflect.Type
-	if signed {
-		ty = reflect.TypeOf(int8(0))
+	if cast != nil {
+		ty = cast
 	} else {
-		ty = reflect.TypeOf(uint8(0))
+		if signed {
+			ty = reflect.TypeOf(int8(0))
+		} else {
+			ty = reflect.TypeOf(uint8(0))
+		}
 	}
 	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocInt8s(bf, dimLengths[1:], signed)))
+		vals.Index(int(i)).Set(reflect.ValueOf(allocInt8s(bf, dimLengths[1:], signed, cast)))
 	}
 	return vals.Interface()
 }
 
-func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool) interface{} {
+func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
+	cast reflect.Type) interface{} {
 	if len(dimLengths) == 0 {
 		var value uint16
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
+		if cast != nil {
+			return reflect.ValueOf(value).Convert(cast).Interface()
+		}
 		if signed {
 			return int16(value)
 		}
@@ -3175,33 +3191,46 @@ func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		var values interface{}
-		if signed {
-			values = make([]int16, thisDim)
+		if cast != nil {
+			values = reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
 		} else {
-			values = make([]uint16, thisDim)
+			if signed {
+				values = make([]int16, thisDim)
+			} else {
+				values = make([]uint16, thisDim)
+			}
 		}
 		err := binary.Read(bf, endian, values)
 		thrower.ThrowIfError(err)
 		return values
 	}
 	var ty reflect.Type
-	if signed {
-		ty = reflect.TypeOf(int16(0))
+	if cast != nil {
+		ty = cast
 	} else {
-		ty = reflect.TypeOf(uint16(0))
+		if signed {
+			ty = reflect.TypeOf(int16(0))
+		} else {
+			ty = reflect.TypeOf(uint16(0))
+		}
 	}
 	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocShorts(bf, dimLengths[1:], endian, signed)))
+		vals.Index(int(i)).Set(reflect.ValueOf(allocShorts(bf, dimLengths[1:], endian, signed,
+			cast)))
 	}
 	return vals.Interface()
 }
 
-func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool) interface{} {
+func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
+	cast reflect.Type) interface{} {
 	if len(dimLengths) == 0 {
 		var value uint32
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
+		if cast != nil {
+			return reflect.ValueOf(value).Convert(cast).Interface()
+		}
 		if signed {
 			return int32(value)
 		}
@@ -3210,33 +3239,46 @@ func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signe
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		var values interface{}
-		if signed {
-			values = make([]int32, thisDim)
+		if cast != nil {
+			values = reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
 		} else {
-			values = make([]uint32, thisDim)
+			if signed {
+				values = make([]int32, thisDim)
+			} else {
+				values = make([]uint32, thisDim)
+			}
 		}
 		err := binary.Read(bf, endian, values)
 		thrower.ThrowIfError(err)
 		return values
 	}
 	var ty reflect.Type
-	if signed {
-		ty = reflect.TypeOf(int32(0))
+	if cast != nil {
+		ty = cast
 	} else {
-		ty = reflect.TypeOf(uint32(0))
+		if signed {
+			ty = reflect.TypeOf(int32(0))
+		} else {
+			ty = reflect.TypeOf(uint32(0))
+		}
 	}
 	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocInts(bf, dimLengths[1:], endian, signed)))
+		vals.Index(int(i)).Set(reflect.ValueOf(allocInts(bf, dimLengths[1:], endian, signed,
+			cast)))
 	}
 	return vals.Interface()
 }
 
-func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool) interface{} {
+func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
+	cast reflect.Type) interface{} {
 	if len(dimLengths) == 0 {
 		var value uint64
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
+		if cast != nil {
+			return reflect.ValueOf(value).Convert(cast).Interface()
+		}
 		if signed {
 			return int64(value)
 		}
@@ -3245,24 +3287,33 @@ func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		var values interface{}
-		if signed {
-			values = make([]int64, thisDim)
+		if cast != nil {
+			values = reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
 		} else {
-			values = make([]uint64, thisDim)
+			if signed {
+				values = make([]int64, thisDim)
+			} else {
+				values = make([]uint64, thisDim)
+			}
 		}
 		err := binary.Read(bf, endian, values)
 		thrower.ThrowIfError(err)
 		return values
 	}
 	var ty reflect.Type
-	if signed {
-		ty = reflect.TypeOf(int64(0))
+	if cast != nil {
+		ty = cast
 	} else {
-		ty = reflect.TypeOf(uint64(0))
+		if signed {
+			ty = reflect.TypeOf(int64(0))
+		} else {
+			ty = reflect.TypeOf(uint64(0))
+		}
 	}
 	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocInt64s(bf, dimLengths[1:], endian, signed)))
+		vals.Index(int(i)).Set(reflect.ValueOf(allocInt64s(bf, dimLengths[1:], endian, signed,
+			cast)))
 	}
 	return vals.Interface()
 }
@@ -4070,19 +4121,19 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 	}
 	switch attr.class {
 	case typeBitField:
-		values = allocInt8s(bf, dimensions, false)
+		values = allocInt8s(bf, dimensions, false, nil)
 		return values
 
 	case typeFixedPoint: // fixed-point
 		switch attr.length {
 		case 1:
-			values = allocInt8s(bf, dimensions, attr.signed)
+			values = allocInt8s(bf, dimensions, attr.signed, nil)
 		case 2:
-			values = allocShorts(bf, dimensions, attr.endian, attr.signed)
+			values = allocShorts(bf, dimensions, attr.endian, attr.signed, nil)
 		case 4:
-			values = allocInts(bf, dimensions, attr.endian, attr.signed)
+			values = allocInts(bf, dimensions, attr.endian, attr.signed, nil)
 		case 8:
-			values = allocInt64s(bf, dimensions, attr.endian, attr.signed)
+			values = allocInt64s(bf, dimensions, attr.endian, attr.signed, nil)
 		default:
 			fail(fmt.Sprintf("bad size: %d", attr.length))
 		}
@@ -4128,17 +4179,18 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 
 	case typeEnumerated:
 		enumAttr := attr.children[0]
+		casted := h5.castEnum(enumAttr)
 		switch enumAttr.class {
 		case typeFixedPoint:
 			switch enumAttr.length {
 			case 1:
-				values = allocInt8s(bf, dimensions, enumAttr.signed)
+				values = allocInt8s(bf, dimensions, enumAttr.signed, casted)
 			case 2:
-				values = allocShorts(bf, dimensions, enumAttr.endian, enumAttr.signed)
+				values = allocShorts(bf, dimensions, enumAttr.endian, enumAttr.signed, casted)
 			case 4:
-				values = allocInts(bf, dimensions, enumAttr.endian, enumAttr.signed)
+				values = allocInts(bf, dimensions, enumAttr.endian, enumAttr.signed, casted)
 			case 8:
-				values = allocInt64s(bf, dimensions, enumAttr.endian, enumAttr.signed)
+				values = allocInt64s(bf, dimensions, enumAttr.endian, enumAttr.signed, casted)
 			default:
 				fail(fmt.Sprintf("bad size: %d", enumAttr.length))
 			}
@@ -4158,6 +4210,9 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 			fallthrough
 		default:
 			fail(fmt.Sprint("can't handle this class: ", enumAttr.class))
+		}
+		if casted != nil {
+			return values
 		}
 		return enumerated{values}
 
@@ -4184,6 +4239,30 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 	}
 	fail("we should have converted everything already")
 	panic("silence warning")
+}
+
+func (h5 *HDF5) castEnum(attr attribute) reflect.Type {
+	varName := "junk"
+	origNames := map[string]bool{varName: true}
+	ty := h5.printGoType(varName, attr, origNames)
+	if ty == "" {
+		return nil
+	}
+	has := false
+	var proto interface{}
+	for _, p := range h5.registrations {
+		v := reflect.ValueOf(p)
+		if v.Kind().String() == ty {
+			proto = p
+			has = true
+			break
+		}
+	}
+	if !has {
+		return nil
+	}
+	ptype := reflect.TypeOf(proto)
+	return ptype
 }
 
 func (h5 *HDF5) Attributes() api.AttributeMap {
@@ -5122,4 +5201,8 @@ func convert(v interface{}) interface{} {
 	val := undoInterfaces(v)
 	assert(val.IsValid(), "invalid conversion")
 	return val.Interface()
+}
+
+func (h5 *HDF5) register(typeName string, proto interface{}) {
+	h5.registrations[typeName] = proto
 }

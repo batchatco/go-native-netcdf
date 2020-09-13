@@ -3318,17 +3318,28 @@ func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 	return vals.Interface()
 }
 
-func allocOpaque(bf io.Reader, dimLengths []uint64, length uint32) interface{} {
+func allocOpaque(bf io.Reader, dimLengths []uint64, length uint32,
+	cast reflect.Type) interface{} {
 	if len(dimLengths) == 0 {
+		if cast != nil {
+			b := reflect.New(cast)
+			read(bf, b.Interface())
+			return reflect.Indirect(b).Interface()
+		}
 		b := make([]byte, length)
 		read(bf, b)
 		return opaque(b)
 	}
 	thisDim := dimLengths[0]
-	ty := reflect.TypeOf(opaque{})
+	var ty reflect.Type
+	if cast != nil {
+		ty = cast
+	} else {
+		ty = reflect.TypeOf(opaque{})
+	}
 	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
-		val := allocOpaque(bf, dimLengths[1:], length)
+		val := allocOpaque(bf, dimLengths[1:], length, cast)
 		vals.Index(int(i)).Set(reflect.ValueOf(val))
 	}
 	return vals.Interface()
@@ -4179,7 +4190,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 
 	case typeEnumerated:
 		enumAttr := attr.children[0]
-		casted := h5.castEnum(enumAttr)
+		casted := h5.cast(enumAttr)
 		switch enumAttr.class {
 		case typeFixedPoint:
 			switch enumAttr.length {
@@ -4232,7 +4243,8 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		return h5.getDataAttr(cbf, arrayAttr)
 
 	case typeOpaque:
-		return allocOpaque(bf, dimensions, attr.length)
+		cast := h5.cast(attr)
+		return allocOpaque(bf, dimensions, attr.length, cast)
 
 	default:
 		logger.Fatal("unhandled type, getDataAttr", attr.class)
@@ -4241,9 +4253,12 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 	panic("silence warning")
 }
 
-func (h5 *HDF5) castEnum(attr attribute) reflect.Type {
+func (h5 *HDF5) cast(attr attribute) reflect.Type {
 	varName := "junk"
 	origNames := map[string]bool{varName: true}
+	for name := range h5.registrations {
+		origNames[name] = true
+	}
 	ty := h5.printGoType(varName, attr, origNames)
 	if ty == "" {
 		return nil
@@ -4251,11 +4266,22 @@ func (h5 *HDF5) castEnum(attr attribute) reflect.Type {
 	has := false
 	var proto interface{}
 	for _, p := range h5.registrations {
-		v := reflect.ValueOf(p)
-		if v.Kind().String() == ty {
+		v := reflect.TypeOf(p)
+		tName := v.Kind().String()
+		// Enums are always ints
+		if (strings.HasPrefix(tName, "int") || strings.HasPrefix(tName, "uint")) && tName == ty {
 			proto = p
 			has = true
 			break
+		}
+		// Opaques are always arrays of uint8
+		if v.Kind() == reflect.Array && v.Elem().Kind() == reflect.Uint8 {
+			str := fmt.Sprintf("[%d]uint8", v.Len())
+			if str == ty {
+				proto = p
+				has = true
+				break
+			}
 		}
 	}
 	if !has {
@@ -4527,6 +4553,9 @@ func (h5 *HDF5) GetDimension(name string) (uint64, bool) {
 
 func (h5 *HDF5) findSignature(signature string, name string, origNames map[string]bool,
 	printer func(name string, attr attribute, origNames map[string]bool) string) string {
+	if h5.groupObject == nil {
+		return ""
+	}
 	for varName, obj := range h5.groupObject.children {
 		if obj.isGroup {
 			continue
@@ -5204,5 +5233,9 @@ func convert(v interface{}) interface{} {
 }
 
 func (h5 *HDF5) register(typeName string, proto interface{}) {
+	if _, has := h5.GetType(typeName); !has {
+		logger.Warn("no such type", typeName)
+		return
+	}
 	h5.registrations[typeName] = proto
 }

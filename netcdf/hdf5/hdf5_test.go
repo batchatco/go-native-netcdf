@@ -1489,6 +1489,36 @@ func TestOpaqueCasted(t *testing.T) {
 	}
 	checkAll(t, nc, opaque)
 }
+func TestOpaqueBadCasted(t *testing.T) {
+	fileName := "testopaque" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	type opaque5 [2]byte // suppose to be 5 bytes. See if that gets detected.
+	var proto opaque5
+	h5 := nc.(*HDF5)
+	h5.register("opaque5", proto)
+	opaque := keyValList{
+		{"v", "opaque5", api.Variable{
+			Values: []opaque{ // not opaque5
+				{0xde, 0xad, 0xbe, 0xef, 0x01},
+				{0xde, 0xad, 0xbe, 0xef, 0x02},
+				{0xde, 0xad, 0xbe, 0xef, 0x03},
+				{0xde, 0xad, 0xbe, 0xef, 0x04},
+				{0xde, 0xad, 0xbe, 0xef, 0x05}},
+			Dimensions: []string{"dim"},
+			Attributes: nilMap}},
+	}
+	checkAll(t, nc, opaque)
+}
 
 func TestEnum(t *testing.T) {
 	fileName := "testenum" // base filename without extension

@@ -4275,7 +4275,7 @@ func (h5 *HDF5) cast(attr attribute) reflect.Type {
 			break
 		}
 		// Opaques are always arrays of uint8
-		if v.Kind() == reflect.Array && v.Elem().Kind() == reflect.Uint8 {
+		if v.Kind() == reflect.Array && v.Elem().Kind() == reflect.Uint8 && v.Len() == int(attr.length) {
 			str := fmt.Sprintf("[%d]uint8", v.Len())
 			if str == ty {
 				proto = p

@@ -919,29 +919,24 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			name := readNullTerminatedName(bf, padding)
 			logger.Info(i, "compound name=", name)
 			var byteOffset uint32
+			var nbytes uint8
 			switch dtversion {
 			case 1, 2:
-				byteOffset = read32(bf)
-				logger.Infof("[32old] byteOffset=0x%x", byteOffset)
+				nbytes = 4
 			case 3:
 				switch {
 				case dtlength < 256:
-					byteOffset = uint32(read8(bf))
-					logger.Infof("[8] byteOffset=0x%x", byteOffset)
+					nbytes = 1
 				case dtlength < 65536:
-					byteOffset = uint32(read16(bf))
-					logger.Infof("[16] byteOffset=0x%x", byteOffset)
+					nbytes = 2
 				case dtlength < 16777216:
-					low := uint32(read16(bf))
-					high := uint32(read8(bf))
-					logger.Infof("low=0x%x high=0x%x\n", low, high)
-					byteOffset = low | (high << 16)
-					logger.Infof("[24] byteOffset=0x%x", byteOffset)
+					nbytes = 3
 				default:
-					byteOffset = uint32(read32(bf))
-					logger.Infof("[32] byteOffset=0x%x", byteOffset)
+					nbytes = 4
 				}
 			}
+			byteOffset = uint32(readEnc(bf, nbytes))
+			logger.Infof("[%d] byteOffset=0x%x", nbytes, byteOffset)
 			var compoundAttribute attribute
 			compoundAttribute.name = name
 			compoundAttribute.byteOffset = byteOffset

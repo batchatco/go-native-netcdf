@@ -23,7 +23,7 @@ func TestAttrTypes(t *testing.T) {
 		t.Error("Can't find type for attribute", aName)
 		return
 	}
-	tName := "tricky_t"
+	tName := "Tricky_t"
 	if at != tName {
 		t.Error("wrong type for attribute", aName, "got=", at, "exp=", tName)
 	}
@@ -48,7 +48,7 @@ func TestGlobalAttrTypes(t *testing.T) {
 		t.Error("Can't find type for attribute", aName)
 		return
 	}
-	tName := "tricky_t"
+	tName := "Tricky_t"
 	if at != tName {
 		t.Error("wrong type for attribute", aName, "got=", at, "exp=", tName)
 	}
@@ -75,7 +75,7 @@ func TestLocalAttrTypes(t *testing.T) {
 		goTypeName string
 	}
 	vatts := []vatt{
-		{"v", "Tricky", "tricky_t", "tricky_t"},
+		{"v", "Tricky", "Tricky_t", "Tricky_t"},
 		{"v2", "Vint", "vint(*)", "[]vint"},
 	}
 	for _, v := range vatts {
@@ -169,9 +169,9 @@ func TestListTypes(t *testing.T) {
 		},
 		"testcompounds": {
 
-			"alltypes":  "compound {\n\tbyte b;\n\tshort s;\n\tint i;\n\tfloat f;\n\tdouble d;\n}",
-			"sametypes": "compound {\n\tint a;\n\tint b;\n\tint c;\n}",
-			"includes":  "compound {\n\talltypes a;\n\tstring s;\n}",
+			"Alltypes":  "compound {\n\tbyte B;\n\tshort S;\n\tint I;\n\tfloat F;\n\tdouble D;\n}",
+			"Sametypes": "compound {\n\tint A;\n\tint B;\n\tint C;\n}",
+			"Includes":  "compound {\n\tAlltypes A;\n\tstring S;\n}",
 		},
 		"testempty": {
 			"opaque5":  "opaque(5)",
@@ -193,9 +193,9 @@ func TestListTypes(t *testing.T) {
 		},
 		"testvlen": {
 			"vint":     "int(*)",
-			"easy":     "compound {\n\tint firstEasy;\n\tint secondEasy;\n}",
-			"easyVlen": "easy(*)",
-			"tricky_t": "compound {\n\tint trickyInt;\n\teasyVlen trickVlen;\n}",
+			"Easy":     "compound {\n\tint FirstEasy;\n\tint SecondEasy;\n}",
+			"EasyVlen": "Easy(*)",
+			"Tricky_t": "compound {\n\tint TrickyInt;\n\tEasyVlen TrickVlen;\n}",
 		},
 	}
 	for fileName, m := range expAll {
@@ -247,9 +247,9 @@ func TestGoTypes(t *testing.T) {
 		},
 		"testcompounds": {
 
-			"alltypes":  "type alltypes struct {\n\tb int8\n\ts int16\n\ti int32\n\tf float32\n\td float64\n}\n",
-			"sametypes": "type sametypes struct {\n\ta int32\n\tb int32\n\tc int32\n}\n",
-			"includes":  "type includes struct {\n\ta alltypes\n\ts string\n}\n",
+			"Alltypes":  "type Alltypes struct {\n\tB int8\n\tS int16\n\tI int32\n\tF float32\n\tD float64\n}\n",
+			"Sametypes": "type Sametypes struct {\n\tA int32\n\tB int32\n\tC int32\n}\n",
+			"Includes":  "type Includes struct {\n\tA Alltypes\n\tS string\n}\n",
 		},
 		"testempty": {
 			"opaque5":  "type opaque5 [5]uint8",
@@ -270,9 +270,9 @@ func TestGoTypes(t *testing.T) {
 			"BBB": "type BBB struct {\n\tx float32\n\ty float64\n}\n"},
 		"testvlen": {
 			"vint":     "type vint []int32",
-			"easy":     "type easy struct {\n\tfirstEasy int32\n\tsecondEasy int32\n}\n",
-			"easyVlen": "type easyVlen []easy",
-			"tricky_t": "type tricky_t struct {\n\ttrickyInt int32\n\ttrickVlen easyVlen\n}\n",
+			"Easy":     "type Easy struct {\n\tFirstEasy int32\n\tSecondEasy int32\n}\n",
+			"EasyVlen": "type EasyVlen []Easy",
+			"Tricky_t": "type Tricky_t struct {\n\tTrickyInt int32\n\tTrickVlen EasyVlen\n}\n",
 		},
 	}
 	for fileName, m := range expAll {

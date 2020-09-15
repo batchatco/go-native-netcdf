@@ -2,7 +2,6 @@
 package hdf5
 
 import (
-	"bufio"
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
@@ -84,6 +83,7 @@ var (
 	ErrFloatingPoint           = errors.New("non-standard floating point not handled")
 	ErrFixedPoint              = errors.New("non-standard fixed-point not handled")
 	ErrReference               = errors.New("unsupported reference type")
+	ErrNonExportedField        = errors.New("can't assign to non-exported field")
 )
 
 const (
@@ -210,12 +210,13 @@ type attribute struct {
 	name          string
 	value         interface{}
 	class         uint8
-	vtType        uint8       // for variable length
-	signed        bool        // for fixed-point
-	children      []attribute // for variable and compound, TODO also need dimensions
+	vtType        uint8        // for variable length
+	signed        bool         // for fixed-point
+	children      []*attribute // for variable, compound, enums, vlen.
 	enumNames     []string
 	enumValues    []interface{}
-	addr          uint64 // for reference
+	addr          uint64 // for reference and shared
+	shared        bool   // if shared
 	length        uint32 // datatype length
 	layout        []uint64
 	dimensions    []uint64 // for compound
@@ -226,6 +227,8 @@ type attribute struct {
 	endian        binary.ByteOrder
 	dtversion     uint8
 	creationOrder uint64
+	df            io.Reader
+	noDf          bool
 }
 
 type compoundField struct {
@@ -261,10 +264,10 @@ type object struct {
 	attr             *linkInfo
 	children         map[string]*object
 	name             string
-	attrlist         []attribute
+	attrlist         []*attribute
 	dataBlocks       []dataBlock
 	filters          []filter
-	objAttr          attribute
+	objAttr          *attribute
 	fillValue        []byte // takes precedence over old fill value
 	fillValueOld     []byte
 	isGroup          bool
@@ -387,13 +390,10 @@ func (h5 *HDF5) newSeek(addr uint64, size int64) remReader {
 	assert(int64(addr)+size <= h5.fileSize,
 		fmt.Sprintf("bad seek addr=0x%x size=%d addr+size=0x%x fileSize=0x%x",
 			addr, size, int64(addr)+size, h5.fileSize))
-	r := h5.file.seekAt(int64(addr))
 	if size == 0 {
 		size = h5.fileSize - int64(addr)
 	}
-	// bufio is faster, but can mask errors
-	f := bufio.NewReader(r)
-	return newResetReader(f, size)
+	return newResetReaderOffset(h5.file, size, addr)
 }
 
 func read(r io.Reader, data interface{}) {
@@ -606,7 +606,7 @@ func (h5 *HDF5) readSuperblock() {
 	if sbExtension != invalidAddress {
 		logger.Info("superblock extension not supported")
 		if parseSBExtension {
-			obj := &object{}
+			obj := newObject()
 			h5.readDataObjectHeader(obj, sbExtension)
 		} else {
 			thrower.Throw(ErrSuperblock)
@@ -710,6 +710,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	attr.dtversion = dtversion
 	attr.class = dtclass
 	attr.length = dtlength
+	assert(attr.length != 0, "attr length can't be zero")
 	switch dtclass {
 	// TODO: make functions because this is too long
 	case typeFixedPoint:
@@ -733,12 +734,18 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		logger.Infof("bitOffset=%d bitPrecision=%d blen=%d", bitOffset, bitPrecision,
 			bf.Count())
 		assertError(bitOffset == 0, ErrFixedPoint, "bit offset must be zero")
+		switch dtlength {
+		case 1, 2, 4, 8:
+			break
+		default:
+			thrower.Throw(ErrFixedPoint)
+		}
 		if df == nil {
 			logger.Infof("no data")
 			break
 		}
 		if df.Rem() >= int64(dtlength) {
-			attr.value = h5.getDataAttr(df, *attr)
+			attr.df = newResetReaderSave(df, df.Rem())
 		}
 
 	case typeFloatingPoint:
@@ -806,7 +813,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		}
 		logger.Info("data len", df.Rem())
 		assert(df.Rem() >= int64(dtlength), "floating-point data short")
-		attr.value = h5.getDataAttr(df, *attr)
+		attr.df = newResetReaderSave(df, df.Rem())
 
 	case typeTime:
 		// uncomment the following to enable
@@ -874,7 +881,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			thrower.Throw(ErrBitfield)
 		}
 		if df.Rem() >= int64(dtlength) {
-			attr.value = h5.getDataAttr(df, *attr)
+			attr.df = newResetReaderSave(df, df.Rem())
 		}
 
 	case typeOpaque:
@@ -893,7 +900,9 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			checkVal(0, tag[i],
 				fmt.Sprint("reserved byte should be zero: ", i))
 		}
-		attr.value = stringTag
+		if df != nil && df.Rem() >= int64(dtlength) {
+			attr.df = newResetReaderSave(df, df.Rem())
+		}
 
 	case typeCompound: // compound
 		logger.Info("* compound")
@@ -908,7 +917,6 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		}
 		for i := 0; i < int(nmembers); i++ {
 			name := readNullTerminatedName(bf, padding)
-			logger.Info("compound name", name)
 			logger.Info(i, "compound name=", name)
 			var byteOffset uint32
 			switch dtversion {
@@ -970,7 +978,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			}
 			logger.Infof("%d compound after: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
 			logger.Infof("%d compound dtlength", compoundAttribute.length)
-			attr.children = append(attr.children, compoundAttribute)
+			attr.children = append(attr.children, &compoundAttribute)
 		}
 		logger.Info("Compound length is", attr.length)
 		rem := int64(0)
@@ -987,10 +995,10 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 				logger.Info("Adding fill value reader")
 				bff = makeFillValueReader(obj, df, attrSize)
 			}
-			attr.value = h5.getDataAttr(bff, *attr)
+			attr.df = newResetReaderSave(bff, bff.(remReader).Rem())
 			logger.Info("rem=", df.Rem(), "nread=", bff.(remReader).Count())
 		}
-		logger.Info("Finish compound")
+		logger.Info("Finished compound", "rem=", bf.Rem())
 
 	case typeReference:
 		logger.Info("* reference")
@@ -1031,6 +1039,18 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		enumAttr.enumNames = names
 		logger.Info("enum names:", names)
 		assert(enumAttr.class == typeFixedPoint, "only fixed-point enums supported")
+		switch enumAttr.length {
+		case 1, 2, 4, 8:
+			break
+		default:
+			thrower.Throw(ErrFixedPoint)
+		}
+		switch dtlength {
+		case 1, 2, 4, 8:
+			break
+		default:
+			thrower.Throw(ErrFixedPoint)
+		}
 		values := make([]interface{}, numberOfMembers)
 		for i := uint32(0); i < numberOfMembers; i++ {
 			values[i] = h5.getDataAttr(bf, enumAttr)
@@ -1046,11 +1066,11 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		}
 		enumAttr.enumValues = values
 		logger.Info("enum values:", values)
-		attr.children = []attribute{enumAttr}
+		attr.children = []*attribute{&enumAttr}
 		if df != nil && df.Rem() > 0 {
 			// Read away some bytes
-			dff := makeFillValueReader(obj, df, calcAttrSize(attr))
-			attr.value = h5.getDataAttr(dff, *attr)
+			attrDf := newResetReaderSave(df, df.Rem())
+			attr.df = makeFillValueReader(obj, attrDf, calcAttrSize(attr))
 		}
 
 	case typeVariableLength:
@@ -1081,7 +1101,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		h5.printDatatype(obj, bf, nil, 0, &variableAttr)
 		logger.Info("variable class", variableAttr.class,
 			"vtType", vtType)
-		attr.children = append(attr.children, variableAttr)
+		attr.children = append(attr.children, &variableAttr)
 		attr.vtType = vtType
 		rem := int64(0)
 		if df != nil {
@@ -1093,7 +1113,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		}
 		logger.Info("len data is", rem, "dlen", df.Count())
 
-		attr.value = h5.getDataAttr(df, *attr)
+		attr.df = newResetReaderSave(df, df.Rem())
 		logger.Infof("Type of this vattr: %T", attr.value)
 
 	case typeArray:
@@ -1118,10 +1138,10 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		var arrayAttr attribute
 		h5.printDatatype(obj, bf, nil, 0, &arrayAttr)
 		arrayAttr.dimensions = dimensions
-		attr.children = append(attr.children, arrayAttr)
+		attr.children = append(attr.children, &arrayAttr)
 		if df != nil && df.Rem() > 0 {
 			logger.Info("Using an array in an attribute")
-			attr.value = h5.getDataAttr(df, *attr)
+			attr.df = newResetReaderSave(df, df.Rem())
 		}
 
 	default:
@@ -1177,8 +1197,8 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 	// save name
 	name := getString(b)
 	logger.Infof("* attribute name=%s", string(b[:nameSize-1]))
-	obj.attrlist = append(obj.attrlist, attribute{name: name})
-	attr := &obj.attrlist[len(obj.attrlist)-1]
+	attr := &attribute{name: name}
+	logger.Infof("* attribute ptr=%p", attr)
 	attr.creationOrder = creationOrder
 	dtb := make([]byte, datatypeSize)
 	read(bf, dtb)
@@ -1206,6 +1226,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 		if version == 1 {
 			padBytes(bf, 7)
 		}
+		logger.Info("dimensions were", attr.dimensions)
 		attr.dimensions = dims
 		logger.Info("dimensions are", dims)
 		logger.Info("count objects=", count)
@@ -1249,22 +1270,49 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 		}
 		addr := read64(bff)
 		logger.Infof("shared type addr=0x%x", addr)
-		oa := h5.getSharedAttr(addr)
-		sAttr := *oa
-		sAttr.dimensions = dims
-		attr.value = h5.getDataAttr(bf, sAttr)
+		oa := h5.getSharedAttr(obj, addr)
+		oa.dimensions = dims
+		oa.name = name
+		attr = oa
+		if bf.Rem() > 0 {
+			oa.df = newResetReaderSave(bf, bf.Rem())
+		}
 	}
+	obj.attrlist = append(obj.attrlist, attr)
 }
 
-func (h5 *HDF5) getSharedAttr(addr uint64) *attribute {
+func (h5 *HDF5) getSharedAttr(obj *object, addr uint64) *attribute {
 	oa := h5.sharedAttrs[addr]
 	if oa == nil {
-		obj := &object{}
-		h5.readDataObjectHeader(obj, addr)
-		oa = &obj.objAttr
+		oa = obj.objAttr
 		h5.sharedAttrs[addr] = oa
+		h5.readDataObjectHeader(obj, addr)
+		oa.shared = true
+		if oa.df != nil {
+			oa.noDf = true // don't reparse
+		}
+		return oa
+	}
+	if oa.df == nil && !oa.noDf {
+		oa.noDf = true // avoids loop
+		h5.readDataObjectHeader(obj, addr)
+		oa.noDf = true // avoids loop
 	}
 	return oa
+}
+
+func (h5 *HDF5) reparseSharedAttr(attr *attribute) {
+	oa := h5.sharedAttrs[attr.addr]
+	if oa == nil {
+		logger.Warn("This attr wasn't shared")
+		return
+	}
+	if oa.df != nil {
+		oa.value = h5.getDataAttr(oa.df, *oa)
+		oa.df = nil
+	} else {
+		logger.Warn("Nothing to reparse shared attr with")
+	}
 }
 
 type doublerCallback func(obj *object, bnum uint64, offset uint64, length uint16,
@@ -1396,7 +1444,7 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 		logger.Infof("done with name=%s", string(linkName))
 		return
 	}
-	obj := &object{}
+	obj := newObject()
 	obj.name = string(linkName)
 	parent.children[obj.name] = obj
 	obj.creationOrder = co
@@ -2019,18 +2067,16 @@ func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, he
 			logger.Infof("done with name=%s", string(linkName))
 			return
 		}
-		obj := &object{}
+		obj := newObject()
 		obj.addr = objectHeaderAddress
 
 		obj.name = linkName
-		//obj.creationOrder = co
-		//logger.Info("obj name", obj.name)
 		logger.Infof("object (0x%x, %s) from symbol table, parent (0x%x, %s)\n",
 			obj.addr, obj.name, parent.addr, parent.name)
 		parent.children[obj.name] = obj
 		obj.isGroup = true
 		h5.readDataObjectHeader(obj, objectHeaderAddress)
-		logger.Infof("STE rem=", bf.Rem())
+		logger.Info("STE rem=", bf.Rem())
 		h5.dumpObject(obj)
 		logger.Infof("done with name=%s", obj.name)
 	}
@@ -2588,14 +2634,14 @@ func (h5 *HDF5) readFillValue(bf io.Reader) []byte {
 	return b
 }
 
-func (h5 *HDF5) readDatatype(obj *object, bf io.Reader) attribute {
+func (h5 *HDF5) readDatatype(obj *object, bf io.Reader) *attribute {
 	size := bf.(remReader).Rem()
 	logger.Infof("going to read %v bytes", size)
 	logger.Info("print datatype with properties from chunk")
 	var objAttr attribute
 	pf := newResetReader(bf, bf.(remReader).Rem())
 	h5.printDatatype(obj, pf, nil, 0, &objAttr)
-	return objAttr
+	return &objAttr
 }
 
 func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags byte, origAddr uint64, chunkSize uint64) {
@@ -2671,7 +2717,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Infof("used %d bytes", used)
 			//assert(int64(size) <= bf.Rem(), "not enough space")
 			if int64(size) > bf.Rem() {
-				logger.Error("not enough space") // XXX, debugging hack
+				logger.Error("not enough space", size, bf.Rem()) // XXX, debugging hack
 				return
 			}
 		}
@@ -2687,8 +2733,8 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Info("shared message length", length)
 			addr := read64(bf)
 			logger.Infof("shared message addr = 0x%x", addr)
-			oa := h5.getSharedAttr(addr)
-			obj.objAttr = *oa
+			_ = h5.getSharedAttr(obj, addr)
+
 			// TODO: we need to store addr and dtb somewhere, it will get used later
 			logger.Info("shared attr dtversion", obj.objAttr.dtversion)
 			// TODO: what else might we need to copy? dimensions?
@@ -2718,12 +2764,14 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			obj.isGroup = false
 			logger.Info("Datatype")
 			// hacky: fix
+
 			save := obj.objAttr.dimensions
+			noDf := obj.objAttr.noDf
 			obj.objAttr = h5.readDatatype(obj, f)
-			h5.sharedAttrs[obj.addr] = &obj.objAttr
-			logger.Info("before, after", save, obj.objAttr.dimensions)
-			obj.objAttr.dimensions = save
+			h5.sharedAttrs[obj.addr] = obj.objAttr
 			logger.Info("dimensions are", obj.objAttr.dimensions)
+			obj.objAttr.dimensions = save
+			obj.objAttr.noDf = noDf
 
 		case typeDataStorageFillValueOld:
 			obj.isGroup = false
@@ -3108,12 +3156,18 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 	}
 	h5.readSuperblock()
 	assert(h5.rootAddr != invalidAddress, "No root address")
-	h5.rootObject = &object{}
+	h5.rootObject = newObject()
 	h5.readDataObjectHeader(h5.rootObject, h5.rootAddr)
 	h5.groupObject = h5.rootObject
 	h5.groupObject.isGroup = true
 	h5.dumpObject(h5.rootObject)
 	return api.Group(h5), nil
+}
+
+func newObject() *object {
+	var obj object
+	obj.objAttr = &attribute{}
+	return &obj
 }
 
 func (h5 *HDF5) dumpObject(obj *object) {
@@ -3129,8 +3183,7 @@ func (h5 *HDF5) dumpObject(obj *object) {
 	}
 }
 
-func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool,
-	cast reflect.Type) interface{} {
+func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Type) interface{} {
 	if len(dimLengths) == 0 {
 		value := read8(bf)
 		if cast != nil {
@@ -3435,7 +3488,8 @@ func padBytesCheck(obf io.Reader, pad32 int, round bool,
 	return success
 }
 
-func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute) interface{} {
+func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute,
+	cast reflect.Type) interface{} {
 	length := int64(attr.length)
 	class := typeNames[attr.class]
 	logger.Info(bf.(remReader).Count(), "Alloc compounds", dimLengths, class,
@@ -3443,61 +3497,72 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 		"nchildren=", len(attr.children), "rem=", bf.(remReader).Rem())
 	dtlen := uint64(0)
 	for i := range attr.children {
-		clen := uint64(attr.children[i].length)
-		for _, d := range attr.children[i].dimensions {
-			clen *= uint64(d)
-		}
+		clen := uint64(calcAttrSize(attr.children[i]))
 		dtlen += clen
 	}
 	if len(dimLengths) == 0 {
-		var lastOffset uint64
-		cbf := newResetReader(bf, int64(length))
+		rem := bf.(remReader).Rem()
+		if length > rem {
+			logger.Warn("not enough room", length, rem)
+		} else {
+			rem = length
+		}
+		cbf := newResetReader(bf, rem)
 		varray := make([]compoundField, len(attr.children))
 		for i, c := range attr.children {
 			byteOffset := c.byteOffset
-			clen := uint64(c.length)
-			for _, d := range c.dimensions {
-				clen *= uint64(d)
-			}
-			lastOffset = uint64(byteOffset) + clen
+			clen := uint64(calcAttrSize(c))
 			if int64(byteOffset) > cbf.Count() {
-				length := int64(byteOffset) - cbf.Count()
-				logger.Info("skip to offset", length)
-				skip(cbf, int64(length))
+				skipLen := int64(byteOffset) - cbf.Count()
+				logger.Info("skip to offset", skipLen)
+				skip(cbf, int64(skipLen))
 			}
-			clength := uint64(c.length)
-			for _, d := range c.dimensions {
-				clength *= d
-			}
-			ccbf := newResetReader(cbf, int64(clength))
-			varray[i].Val = h5.getDataAttr(ccbf, c)
+			ccbf := newResetReader(cbf, int64(clen))
+			varray[i].Val = h5.getDataAttr(ccbf, *c)
 			varray[i].Name = c.name
 		}
-		if lastOffset < uint64(length) {
-			rem := uint64(length) - lastOffset
-			if bf.(remReader).Rem() < int64(rem) {
-				rem = uint64(bf.(remReader).Rem())
+		if cbf.Count() < length {
+			rem := length - cbf.Count()
+			skip(cbf, int64(rem))
+		}
+		if cast != nil {
+			fields := make([]reflect.StructField, len(attr.children))
+			for i := range fields {
+				fields[i] = cast.Field(i)
 			}
-			if rem > 0 {
-				logger.Info("skip at end", rem)
-				skip(cbf, int64(rem))
+			stp := reflect.New(reflect.StructOf(fields))
+			st := reflect.Indirect(stp)
+			for i := range varray {
+				if !st.Field(i).CanSet() {
+					thrower.Throw(ErrNonExportedField)
+				}
+				st.Field(i).Set(reflect.ValueOf(varray[i].Val))
 			}
+			return st.Interface()
 		}
 		logger.Info(bf.(remReader).Count(), "return compound count=", bf.(remReader).Count())
 		return compound(varray)
 	}
-	var x compound
-	t := reflect.TypeOf(x)
+	var t reflect.Type
+	if cast != nil {
+		t = cast
+	} else {
+		var x compound
+		t = reflect.TypeOf(x)
+	}
 	vals2 := makeSlices(t, dimLengths)
 	thisDim := dimLengths[0]
 	for i := uint64(0); i < thisDim; i++ {
-		vals2.Index(int(i)).Set(reflect.ValueOf(h5.allocCompounds(bf, dimLengths[1:], attr)))
+		if !vals2.Index(int(i)).CanSet() {
+			thrower.Throw(ErrNonExportedField)
+		}
+		vals2.Index(int(i)).Set(reflect.ValueOf(h5.allocCompounds(bf, dimLengths[1:], attr, cast)))
 	}
-	logger.Infof("Return compound type %T", vals2.Interface())
 	return vals2.Interface()
 }
 
-func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute) interface{} {
+func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute,
+	cast reflect.Type) interface{} {
 	logger.Info("allocVariable", dimLengths, "count=", bf.(remReader).Count(),
 		"rem=", bf.(remReader).Rem())
 	if len(dimLengths) == 0 {
@@ -3523,9 +3588,17 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 		} else {
 			bff, _ = h5.readGlobalHeap(addr, index)
 		}
+		var t reflect.Type
 		val0 = h5.getDataAttr(bff, attr)
-		t := reflect.ValueOf(val0).Type()
+		if cast != nil {
+			t = cast.Elem()
+		} else {
+			t = reflect.ValueOf(val0).Type()
+		}
 		sl := reflect.MakeSlice(reflect.SliceOf(t), int(length), int(length))
+		if cast != nil {
+			sl = sl.Convert(cast)
+		}
 		if length > 0 {
 			sl.Index(0).Set(reflect.ValueOf(val0))
 			for i := 1; i < int(length); i++ {
@@ -3541,7 +3614,7 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 		vals := make([]interface{}, thisDim)
 		for i := uint64(0); i < thisDim; i++ {
 			logger.Info("Alloc inner", i, "of", thisDim)
-			vals[i] = h5.allocVariable(bf, dimLengths[1:], attr)
+			vals[i] = h5.allocVariable(bf, dimLengths[1:], attr, cast)
 		}
 		assert(vals[0] != nil, "we never return nil")
 		t := reflect.ValueOf(vals[0]).Type()
@@ -3549,22 +3622,21 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute)
 		for i := 0; i < int(thisDim); i++ {
 			vals2.Index(i).Set(reflect.ValueOf(vals[i]))
 		}
-		logger.Infof("Return val type %T", vals2.Interface())
 		return vals2.Interface()
 	}
 
 	// TODO: we sometimes know the type (float32) and can do something smarter here
+
 	vals := make([]interface{}, thisDim)
 	for i := uint64(0); i < thisDim; i++ {
 		logger.Info("Alloc outer", i, "of", thisDim)
-		vals[i] = h5.allocVariable(bf, dimLengths[1:], attr)
+		vals[i] = h5.allocVariable(bf, dimLengths[1:], attr, cast)
 	}
 	t := reflect.ValueOf(vals[0]).Type()
 	vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))
 	for i := 0; i < int(thisDim); i++ {
 		vals2.Index(i).Set(reflect.ValueOf(vals[i]))
 	}
-	logger.Infof("Return val type %T", vals2.Interface())
 	return vals2.Interface()
 }
 
@@ -3801,17 +3873,13 @@ func (s byOffset) Less(i, j int) bool {
 }
 
 func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
-	shuffleFound bool, shuffleParam uint32, fletcher32Found bool) (io.Reader, uint64) {
+	shuffleFound bool, shuffleParam uint32, fletcher32Found bool) io.Reader {
 	nBlocks := len(obj.dataBlocks)
-	size := uint64(obj.objAttr.length)
-	assert(size != 0, "no size")
-	for i := range obj.objAttr.dimensions {
-		size *= obj.objAttr.dimensions[i]
+	size := uint64(calcAttrSize(obj.objAttr))
+	if size == 0 {
+		return newResetReaderFromBytes([]byte{})
 	}
-	if nBlocks == 0 {
-		logger.Info("No blocks, filling only", size, obj.objAttr.dimensions)
-		return makeFillValueReader(obj, nil, int64(size)), size
-	}
+	logger.Info("size=", size, "dtlength=", obj.objAttr.length, "dims=", obj.objAttr.dimensions)
 	segments := make([]*segment, 0)
 	firstOffset := uint64(0)
 	lastOffset := uint64(size)
@@ -3822,6 +3890,10 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			lastOffset = uint64(obj.objAttr.lastDim) * dimSize
 			size = lastOffset - firstOffset
 		}
+	}
+	if nBlocks == 0 {
+		logger.Info("No blocks, filling only", size, obj.objAttr.dimensions)
+		return makeFillValueReader(obj, nil, int64(size))
 	}
 	offset := uint64(0)
 	for i, val := range obj.dataBlocks {
@@ -3874,7 +3946,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			zbf, err := zlib.NewReader(bf)
 			if err != nil {
 				logger.Error(ErrUnknownCompression)
-				return nil, 0
+				return nil
 			}
 			bf = newResetReader(zbf, int64(dsLength))
 			if firstOffset > 0 {
@@ -3943,7 +4015,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	assertError(off <= lastOffset, ErrCorrupted,
 		fmt.Sprintf("this only happens in corrupted files (2) %d %d", off, lastOffset))
 	r := newResetReader(io.MultiReader(readers...), int64(size))
-	return r, size
+	return r
 }
 
 // Not including any slice changes
@@ -4085,8 +4157,8 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 	// TODO if !zlibFound && !shuffleFound && !fletcher32Found && isSlice {
 	// we can seek first to save time.  Otherwise, it is slow inefficent reading to get to the
 	// place we want (or some complicated algorithm).
-	bf, _ := h5.newRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
-	attr := &obj.objAttr
+	bf := h5.newRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
+	attr := obj.objAttr
 	sz := calcAttrSize(attr)
 	logger.Info("about to getdataattr rem=", bf.(remReader).Rem(), "size=", sz)
 	if sz > bf.(remReader).Rem() {
@@ -4146,7 +4218,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		case 8:
 			values = allocInt64s(bf, dimensions, attr.endian, attr.signed, nil)
 		default:
-			fail(fmt.Sprintf("bad size: %d", attr.length))
+			fail(fmt.Sprintf("bad size fixed: %d (%v)", attr.length, attr))
 		}
 		return values // already converted
 
@@ -4158,7 +4230,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		case 8:
 			values = allocDoubles(bf, dimensions, attr.endian)
 		default:
-			fail(fmt.Sprintf("bad size: %d", attr.length))
+			fail(fmt.Sprintf("bad size float: %d", attr.length))
 		}
 		return values // already converted
 
@@ -4176,13 +4248,17 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		}
 		logger.Info("variable-length type", typeNames[int(attr.children[0].class)])
 		logger.Info("dimensions=", dimensions, "rem=", bf.(remReader).Rem())
-		values = h5.allocVariable(bf, dimensions, attr.children[0])
+		cast := h5.cast(attr)
+		values = h5.allocVariable(bf, dimensions, *attr.children[0], cast)
 		logger.Infof("vl kind %T", values)
+		if cast != nil {
+			return values
+		}
 		return convert(values)
 
 	case typeCompound:
-		logger.Info("Alloc compound rem=", bf.(remReader).Rem())
-		values = h5.allocCompounds(bf, dimensions, attr)
+		cast := h5.cast(attr)
+		values = h5.allocCompounds(bf, dimensions, attr, cast)
 		return values
 
 	case typeReference:
@@ -4190,20 +4266,20 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 
 	case typeEnumerated:
 		enumAttr := attr.children[0]
-		casted := h5.cast(enumAttr)
+		cast := h5.cast(*enumAttr)
 		switch enumAttr.class {
 		case typeFixedPoint:
 			switch enumAttr.length {
 			case 1:
-				values = allocInt8s(bf, dimensions, enumAttr.signed, casted)
+				values = allocInt8s(bf, dimensions, enumAttr.signed, cast)
 			case 2:
-				values = allocShorts(bf, dimensions, enumAttr.endian, enumAttr.signed, casted)
+				values = allocShorts(bf, dimensions, enumAttr.endian, enumAttr.signed, cast)
 			case 4:
-				values = allocInts(bf, dimensions, enumAttr.endian, enumAttr.signed, casted)
+				values = allocInts(bf, dimensions, enumAttr.endian, enumAttr.signed, cast)
 			case 8:
-				values = allocInt64s(bf, dimensions, enumAttr.endian, enumAttr.signed, casted)
+				values = allocInt64s(bf, dimensions, enumAttr.endian, enumAttr.signed, cast)
 			default:
-				fail(fmt.Sprintf("bad size: %d", enumAttr.length))
+				fail(fmt.Sprintf("bad size enum fixed: %d", enumAttr.length))
 			}
 		case typeFloatingPoint:
 			if floatEnums {
@@ -4214,7 +4290,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 				case 8:
 					values = allocDoubles(bf, dimensions, enumAttr.endian)
 				default:
-					fail(fmt.Sprintf("bad size: %d", attr.length))
+					fail(fmt.Sprintf("bad size enum float: %d", attr.length))
 				}
 				break
 			}
@@ -4222,7 +4298,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		default:
 			fail(fmt.Sprint("can't handle this class: ", enumAttr.class))
 		}
-		if casted != nil {
+		if cast != nil {
 			return values
 		}
 		return enumerated{values}
@@ -4240,7 +4316,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		cbf := bf.(remReader)
 		logger.Info(cbf.Count(), "child length", arrayAttr.length)
 		logger.Info(cbf.Count(), "array", "class", arrayAttr.class)
-		return h5.getDataAttr(cbf, arrayAttr)
+		return h5.getDataAttr(cbf, *arrayAttr)
 
 	case typeOpaque:
 		cast := h5.cast(attr)
@@ -4259,25 +4335,89 @@ func (h5 *HDF5) cast(attr attribute) reflect.Type {
 	for name := range h5.registrations {
 		origNames[name] = true
 	}
-	ty := h5.printGoType(varName, attr, origNames)
+	ty := h5.printGoType(varName, &attr, origNames)
 	if ty == "" {
 		return nil
 	}
 	has := false
 	var proto interface{}
+	logger.Info("trying to find cast for", ty, len(h5.registrations),
+		"class=", typeNames[attr.class])
+loop:
 	for _, p := range h5.registrations {
 		v := reflect.TypeOf(p)
-		tName := v.Kind().String()
 		// Enums are always ints
-		if (strings.HasPrefix(tName, "int") || strings.HasPrefix(tName, "uint")) && tName == ty {
+		found := false
+		switch v.Kind() {
+		case reflect.Int8, reflect.Uint8:
+			found = attr.length == 1
+		case reflect.Int16, reflect.Uint16:
+			found = attr.length == 2
+		case reflect.Int32, reflect.Uint32:
+			found = attr.length == 4
+		case reflect.Int64, reflect.Uint64:
+			found = attr.length == 8
+		}
+		if found {
 			proto = p
 			has = true
-			break
+			break loop
 		}
 		// Opaques are always arrays of uint8
 		if v.Kind() == reflect.Array && v.Elem().Kind() == reflect.Uint8 && v.Len() == int(attr.length) {
 			str := fmt.Sprintf("[%d]uint8", v.Len())
 			if str == ty {
+				proto = p
+				has = true
+				break
+			}
+		}
+		// Vlen
+		if v.Kind() == reflect.Slice {
+			elemType := v.Elem().String()
+			if strings.Contains(elemType, ".") {
+				s := strings.Split(elemType, ".")
+				tailType := s[len(s)-1]
+				obj, has := h5.getTypeObj(tailType)
+				if !has {
+					logger.Warn("couldn't find", tailType)
+					continue
+				}
+				origNames := map[string]bool{}
+				origNames[tailType] = true
+				elemType = h5.printGoType(tailType, obj.objAttr, origNames)
+			}
+			sig := fmt.Sprintf("[]%s", elemType)
+			if sig == ty {
+				proto = p
+				has = true
+				break
+			}
+		}
+		// compound
+		if v.Kind() == reflect.Struct && attr.class == typeCompound {
+			// All fields must have the same name and type
+			fields := []string{}
+			for i := 0; i < v.NumField(); i++ {
+				field := v.Field(i)
+				fType := field.Type.String()
+				if strings.Contains(fType, ".") {
+					s := strings.Split(fType, ".")
+					tailType := s[len(s)-1]
+					obj, has := h5.getTypeObj(tailType)
+					if !has {
+						logger.Warn("couldn't find", tailType)
+						continue loop
+					}
+					origNames := map[string]bool{}
+					origNames[tailType] = true
+					fType = h5.printGoType(tailType, obj.objAttr, origNames)
+				}
+				fields = append(fields, fmt.Sprintf("\t%s %s", field.Name, fType))
+			}
+			inner := strings.Join(fields, "\n")
+			sig := fmt.Sprintf("struct {\n%s\n}\n", inner)
+			if sig == ty {
 				proto = p
 				has = true
 				break
@@ -4297,7 +4437,7 @@ func (h5 *HDF5) Attributes() api.AttributeMap {
 		nilMap, _ := newTypedAttributeMap(h5, nil, nil)
 		return nilMap
 	}
-	h5.rootObject.sortAttrList()
+	h5.sortAttrList(h5.rootObject)
 	return h5.getAttributes(h5.rootObject.attrlist)
 }
 
@@ -4406,22 +4546,30 @@ func (h5 *HDF5) findType(varName string) string {
 	return h5.printType(varName, obj.objAttr, origNames)
 }
 
-func (h5 *HDF5) GetType(typeName string) (string, bool) {
+func (h5 *HDF5) getTypeObj(typeName string) (*object, bool) {
 	obj, has := h5.groupObject.children[typeName]
 	if !has {
-		return "", false
+		return nil, false
 	}
 	logger.Info("Found type", typeName, "group", h5.groupName, "child=", obj.name)
 	if len(obj.attrlist) != 0 {
 		logger.Info("types don't have attributes")
-		return "", false
+		return nil, false
 	}
 	if obj.objAttr.dimensions != nil {
 		logger.Info("this is a variable")
-		return "", false
+		return nil, false
 	}
 	if obj.isGroup {
 		logger.Info("this is a group")
+		return nil, false
+	}
+	return obj, true
+}
+
+func (h5 *HDF5) GetType(typeName string) (string, bool) {
+	obj, has := h5.getTypeObj(typeName)
+	if !has {
 		return "", false
 	}
 	origNames := map[string]bool{typeName: true}
@@ -4552,7 +4700,7 @@ func (h5 *HDF5) GetDimension(name string) (uint64, bool) {
 }
 
 func (h5 *HDF5) findSignature(signature string, name string, origNames map[string]bool,
-	printer func(name string, attr attribute, origNames map[string]bool) string) string {
+	printer func(name string, attr *attribute, origNames map[string]bool) string) string {
 	if h5.groupObject == nil {
 		return ""
 	}
@@ -4598,7 +4746,7 @@ func (h5 *HDF5) findSignature(signature string, name string, origNames map[strin
 	return ""
 }
 
-func (h5 *HDF5) printType(name string, attr attribute, origNames map[string]bool) string {
+func (h5 *HDF5) printType(name string, attr *attribute, origNames map[string]bool) string {
 	switch attr.class {
 	case typeFixedPoint:
 		prefix := ""
@@ -4711,7 +4859,7 @@ func (h5 *HDF5) printType(name string, attr attribute, origNames map[string]bool
 	panic("never gets here")
 }
 
-func (h5 *HDF5) printGoType(typeName string, attr attribute, origNames map[string]bool) string {
+func (h5 *HDF5) printGoType(typeName string, attr *attribute, origNames map[string]bool) string {
 	switch attr.class {
 	case typeFixedPoint:
 		prefix := ""
@@ -4828,110 +4976,124 @@ func (h5 *HDF5) printGoType(typeName string, attr attribute, origNames map[strin
 	panic("never gets here")
 }
 
-func (h5 *HDF5) getAttributes(unfiltered []attribute) api.AttributeMap {
+func (h5 *HDF5) parseAttr(a *attribute) {
+	if a.df != nil {
+		logger.Infof("Reparsing attribute %s %s %p", a.name, typeNames[a.class], a)
+		if a.shared {
+			h5.reparseSharedAttr(a)
+		} else {
+			// very hacky
+			save := h5.registrations
+			switch a.name {
+			case "DIMENSION_LIST", "NAME", "REFERENCE_LIST", "CLASS":
+				h5.registrations = nil
+			}
+			a.value = h5.getDataAttr(a.df, *a)
+			a.df = nil
+			h5.registrations = save
+		}
+	}
+}
+
+func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
 	filtered := make(map[string]interface{})
 	keys := make([]string, 0)
-	for _, val := range unfiltered {
-		logger.Info("getting attribute", val.name)
+	for i := range unfiltered {
+		val := unfiltered[i]
+		logger.Infof("getting attribute %s %p", val.name, val)
 		switch val.name {
 		case "_Netcdf4Dimid", "_Netcdf4Coordinates", "DIMENSION_LIST", "NAME", "REFERENCE_LIST", "CLASS":
 			logger.Infof("Found a %v %v %T", val.name, val.value, val.value)
 		default:
 			if val.value == nil {
-				// TODO: this should only be done if the length is zero, but
-				// sometimes we parse non-zero lengths for empty strings.
-				filtered[val.name] = ""
-				/*
-					if val.length == 0 {
-						filtered[val.name] = ""
-					} else {
-						fmt.Printf("%#v\n", val)
-						thrower.Throw(ErrInternal)
-					}
-				*/
-			} else {
-				// A scalar attribute can be stored as a single-length array
-				// This code undoes that.
-
-				fixit := func(value interface{}) interface{} {
-					switch v := value.(type) {
-					case string:
-					case float64:
-					case float32:
-					case int64:
-					case int32:
-					case int16:
-					case int8:
-					case uint64:
-					case uint32:
-					case uint16:
-					case uint8:
-						break
-					case []enumerated:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []compound:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []string:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []float64:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []float32:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []uint64:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []uint32:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []uint16:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []uint8:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []int64:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []int32:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []int16:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					case []int8:
-						if len(v) == 1 {
-							value = v[0]
-						}
-					default:
-						logger.Infof("Strange attribute type %T", value)
-					}
-					return value
+				if val.df == nil {
+					logger.Info("Need fill value reader", val.name)
+					fakeObj := newObject()
+					sz := calcAttrSize(val)
+					val.df = makeFillValueReader(fakeObj, nil, sz)
 				}
-				value := fixit(val.value)
-				e, has := value.(enumerated)
-				if has {
-					e.values = fixit(e.values)
-					value = e
-				}
-				filtered[val.name] = value
+				val.value = h5.getDataAttr(val.df, *val)
 			}
+			// A scalar attribute can be stored as a single-length array
+			// This code undoes that.
+			fixit := func(value interface{}) interface{} {
+				switch v := value.(type) {
+				case string:
+				case float64:
+				case float32:
+				case int64:
+				case int32:
+				case int16:
+				case int8:
+				case uint64:
+				case uint32:
+				case uint16:
+				case uint8:
+					break
+				case []enumerated:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []compound:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []string:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []float64:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []float32:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []uint64:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []uint32:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []uint16:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []uint8:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []int64:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []int32:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []int16:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				case []int8:
+					if len(v) == 1 {
+						value = v[0]
+					}
+				default:
+					logger.Infof("Strange attribute type %T", value)
+				}
+				return value
+			}
+			value := fixit(val.value)
+			e, has := value.(enumerated)
+			if has {
+				e.values = fixit(e.values)
+				value = e
+			}
+			filtered[val.name] = value
 			keys = append(keys, val.name)
 		}
 	}
@@ -4963,7 +5125,9 @@ func findDim(obj *object, oaddr uint64, group string) string {
 func (h5 *HDF5) getDimensions(obj *object) []string {
 	logger.Infof("Getting dimensions addr 0x%x", obj.addr)
 	dimNames := make([]string, 0)
-	for _, a := range obj.attrlist {
+	for i := range obj.attrlist {
+		h5.parseAttr(obj.attrlist[i])
+		a := obj.attrlist[i]
 		if a.name != "DIMENSION_LIST" {
 			continue
 		}
@@ -4991,7 +5155,9 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 	var f func(ob *object)
 	f = func(ob *object) {
 		logger.Infof("obj %s 0x%x", ob.name, ob.addr)
-		for _, a := range ob.attrlist {
+		for i := range ob.attrlist {
+			h5.parseAttr(ob.attrlist[i])
+			a := ob.attrlist[i]
 			if a.name != "REFERENCE_LIST" {
 				continue
 			}
@@ -5008,7 +5174,9 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 		}
 	}
 	f(h5.rootObject)
-	for _, a := range obj.attrlist {
+	for i := range obj.attrlist {
+		h5.parseAttr(obj.attrlist[i])
+		a := obj.attrlist[i]
 		switch a.name {
 		case "NAME":
 			nameValue := a.value.(string)
@@ -5023,7 +5191,6 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 	err = ErrInternal
 	defer thrower.RecoverError(&err)
-	logger.Info("get variable", varName)
 	found := h5.findVariable(varName)
 	if found == nil {
 		logger.Infof("variable %s not found", varName)
@@ -5033,7 +5200,7 @@ func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 	if data == nil {
 		return nil, ErrNotFound
 	}
-	found.sortAttrList()
+	h5.sortAttrList(found)
 	dims := h5.getDimensions(found)
 	attrs := h5.getAttributes(found.attrlist)
 	return &api.Variable{
@@ -5050,7 +5217,7 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 		logger.Warnf("variable %s not found", varName)
 		return nil, ErrNotFound
 	}
-	found.sortAttrList()
+	h5.sortAttrList(found)
 	d := int64(0)
 	fakeEnd := false
 	switch {
@@ -5119,9 +5286,12 @@ func (h5 *HDF5) ListSubgroups() []string {
 	return ret
 }
 
-func (obj *object) sortAttrList() {
+func (h5 *HDF5) sortAttrList(obj *object) {
 	if obj.attrListIsSorted {
 		return
+	}
+	for i := range obj.attrlist {
+		h5.parseAttr(obj.attrlist[i])
 	}
 	sort.Slice(obj.attrlist, func(i, j int) bool {
 		return obj.attrlist[i].creationOrder < obj.attrlist[j].creationOrder

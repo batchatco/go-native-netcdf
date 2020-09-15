@@ -2,6 +2,7 @@ package internal
 
 import (
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
+	"github.com/batchatco/go-thrower"
 )
 
 type slice struct {
@@ -13,12 +14,16 @@ type slice struct {
 	goType   string
 }
 
-func (sl *slice) GetSlice(begin, end int64) (interface{}, error) {
-	return sl.getSlice(begin, end)
+func (sl *slice) GetSlice(begin, end int64) (slice interface{}, err error) {
+	defer thrower.RecoverError(&err)
+	slice, err = sl.getSlice(begin, end)
+	return slice, err
 }
 
-func (sl *slice) Values() (interface{}, error) {
-	return sl.getSlice(0, sl.length)
+func (sl *slice) Values() (values interface{}, err error) {
+	defer thrower.RecoverError(&err)
+	values, err = sl.getSlice(0, sl.length)
+	return values, err
 }
 
 func (sl *slice) Len() int64 {

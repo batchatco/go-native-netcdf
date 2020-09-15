@@ -1,6 +1,7 @@
 package hdf5
 
 import (
+	"bufio"
 	"bytes"
 	"io"
 	"sync"
@@ -20,8 +21,9 @@ type raFile struct {
 
 type resetReader struct {
 	remReader
-	lr   *io.LimitedReader
-	size int64
+	lr    *io.LimitedReader
+	size  int64
+	bytes []byte
 }
 
 func (r *resetReader) Rem() int64 {
@@ -37,13 +39,35 @@ func (r *resetReader) Read(p []byte) (int, error) {
 }
 
 func newResetReaderFromBytes(b []byte) remReader {
-	return newResetReader(bytes.NewReader(b), int64(len(b)))
+	file := bytes.NewReader(b)
+	size := int64(len(b))
+	ret := &resetReader{
+		lr:    &io.LimitedReader{R: file, N: size},
+		size:  size,
+		bytes: b}
+	return ret
 }
 
 func newResetReader(file io.Reader, size int64) remReader {
-	return &resetReader{
+	ret := &resetReader{
 		lr:   &io.LimitedReader{R: file, N: size},
 		size: size}
+	return ret
+}
+
+func newResetReaderSave(file io.Reader, size int64) remReader {
+	b := make([]byte, size)
+	read(file, b)
+	return newResetReaderFromBytes(b)
+}
+
+func newResetReaderOffset(file *raFile, size int64, offset uint64) remReader {
+	ra := file.seekAt(int64(offset))
+	bf := bufio.NewReader(ra)
+	ret := &resetReader{
+		lr:   &io.LimitedReader{R: bf, N: size},
+		size: size}
+	return ret
 }
 
 type holeReader struct {

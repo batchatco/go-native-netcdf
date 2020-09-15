@@ -978,43 +978,108 @@ func TestCompound(t *testing.T) {
 	defer nc.Close()
 
 	vals := []compound{
-		compound{
+		{
 			compoundField{
-				Name: "a",
+				Name: "A",
 				Val: compound{
-					{"b", int8('0')},
-					{"s", int16(1)},
-					{"i", int32(2)},
-					{"f", float32(3.0)},
-					{"d", float64(4.0)}}},
+					{"B", int8('0')},
+					{"S", int16(1)},
+					{"I", int32(2)},
+					{"F", float32(3.0)},
+					{"D", float64(4.0)}}},
 			compoundField{
-				Name: "s",
+				Name: "S",
 				Val:  "a"}},
-		compound{
+		{
 			compoundField{
-				Name: "a",
+				Name: "A",
 				Val: compound{
-					{"b", int8('1')},
-					{"s", int16(2)},
-					{"i", int32(3)},
-					{"f", float32(4.0)},
-					{"d", float64(5.0)}}},
+					{"B", int8('1')},
+					{"S", int16(2)},
+					{"I", int32(3)},
+					{"F", float32(4.0)},
+					{"D", float64(5.0)}}},
 			compoundField{
-				Name: "s",
+				Name: "S",
 				Val:  "b"}},
 	}
 	samevals := []compound{
-		{{"a", int32(0)}, {"b", int32(1)}, {"c", int32(2)}},
-		{{"a", int32(3)}, {"b", int32(4)}, {"c", int32(5)}},
+		{{"A", int32(0)}, {"B", int32(1)}, {"C", int32(2)}},
+		{{"A", int32(3)}, {"B", int32(4)}, {"C", int32(5)}},
 	}
 	values := keyValList{
-		keyVal{"v", "includes",
+		keyVal{"v", "Includes",
 			api.Variable{
 				Values:     vals,
 				Dimensions: []string{"dim"},
 				Attributes: nilMap},
 		},
-		keyVal{"same", "sametypes",
+		keyVal{"same", "Sametypes",
+			api.Variable{
+				Values:     samevals,
+				Dimensions: []string{"dim"},
+				Attributes: nilMap},
+		},
+	}
+	checkAll(t, nc, values)
+}
+
+func TestCompound2(t *testing.T) {
+	genName := ncGen(t, "testcompounds")
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	type Sametypes struct {
+		A int32
+		B int32
+		C int32
+	}
+	type Alltypes struct {
+		B int8
+		S int16
+		I int32
+		F float32
+		D float64
+	}
+	type Includes struct {
+		A Alltypes
+		S string
+	}
+	var st Sametypes
+	var at Alltypes
+	var in Includes
+	h5 := nc.(*HDF5)
+	h5.register("Alltypes", at)
+	h5.register("Sametypes", st)
+	h5.register("Includes", in)
+
+	vals := []Includes{
+		{
+			Alltypes{int8('0'), int16(1), int32(2), float32(3.0), float64(4.0)},
+			string("a")},
+		{
+			Alltypes{int8('1'), int16(2), int32(3), float32(4.0), float64(5.0)},
+			string("b")},
+	}
+	samevals := []Sametypes{
+		{int32(0), int32(1), int32(2)},
+		{int32(3), int32(4), int32(5)},
+	}
+	values := keyValList{
+		keyVal{"v", "Includes",
+			api.Variable{
+				Values:     vals,
+				Dimensions: []string{"dim"},
+				Attributes: nilMap},
+		},
+		keyVal{"same", "Sametypes",
 			api.Variable{
 				Values:     samevals,
 				Dimensions: []string{"dim"},
@@ -1272,6 +1337,122 @@ func TestVariableLength(t *testing.T) {
 	}
 }
 
+func TestVariableLength2(t *testing.T) {
+	fileName := "testvlen" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+
+	type vint []int32
+	type Easy struct {
+		FirstEasy  int32
+		SecondEasy int32
+	}
+	type EasyVlen []Easy
+	type Trickyt struct {
+		TrickyInt int32
+		TrickVlen EasyVlen
+	}
+	var v vint
+	var e Easy
+	var ev EasyVlen
+	var tt Trickyt
+	h5 := nc.(*HDF5)
+	h5.register("vint", v)
+	h5.register("Easy", e)
+	h5.register("EasyVlen", ev)
+	h5.register("Tricky_t", tt)
+	trickyAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky"},
+		map[string]interface{}{
+			"Tricky": Trickyt{
+				int32(1),
+				EasyVlen{
+					{int32(2), int32(3)},
+					{int32(4), int32(5)},
+					{int32(6), int32(7)}},
+			}})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	vintAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Vint"},
+		map[string]interface{}{
+			"Vint": []vint{
+				{}, // zero
+				{1},
+				{2, 3},
+				{4, 5, 6},
+				{7, 8, 9, 10},
+				{11, 12, 13, 14, 15}}})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	tricky, _ := trickyAttrs.Get("Tricky")
+	vnt, _ := vintAttrs.Get("Vint")
+	vars := keyValList{
+		{"v", "vint", api.Variable{
+			Values: []vint{
+				{}, // zero
+				{1},
+				{2, 3},
+				{4, 5, 6},
+				{7, 8, 9, 10},
+				{11, 12, 13, 14, 15},
+			},
+			Dimensions: []string{"dim"},
+			Attributes: trickyAttrs}},
+		{"v2", "vint", api.Variable{
+			Values: []vint{
+				{11, 12, 13, 14, 15},
+				{7, 8, 9, 10},
+				{4, 5, 6},
+				{2, 3},
+				{1},
+				{}, // zero
+			},
+			Dimensions: []string{"dim"},
+			Attributes: vintAttrs}},
+	}
+	t.Log("checking no attrs")
+	checkAllNoAttr(t, nc, vars)
+	expAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky", "Vint"},
+		map[string]interface{}{
+			"Tricky": tricky,
+			"Vint":   vnt})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	got := nc.Attributes()
+	ncGenBug := true
+	if !ncGenBug {
+		checkAllAttrs(t, "<TestVariableLength>", got, expAttrs)
+	} else {
+		// tricky, _ := got.Get("Tricky")
+		vnt, _ := got.Get("Vint")
+		t.Logf("vnt type = %T", vnt)
+		got, _ = util.NewOrderedMap(
+			[]string{"Tricky", "Vint"},
+			map[string]interface{}{
+				"Tricky": tricky,
+				"Vint":   vnt,
+			})
+		t.Log("checking attrs")
+		checkAllAttrs(t, "<TestVariableLength>", got, expAttrs)
+	}
+}
+
 func TestUnlimitedEmpty(t *testing.T) {
 	fileName := "testempty" // base filename without extension
 	genName := ncGen(t, fileName)
@@ -1502,7 +1683,7 @@ func TestOpaqueBadCasted(t *testing.T) {
 		return
 	}
 	defer nc.Close()
-	type opaque5 [2]byte // suppose to be 5 bytes. See if that gets detected.
+	type opaque5 [2]byte // supposed to be 5 bytes. See if that gets detected.
 	var proto opaque5
 	h5 := nc.(*HDF5)
 	h5.register("opaque5", proto)
@@ -1774,6 +1955,7 @@ func checkAllAttrOption(t *testing.T, nc api.Group, values keyValList, hasAttr b
 		}
 		if !values.check(t, name, ty, v, hasAttr) {
 			t.Error("mismatch")
+			return
 		}
 	}
 }

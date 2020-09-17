@@ -3023,7 +3023,6 @@ func (h5 *HDF5) readDataObjectHeaderV2(obj *object, addr uint64) {
 	// Finally, compute the checksum
 	//	assert(int64(nRead) == cbf.Count(),
 	//		fmt.Sprintf("nread not matching count: %v %v", nRead, cbf.Count()))
-	logger.Info("check checksum sdata object header", bf.Count())
 	h5.checkChecksum(addr, int(bf.Count()))
 	logger.Infof("obj %s at addr 0x%x\n", obj.name, obj.addr)
 }
@@ -3170,7 +3169,6 @@ func newObject() *object {
 }
 
 func (h5 *HDF5) dumpObject(obj *object) {
-	logger.Infof("obj.attr=%p obj.link=%p", obj.attr, obj.link)
 	if obj.attr != nil && obj.attr.heapAddress != invalidAddress {
 		h5.readHeap(obj.attr)
 		h5.readBTree(obj, obj.attr.btreeAddress)

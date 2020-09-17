@@ -1603,6 +1603,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 		}
 	}
 }
+
 func (h5 *HDF5) readBTreeLeaf(parent *object, bta uint64, numRec uint64, recordSize uint16) {
 	nbytes := 4 + 2 + int(numRec)*int(recordSize)
 	bf := h5.newSeek(bta, int64(nbytes))
@@ -1726,15 +1727,12 @@ func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
 		checksumOffset := 13 + (link.maxHeapSize / 8)
 		logger.Info("maxheapsize", link.maxHeapSize)
 		if link.maxHeapSize == 40 {
-			// TODO: this check is wrong
 			logger.Info("1 more byte")
 			more := read8(bf)
 			blockOffset = blockOffset | (uint64(more) << 32)
 		}
 		logger.Infof("block offset=0x%x", blockOffset)
 		logger.Infof("(block size=%d)", blockSize)
-		// TODO: only check checksum if heap flags say so
-		// Get checksum before zeroing it out to recalculate it
 		logger.Info("flags", flags)
 		if !hasFlag8(flags, 1) {
 			logger.Info("Do not check checksum")
@@ -1765,7 +1763,8 @@ func log2(v uint64) int {
 }
 
 func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uint16, width uint16, startBlockSize uint64, maxBlockSize uint64) {
-	bSize := int64(17 + int64((nrows*width)*8) + 4)
+	// sig version heapaddr blockoffset + variables + checksum
+	bSize := 4 + 1 + 8 + int64(link.maxHeapSize/8) + int64(nrows*width*8) + 4
 	bf := h5.newSeek(bta, bSize)
 	checkMagic(bf, 4, "FHIB")
 	version := read8(bf)
@@ -1775,12 +1774,7 @@ func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uin
 	blockOffset := uint64(read32(bf))
 	logger.Infof("block offset=0x%x", blockOffset)
 	logger.Info("max heap size", link.maxHeapSize)
-	// sig version heapaddr blockoffset + variables
-	len := 4 + 1 + 8 + uint16(link.maxHeapSize/8) + nrows*width*8
 	if link.maxHeapSize == 40 {
-		// we need to account for an extra byte
-		bSize := int64(1 + int64((nrows*width)*8) + 4)
-		bf = h5.newSeek(bta+17, bSize)
 		logger.Info("1 more byte")
 		more := read8(bf)
 		blockOffset = blockOffset | (uint64(more) << 32)
@@ -1825,7 +1819,7 @@ func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uin
 	logger.Info("Adding indirect heap blocks")
 	link.block = addrs
 	link.iBlock = iAddrs
-	h5.checkChecksum(bta, int(len))
+	h5.checkChecksum(bta, int(bSize)-4)
 
 	for i, addr := range addrs {
 		if addr != invalidAddress {
@@ -2143,11 +2137,11 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 }
 
 func (h5 *HDF5) readBTree(parent *object, addr uint64) {
-	bf := h5.newSeek(addr,36)
+	bf := h5.newSeek(addr, 36)
 	checkMagic(bf, 4, "BTHD")
 	version := read8(bf)
 	logger.Info("btree version=", version)
-        checkVal(0, version, "bthd version must be zero")
+	checkVal(0, version, "bthd version must be zero")
 	ty := read8(bf)
 	logger.Info("btree type=", ty)
 	nodeSize := read32(bf)

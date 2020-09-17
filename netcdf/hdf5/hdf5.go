@@ -567,7 +567,7 @@ func (h5 *HDF5) readSuperblock() {
 	}
 
 	eofAddr := read64(bf)
-	logger.Infof("end of file address=%x", eofAddr)
+	logger.Infof("end of file address=0x%x", eofAddr)
 	assertError(eofAddr <= uint64(h5.fileSize),
 		ErrTruncated,
 		fmt.Sprint("File may be truncated. size=", h5.fileSize, " expected=", eofAddr))
@@ -1765,7 +1765,8 @@ func log2(v uint64) int {
 }
 
 func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uint16, width uint16, startBlockSize uint64, maxBlockSize uint64) {
-	bf := h5.newSeek(bta, 0) // TODO: figure out size
+	bSize := int64(17 + int64((nrows*width)*8) + 4)
+	bf := h5.newSeek(bta, bSize)
 	checkMagic(bf, 4, "FHIB")
 	version := read8(bf)
 	logger.Info("heap root block version=", version)
@@ -1777,6 +1778,9 @@ func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uin
 	// sig version heapaddr blockoffset + variables
 	len := 4 + 1 + 8 + uint16(link.maxHeapSize/8) + nrows*width*8
 	if link.maxHeapSize == 40 {
+		// we need to account for an extra byte
+		bSize := int64(1 + int64((nrows*width)*8) + 4)
+		bf = h5.newSeek(bta+17, bSize)
 		logger.Info("1 more byte")
 		more := read8(bf)
 		blockOffset = blockOffset | (uint64(more) << 32)
@@ -1877,10 +1881,7 @@ func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) (remReader, uin
 	checkMagic(bf, 4, "GCOL")
 	version := read8(bf)
 	checkVal(1, version, "version")
-	for i := 0; i < 3; i++ {
-		zero := read8(bf)
-		checkVal(0, zero, "zero")
-	}
+	checkZeroes(bf, 3)
 	csize := read64(bf) // collection size, including these fields
 	csize -= 16
 	for csize >= 16 {
@@ -1914,7 +1915,7 @@ func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) (remReader, uin
 }
 
 func (h5 *HDF5) readHeap(link *linkInfo) {
-	bf := h5.newSeek(link.heapAddress, 0) // TODO: figure out size
+	bf := h5.newSeek(link.heapAddress, 144)
 	checkMagic(bf, 4, "FRHP")
 	version := read8(bf)
 	logger.Info("fractal heap version=", version)
@@ -1991,7 +1992,7 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 }
 
 func (h5 *HDF5) readLocalHeap(addr uint64, offset uint64) string {
-	bf := h5.newSeek(addr, 0)
+	bf := h5.newSeek(addr, 32)
 	checkMagic(bf, 4, "HEAP")
 	version := read8(bf)
 	checkVal(0, version, "version 0 expected for local heap")
@@ -2142,10 +2143,11 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 }
 
 func (h5 *HDF5) readBTree(parent *object, addr uint64) {
-	bf := h5.newSeek(addr, 0) // TODO: figure out size
+	bf := h5.newSeek(addr,36)
 	checkMagic(bf, 4, "BTHD")
 	version := read8(bf)
 	logger.Info("btree version=", version)
+        checkVal(0, version, "bthd version must be zero")
 	ty := read8(bf)
 	logger.Info("btree type=", ty)
 	nodeSize := read32(bf)
@@ -2229,6 +2231,7 @@ func (h5 *HDF5) isMagic(magic string, addr uint64) bool {
 func (h5 *HDF5) readAttributeInfo(bf io.Reader) *linkInfo {
 	version := read8(bf)
 	logger.Info("attribute version=", version)
+	checkVal(0, version, "attribute version")
 	flags := read8(bf)
 	logger.Infof("flags=%s", binaryToString(uint64(flags)))
 	ci := invalidAddress
@@ -3020,6 +3023,7 @@ func (h5 *HDF5) readDataObjectHeaderV2(obj *object, addr uint64) {
 	// Finally, compute the checksum
 	//	assert(int64(nRead) == cbf.Count(),
 	//		fmt.Sprintf("nread not matching count: %v %v", nRead, cbf.Count()))
+	logger.Info("check checksum sdata object header", bf.Count())
 	h5.checkChecksum(addr, int(bf.Count()))
 	logger.Infof("obj %s at addr 0x%x\n", obj.name, obj.addr)
 }
@@ -3166,7 +3170,7 @@ func newObject() *object {
 }
 
 func (h5 *HDF5) dumpObject(obj *object) {
-	// attributes first
+	logger.Infof("obj.attr=%p obj.link=%p", obj.attr, obj.link)
 	if obj.attr != nil && obj.attr.heapAddress != invalidAddress {
 		h5.readHeap(obj.attr)
 		h5.readBTree(obj, obj.attr.btreeAddress)

@@ -4629,7 +4629,8 @@ func (h5 *HDF5) ListTypes() []string {
 
 func (h5 *HDF5) ListDimensions() []string {
 	var ret []string
-	for _, obj := range h5.groupObject.children {
+	children := h5.groupObject.sortChildren()
+	for _, obj := range children {
 		if obj.isGroup {
 			continue
 		}

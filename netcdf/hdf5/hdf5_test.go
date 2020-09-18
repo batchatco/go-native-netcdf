@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
 
@@ -1424,7 +1423,6 @@ func TestVariableLength2(t *testing.T) {
 			Dimensions: []string{"dim"},
 			Attributes: vintAttrs}},
 	}
-	t.Log("checking no attrs")
 	checkAllNoAttr(t, nc, vars)
 	expAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky", "Vint"},
 		map[string]interface{}{
@@ -1441,14 +1439,12 @@ func TestVariableLength2(t *testing.T) {
 	} else {
 		// tricky, _ := got.Get("Tricky")
 		vnt, _ := got.Get("Vint")
-		t.Logf("vnt type = %T", vnt)
 		got, _ = util.NewOrderedMap(
 			[]string{"Tricky", "Vint"},
 			map[string]interface{}{
 				"Tricky": tricky,
 				"Vint":   vnt,
 			})
-		t.Log("checking attrs")
 		checkAllAttrs(t, "<TestVariableLength>", got, expAttrs)
 	}
 }
@@ -1989,8 +1985,6 @@ func TestDimensions(t *testing.T) {
 	}
 	defer nc.Close()
 	dims := nc.ListDimensions()
-	// workaround bug where dims don't get returned in a consistent order
-	sort.Strings(dims)
 	if len(dims) != 2 || dims[0] != "d1" || dims[1] != "d2" {
 		t.Error("Dimensions are wrong", dims)
 		return

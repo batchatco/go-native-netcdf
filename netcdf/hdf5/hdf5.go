@@ -2714,11 +2714,8 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Infof("rem=%v size=%v", bf.Rem(), size)
 			used := bf.Count() - nReadSave
 			logger.Infof("used %d bytes", used)
-			//assert(int64(size) <= bf.Rem(), "not enough space")
-			if int64(size) > bf.Rem() {
-				logger.Error("not enough space", size, bf.Rem()) // XXX, debugging hack
-				return
-			}
+			assert(int64(size) <= bf.Rem(),
+				fmt.Sprintf("not enough space %v %v", size, bf.Rem()))
 		}
 		if version > 1 {
 			nReadSave = bf.Count()
@@ -2728,11 +2725,13 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		if hasFlag8(hFlags, 1) {
 			//var d = make([]byte, size)
 			//read(bf, d)
-			length := read16(bf)
+			f := newResetReader(bf, int64(size))
+			length := read16(f)
 			logger.Info("shared message length", length)
-			addr := read64(bf)
+			addr := read64(f)
 			logger.Infof("shared message addr = 0x%x", addr)
 			_ = h5.getSharedAttr(obj, addr)
+			checkZeroes(f, int(f.Rem()))
 
 			// TODO: we need to store addr and dtb somewhere, it will get used later
 			logger.Info("shared attr dtversion", obj.objAttr.dtversion)
@@ -4980,7 +4979,6 @@ func (h5 *HDF5) parseAttr(a *attribute) {
 
 func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
 	filtered := make(map[string]interface{})
-	keys := make([]string, 0)
 	for i := range unfiltered {
 		val := unfiltered[i]
 		logger.Infof("getting attribute %s %p", val.name, val)
@@ -4999,8 +4997,11 @@ func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
 			}
 			value := undoScalarAttribute(val.value)
 			filtered[val.name] = value
-			keys = append(keys, val.name)
 		}
+	}
+	keys := []string{}
+	for key := range filtered {
+		keys = append(keys, key)
 	}
 	om, err := newTypedAttributeMap(h5, keys, filtered)
 	thrower.ThrowIfError(err)

@@ -493,10 +493,8 @@ func (h5 *HDF5) readSuperblock() {
 		v23SBSize = 48  // 48 in superblock, no symbol table
 	)
 	sbSize := int64(v23SBSize)
-	if h5.fileSize < sbSize {
-		logger.Error("File is too small to have a superblock\n")
-		thrower.Throw(ErrCorrupted)
-	}
+	assertError(sbSize <= h5.fileSize, ErrCorrupted, "File is too small to have a superblock")
+
 	bf := h5.newSeek(0, sbSize)
 
 	checkMagic(bf, 8, magic)
@@ -705,8 +703,8 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	b2 := read8(bf)
 	b3 := read8(bf)
 	bitFields := uint32(b1) | (uint32(b2) << 8) | (uint32(b3) << 16)
-	dtversion := (b0 >> 4) & 0xf
-	dtclass := b0 & 0xf
+	dtversion := (b0 >> 4) & 0b1111
+	dtclass := b0 & 0b1111
 	dtlength := read32(bf)
 	logger.Infof("* length=%d dtlength=%d dtversion=%d class=%s flags=%s",
 		bf.Rem(), dtlength,
@@ -731,10 +729,10 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	case typeFixedPoint:
 		logger.Info("* fixed-point")
 		// Same structure for all versions, no need to check
-		byteOrder := bitFields & 0x1
-		paddingType := (bitFields >> 1) & 0x3
-		signed := (bitFields >> 3) & 0x1
-		attr.signed = signed == 0x1
+		byteOrder := bitFields & 0b1
+		paddingType := (bitFields >> 1) & 0b11
+		signed := (bitFields >> 3) & 0b1
+		attr.signed = signed == 0b1
 		logger.Infof("byteOrder=%d paddingType=%d, signed=%d", byteOrder, paddingType, signed)
 		if byteOrder != 0 {
 			attr.endian = binary.BigEndian
@@ -766,7 +764,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	case typeFloatingPoint:
 		logger.Info("* floating-point")
 		assertError(dtversion == 1, ErrFloatingPoint, "Only support version 1 of float")
-		endian := ((bitFields >> 5) & 0x2) | (bitFields & 0x1)
+		endian := ((bitFields >> 5) & 0b10) | (bitFields & 0b1)
 		switch endian {
 		case 0:
 			attr.endian = binary.LittleEndian
@@ -775,15 +773,15 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		default:
 			fail(fmt.Sprint("unhandled byte order: ", endian))
 		}
-		loPad := ((bitFields >> 1) & 0x1) == 0x1
+		loPad := (bitFields & 0b10) == 0b10
 		assertError(!loPad, ErrFloatingPoint, "low pad not supported")
-		hiPad := ((bitFields >> 2) & 0x1) == 0x1
+		hiPad := (bitFields & 0b100) == 0b100
 		assertError(!hiPad, ErrFloatingPoint, "high pad not supported")
-		intPad := ((bitFields >> 3) & 0x1) == 0x1
+		intPad := (bitFields & 0b1000) == 0b1000
 		assertError(!intPad, ErrFloatingPoint, "internal pad not supported")
-		mantissaNormalization := (bitFields >> 4) & 0x3
+		mantissaNormalization := (bitFields >> 4) & 0b11
 		logger.Info("* mantissa normalization:", mantissaNormalization)
-		sign := (bitFields >> 8) & 0xff
+		sign := (bitFields >> 8) & 0b11111111
 		logger.Info("* sign: ", sign)
 		assert(bf.Rem() >= 12,
 			fmt.Sprint("Properties need to be at least 12 bytes, was ", bf.Rem()))
@@ -855,8 +853,8 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	case typeString:
 		logger.Info("string")
 		checkVal(1, dtversion, "Only support version 1 of string")
-		padding := bitFields & 0xf
-		set := (bitFields >> 3) & 0xf
+		padding := bitFields & 0b1111
+		set := (bitFields >> 3) & 0b1111
 		if df == nil {
 			logger.Infof("no data")
 			break
@@ -923,7 +921,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		logger.Info("* compound")
 		logger.Info("dtversion", dtversion)
 		assert(dtversion >= 1 && dtversion <= 3, "compound version")
-		nmembers := bitFields & 0xffff
+		nmembers := bitFields & 0b11111111
 		logger.Info("* number of members:", nmembers)
 
 		padding := 0
@@ -1013,7 +1011,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	case typeReference:
 		logger.Info("* reference")
 		checkVal(1, dtversion, "Only support version 1 of reference")
-		rType := bitFields & 0xf
+		rType := bitFields & 0b1111
 		assertError(rType == 0, ErrReference, "rtype must be zero")
 		logger.Info("* rtype=object")
 		warnAssert((bitFields & ^uint32(0xf)) == 0, "reserved must be zero")
@@ -1035,7 +1033,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		var enumAttr attribute
 		h5.printDatatype(obj, bf, nil, 0, &enumAttr)
 		logger.Info("blen now", bf.Count())
-		numberOfMembers := bitFields & 0xffff
+		numberOfMembers := bitFields & 0b11111111
 		logger.Info("number of members=", numberOfMembers)
 		names := make([]string, numberOfMembers)
 		padding := 7
@@ -1087,12 +1085,12 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		logger.Info("* variable-length, dtlength=", dtlength,
 			"proplen=", bf.Rem())
 		//checkVal(1, dtversion, "Only support version 1 of variable-length")
-		vtType = uint8(bitFields & 0xf) // XXX: we will need other bits too for decoding
-		vtPad := uint8(bitFields>>4) & 0xf
+		vtType = uint8(bitFields & 0b1111) // XXX: we will need other bits too for decoding
+		vtPad := uint8(bitFields>>4) & 0b1111
 		// The value of pad here may not have anything to do with reading data, just
 		// writing.  So we could accept all of them
 		assert(vtPad == 0 || vtPad == 1, "only do v0 and v1 versions of VL padding")
-		vtCset := (bitFields >> 8) & 0xf
+		vtCset := (bitFields >> 8) & 0b1111
 		logger.Infof("type=%d paddingtype=%d cset=%d", vtType, vtPad, vtCset)
 		switch vtType {
 		case 0:
@@ -1311,20 +1309,6 @@ func (h5 *HDF5) getSharedAttr(obj *object, addr uint64) *attribute {
 	return oa
 }
 
-func (h5 *HDF5) reparseSharedAttr(attr *attribute) {
-	oa := h5.sharedAttrs[attr.addr]
-	if oa == nil {
-		logger.Warn("This attr wasn't shared")
-		return
-	}
-	if oa.df != nil {
-		oa.value = h5.getDataAttr(oa.df, *oa)
-		oa.df = nil
-	} else {
-		logger.Warn("Nothing to reparse shared attr with")
-	}
-}
-
 type doublerCallback func(obj *object, bnum uint64, offset uint64, length uint16,
 	creationOrder uint64)
 
@@ -1533,7 +1517,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 			versionAndType := read8(bf)
 			logger.Infof("hash=0x%x versionAndType=%s", hash,
 				binaryToString(uint64(versionAndType)))
-			idType := (versionAndType >> 4) & 0x3
+			idType := (versionAndType >> 4) & 0b11
 			checkVal(0, idType, "don't know how to handle non-managed")
 			logger.Info("idtype=", idType)
 			// heap IDs are always 7 bytes here
@@ -1549,7 +1533,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 				co := read64(bf)
 				versionAndType := read8(bf)
 				logger.Infof("co=0x%x versionAndType=0x%x", co, versionAndType)
-				idType := (versionAndType >> 4) & 0x3
+				idType := (versionAndType >> 4) & 0b11
 				checkVal(0, idType, "don't know how to handle non-managed")
 				// heap IDs are always 8 bytes here
 				offset := uint64(read32(bf))
@@ -1566,7 +1550,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 			logger.Info("Name field for indexed attributes")
 			versionAndType := read8(bf)
 			logger.Infof("versionAndType=%s", binaryToString(uint64(versionAndType)))
-			idType := (versionAndType >> 4) & 0x3
+			idType := (versionAndType >> 4) & 0b11
 			logger.Info("idtype=", idType)
 			checkVal(0, idType, "don't know how to handle non-managed")
 			// heap IDs are always 8 bytes here
@@ -1592,7 +1576,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 				// byte 1 of heap id
 				versionAndType := read8(bf)
 				logger.Infof("versionAndType=%s", binaryToString(uint64(versionAndType)))
-				idType := (versionAndType >> 4) & 0x3
+				idType := (versionAndType >> 4) & 0b11
 				logger.Info("idtype=", idType)
 				checkVal(0, idType, "don't know how to handle non-managed")
 				// heap IDs are always 8 bytes here
@@ -2607,10 +2591,10 @@ func (h5 *HDF5) readFillValue(bf io.Reader) []byte {
 		fillValueDefined = (flags >> 5) & 0b1
 		reserved := (flags >> 6) & 0b11
 		checkVal(0, reserved, "extra bits in fill value")
-		if fillValueUnDefined == 0x1 {
+		if fillValueUnDefined == 0b1 {
 			// fillValueUndefined never seems to be set
 			logger.Warn("executing fill value undefined code for first time")
-			if fillValueDefined == 0x1 {
+			if fillValueDefined == 0b1 {
 				fail("Cannot have both defined and undefined fill value")
 			}
 			logger.Warnf("undefined fill value")
@@ -3555,9 +3539,8 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 			stp := reflect.New(reflect.StructOf(fields))
 			st := reflect.Indirect(stp)
 			for i := range varray {
-				if !st.Field(i).CanSet() {
-					thrower.Throw(ErrNonExportedField)
-				}
+				assertError(st.Field(i).CanSet(), ErrNonExportedField,
+					"can't set non-exported field")
 				st.Field(i).Set(reflect.ValueOf(varray[i].Val))
 			}
 			return st.Interface()
@@ -4358,9 +4341,7 @@ func (h5 *HDF5) cast(attr attribute) reflect.Type {
 		origNames[name] = true
 	}
 	ty := h5.printGoType(varName, &attr, origNames)
-	if ty == "" {
-		return nil
-	}
+	assert(ty != "", "did not calculate go type")
 	has := false
 	var proto interface{}
 	logger.Info("trying to find cast for", ty, len(h5.registrations),
@@ -4401,10 +4382,7 @@ loop:
 				s := strings.Split(elemType, ".")
 				tailType := s[len(s)-1]
 				obj, has := h5.getTypeObj(tailType)
-				if !has {
-					logger.Warn("couldn't find", tailType)
-					continue
-				}
+				assert(has, fmt.Sprint("couldn't find ", tailType))
 				origNames := map[string]bool{}
 				origNames[tailType] = true
 				elemType = h5.printGoType(tailType, obj.objAttr, origNames)
@@ -4427,10 +4405,7 @@ loop:
 					s := strings.Split(fType, ".")
 					tailType := s[len(s)-1]
 					obj, has := h5.getTypeObj(tailType)
-					if !has {
-						logger.Warn("couldn't find", tailType)
-						continue loop
-					}
+					assert(has, fmt.Sprint("couldn't find ", tailType))
 					origNames := map[string]bool{}
 					origNames[tailType] = true
 					fType = h5.printGoType(tailType, obj.objAttr, origNames)
@@ -4455,24 +4430,17 @@ loop:
 
 func (h5 *HDF5) Attributes() api.AttributeMap {
 	// entry point, panic can bubble up
-	if h5.rootObject == nil {
-		nilMap, _ := newTypedAttributeMap(h5, nil, nil)
-		return nilMap
-	}
+	assert(h5.rootObject != nil, "nil root object")
 	h5.sortAttrList(h5.rootObject)
 	return h5.getAttributes(h5.rootObject.attrlist)
 }
 
 func hasAddr(obj *object, addr uint64) bool {
-	if obj == nil {
-		return false
-	}
+	assert(obj != nil, "nil object for hasAddr")
 	if addr == obj.addr {
 		return true
 	}
-	if obj.children == nil {
-		return false
-	}
+	assert(obj.children != nil, "expected children for object")
 	for _, o := range obj.children {
 		if o.addr == addr {
 			return true
@@ -4537,7 +4505,8 @@ func (h5 *HDF5) findGlobalAttrType(attrName string) string {
 		}
 		return base + dims
 	}
-	return ""
+	fail("didn't find attribute type")
+	panic("silence warning")
 }
 
 func (h5 *HDF5) findGlobalAttrGoType(attrName string) string {
@@ -4556,7 +4525,8 @@ func (h5 *HDF5) findGlobalAttrGoType(attrName string) string {
 		}
 		return dims + base
 	}
-	return ""
+	fail("didn't find attribute type")
+	panic("silence warning")
 }
 
 func (h5 *HDF5) findType(varName string) string {
@@ -4574,10 +4544,6 @@ func (h5 *HDF5) getTypeObj(typeName string) (*object, bool) {
 		return nil, false
 	}
 	logger.Info("Found type", typeName, "group", h5.groupName, "child=", obj.name)
-	if len(obj.attrlist) != 0 {
-		logger.Info("types don't have attributes")
-		return nil, false
-	}
 	if obj.objAttr.dimensions != nil {
 		logger.Info("this is a variable")
 		return nil, false
@@ -4586,6 +4552,7 @@ func (h5 *HDF5) getTypeObj(typeName string) (*object, bool) {
 		logger.Info("this is a group")
 		return nil, false
 	}
+	assert(len(obj.attrlist) == 0, "types don't have attributes")
 	return obj, true
 }
 
@@ -4865,9 +4832,7 @@ func (h5 *HDF5) printType(name string, attr *attribute, origNames map[string]boo
 		dims := strings.Join(dStr, ",")
 		signature := fmt.Sprintf("%s(%s)", ty, dims)
 		namedType := h5.findSignature(signature, name, origNames, h5.printType)
-		if namedType != "" {
-			return namedType
-		}
+		assert(namedType == "", "arrays are not named types")
 		return signature
 
 	case typeBitField:
@@ -4982,9 +4947,7 @@ func (h5 *HDF5) printGoType(typeName string, attr *attribute, origNames map[stri
 		dims := strings.Join(dStr, "")
 		signature := fmt.Sprintf("%s%s", dims, ty)
 		namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
-		if namedType != "" {
-			return namedType
-		}
+		assert(namedType == "", "arrays are not named types")
 		return signature
 
 	case typeBitField:
@@ -5002,19 +4965,16 @@ func (h5 *HDF5) printGoType(typeName string, attr *attribute, origNames map[stri
 func (h5 *HDF5) parseAttr(a *attribute) {
 	if a.df != nil {
 		logger.Infof("Reparsing attribute %s %s %p", a.name, typeNames[a.class], a)
-		if a.shared {
-			h5.reparseSharedAttr(a)
-		} else {
-			// very hacky
-			save := h5.registrations
-			switch a.name {
-			case "DIMENSION_LIST", "NAME", "REFERENCE_LIST", "CLASS":
-				h5.registrations = nil
-			}
-			a.value = h5.getDataAttr(a.df, *a)
-			a.df = nil
-			h5.registrations = save
+		assert(!a.shared, "shared attr unexpected here")
+		// very hacky
+		save := h5.registrations
+		switch a.name {
+		case "DIMENSION_LIST", "NAME", "REFERENCE_LIST", "CLASS":
+			h5.registrations = nil
 		}
+		a.value = h5.getDataAttr(a.df, *a)
+		a.df = nil
+		h5.registrations = save
 	}
 }
 

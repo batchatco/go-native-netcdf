@@ -2362,7 +2362,9 @@ func (h5 *HDF5) readDataspace(obf io.Reader) ([]uint64, int64) {
 		}
 		fail("permutation indices not supported")
 	}
-	warnAssert(bf.Rem() == 0, fmt.Sprint("Junk bytes: ", bf.Rem()))
+	if version == 2 && dstype == 2 && bf.Rem() > 0 {
+		logger.Info("Null v2 flags=", flags, "d=", d, "rem=", bf.Rem())
+	}
 	return ret, count
 }
 

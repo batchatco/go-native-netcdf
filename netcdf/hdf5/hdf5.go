@@ -352,8 +352,12 @@ func infoAssert(condition bool, msg string) {
 }
 
 func fail(msg string) {
+	failError(ErrInternal, msg)
+}
+
+func failError(err error, msg string) {
 	logger.Error(msg)
-	thrower.Throw(ErrInternal)
+	thrower.Throw(err)
 }
 
 func assertError(condition bool, err error, msg string) {
@@ -928,6 +932,10 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		if dtversion < 3 {
 			padding = 7
 		}
+		rem := int64(0)
+		if df != nil {
+			rem = df.Rem()
+		}
 		for i := 0; i < int(nmembers); i++ {
 			name := readNullTerminatedName(bf, padding)
 			logger.Info(i, "compound name=", name)
@@ -973,26 +981,14 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 				compoundAttribute.dimensions = compoundAttribute.dimensions[:dimensionality]
 			}
 
-			rem := int64(0)
-			if df != nil {
-				rem = df.Rem()
-			}
 			logger.Infof("%d compound before: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
 
 			h5.printDatatype(obj, bf, nil, 0, &compoundAttribute)
-			rem = int64(0)
-			if df != nil {
-				rem = df.Rem()
-			}
 			logger.Infof("%d compound after: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
 			logger.Infof("%d compound dtlength", compoundAttribute.length)
 			attr.children = append(attr.children, &compoundAttribute)
 		}
 		logger.Info("Compound length is", attr.length)
-		rem := int64(0)
-		if df != nil {
-			rem = df.Rem()
-		}
 		if rem > 0 {
 			attrSize := calcAttrSize(attr)
 			logger.Info("compound alloced", df.Count(), df.Rem()+df.Count(),
@@ -2424,8 +2420,14 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 	logger.Infof("layout size=%d", bf.Rem())
 	version := read8(bf)
 	// V4 is quite complex and not supported yet, but we parse some of it
-	assertError(version == 3 || version == 4,
-		ErrLayout, fmt.Sprint("unsupported layout version: ", version))
+	switch version {
+	case 3, 4:
+		break
+	default:
+		// Read away rest of record that we don't understand
+		skip(bf, bf.Rem())
+		failError(ErrLayout, fmt.Sprint("unsupported layout version: ", version))
+	}
 	class := read8(bf)
 	logger.Infof("layout version=%d class=%d", version, class)
 	switch class {

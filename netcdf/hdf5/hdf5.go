@@ -1641,7 +1641,7 @@ func (h5 *HDF5) readBTreeNode(parent *object, bta uint64, dtSize uint64,
 
 func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 	dtSize uint64, numberOfElements uint64, dsOffset uint64, dimensionality uint8) uint64 {
-	bf := h5.newSeek(bta, 0) // TODO: figure out length
+	bf := h5.newSeek(bta, 24) // adjust later
 	checkMagic(bf, 4, "TREE")
 	logger.Infof("readBTreeNode addr 0x%x dtSize %d\n", bta, dtSize)
 	nodeType := read8(bf)
@@ -1660,6 +1660,12 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 	if nodeLevel > 0 {
 		logger.Infof("Start level %d", nodeLevel)
 	}
+	dimDataSize := 0
+	if dimensionality > 0 {
+		dimDataSize = 8 * int(dimensionality-1)
+	}
+	bf = h5.newSeek(bta+uint64(bf.Count()),
+		int64((int(entriesUsed)*(24+dimDataSize))+16+dimDataSize))
 	for i := uint16(0); i < entriesUsed; i++ {
 		sizeChunk := read32(bf)
 		filterMask := read32(bf)
@@ -1886,13 +1892,14 @@ func checkVal(expected, actual interface{}, comment string) {
 }
 
 func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) (remReader, uint64) {
-	bf := h5.newSeek(heapAddress, 0) // TODO: figure out size
+	bf := h5.newSeek(heapAddress, 16) // adjust size later
 	checkMagic(bf, 4, "GCOL")
 	version := read8(bf)
 	checkVal(1, version, "version")
 	checkZeroes(bf, 3)
 	csize := read64(bf) // collection size, including these fields
 	csize -= 16
+	bf = h5.newSeek(heapAddress+uint64(bf.Count()), int64(csize))
 	for csize >= 16 {
 		hoi := read16(bf) // heap object index
 		rc := read16(bf)  // reference count

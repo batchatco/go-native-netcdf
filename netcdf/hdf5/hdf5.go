@@ -2891,12 +2891,20 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			bf.Rem())
 		rem := f.Rem()
 		if rem > 0 {
-			if rem < 8 {
-				// allowed for padding up to 8-byte boundary
+			switch version {
+			case 1:
+				// V1 is allowed to have padding bytes
+				if rem < 8 {
+					// allowed for padding up to 8-byte boundary
+				} else {
+					// This happens with compound data, for as yet unknown reasons.
+					logger.Infof("V1: %d junk bytes at end of record type=%s", rem,
+						headerTypeToString(int(headerType)))
+				}
 				checkZeroes(f, int(rem))
-			} else {
-				// This happens with compound data, for as yet unknown reasons.
-				logger.Infof("%d junk bytes at end of record type=%s", rem,
+			case 2:
+				// No padding allowed in V2, still we get these.
+				logger.Infof("V2: %d junk bytes at end of record type=%s", rem,
 					headerTypeToString(int(headerType)))
 				checkZeroes(f, int(rem))
 			}

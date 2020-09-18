@@ -28,7 +28,6 @@ const (
 	unlimitedSize  = ^uint64(0)
 )
 
-// TODO: make these constants "enums" by giving them a type
 const (
 	// The doc says only early versions of the library use 1,
 	// but that is not true.
@@ -197,8 +196,8 @@ const (
 
 // for padBytesCheck()
 const (
-	dontRound = false // the number is the number of pad bytes to check for
-	round     = true  // the numbers is the byte-boundary to check up to (1, 3 or 7).
+	dontRound = false // the number is the number of pad bytes to check for.
+	round     = true  // the number is the byte-boundary to check up to (1, 3 or 7).
 )
 
 var (
@@ -488,18 +487,34 @@ func binaryToString(val uint64) string {
 }
 
 func (h5 *HDF5) readSuperblock() {
-	bf := h5.newSeek(0, 0)
+	const (
+		v0SBSize  = 96  // 56 in superblock + 40 in symbol table
+		v1SBSize  = 100 // 60 in superblock + 40 in symbol table
+		v23SBSize = 48  // 48 in superblock, no symbol table
+	)
+	sbSize := int64(v23SBSize)
+	if h5.fileSize < sbSize {
+		logger.Error("File is too small to have a superblock\n")
+		thrower.Throw(ErrCorrupted)
+	}
+	bf := h5.newSeek(0, sbSize)
 
 	checkMagic(bf, 8, magic)
 
 	version := read8(bf)
 	logger.Info("superblock version=", version)
 	assert(version <= 3, fmt.Sprintf("bad superblock version: %v", version))
-	if version == 3 {
+	// adjust size now that we know the version
+	switch version {
+	case 0:
+		bf = h5.newSeek(uint64(bf.Count()), v0SBSize-bf.Count())
+	case 1:
+		bf = h5.newSeek(uint64(bf.Count()), v1SBSize-bf.Count())
+	case 3:
 		thrower.Throw(ErrVersion)
 	}
-
 	if version < 2 {
+		// we've read 9 bytes of a 64 byte chunk
 		b := read8(bf)
 		logger.Info("Free space version=", b)
 
@@ -1372,7 +1387,7 @@ func (h5 *HDF5) readLinkData(obj *object, link *linkInfo, offset uint64, length 
 }
 
 func hasFlag8(flags byte, flag uint) bool {
-	return (flags>>flag)&0x01 == 0x01
+	return (flags>>flag)&1 == 1
 }
 
 // Assumes it is a link
@@ -1406,7 +1421,7 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 		logger.Info("cset=", cSet)
 		assert(cSet == 0 || cSet == 1, "only ASCII and UTF-8 names")
 	}
-	size := 1 << (flags & 0x3)
+	size := 1 << (flags & 0b11)
 	b := readEnc(bf, uint8(size))
 	lenlen := uint64(b)
 	logger.Infof("lenlen=0x%x", lenlen)
@@ -2073,7 +2088,7 @@ func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, he
 }
 
 func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
-	bf := h5.newSeek(addr, 0) // TODO: figure out size
+	bf := h5.newSeek(addr, 52) // adjust later
 
 	checkMagic(bf, 4, "TREE") // "SNOD"
 	nodeType := read8(bf)
@@ -2095,6 +2110,7 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 		addr uint64
 	}
 	keyAddrs := []keyAddr{}
+	bf = h5.newSeek(addr+uint64(bf.Count()), 16*int64(entriesUsed)+8)
 	for i := uint16(0); i < entriesUsed; i++ {
 		key := read64(bf)
 		childAddr := read64(bf)
@@ -2578,11 +2594,11 @@ func (h5 *HDF5) readFillValue(bf io.Reader) []byte {
 		fillValueDefined = read8(bf)
 	case 3:
 		flags := read8(bf)
-		spaceAllocationTime = flags & 0x3
-		fillValueWriteTime = (flags >> 2) & 0x3
-		fillValueUnDefined = (flags >> 4) & 0x1
-		fillValueDefined = (flags >> 5) & 0x1
-		reserved := (flags >> 6) & 0x3
+		spaceAllocationTime = flags & 0b11
+		fillValueWriteTime = (flags >> 2) & 0b11
+		fillValueUnDefined = (flags >> 4) & 0b1
+		fillValueDefined = (flags >> 5) & 0b1
+		reserved := (flags >> 6) & 0b11
 		checkVal(0, reserved, "extra bits in fill value")
 		if fillValueUnDefined == 0x1 {
 			// fillValueUndefined never seems to be set
@@ -2944,8 +2960,9 @@ func (h5 *HDF5) readDataObjectHeader(obj *object, addr uint64) {
 
 func (h5 *HDF5) readDataObjectHeaderV2(obj *object, addr uint64) {
 	obj.addr = addr
+	origAddr := addr
 	logger.Infof("read object header %x", addr)
-	bf := h5.newSeek(addr, 0) // TODO: figure out size
+	bf := h5.newSeek(addr, 6) // minimum size, not including header message data or checksum
 	checkMagic(bf, 4, "OHDR")
 	version := read8(bf)
 	logger.Info("object header version=", version)
@@ -2973,6 +2990,10 @@ func (h5 *HDF5) readDataObjectHeaderV2(obj *object, addr uint64) {
 	assert(ohFlags&0xc0 == 0, "reserved fields should not be present")
 
 	if timePresent {
+		// we need 16 more bytes for 4 4-byte fields
+		addr += uint64(bf.Count())
+		assert(bf.Rem() == 0, "should use all bytes")
+		bf = h5.newSeek(addr, 16+bf.Rem())
 		i := read32(bf)
 		t := time.Unix(int64(i), 0)
 		logger.Infof("access time=%s", t.UTC().Format(time.RFC3339))
@@ -2988,8 +3009,11 @@ func (h5 *HDF5) readDataObjectHeaderV2(obj *object, addr uint64) {
 		// TODO: store these times and provide an API to view them
 	}
 	if maxPresent {
+		// we need 4 more bytes for 2 2-byte fields
+		addr += uint64(bf.Count())
+		assert(bf.Rem() == 0, "should use all bytes")
+		bf = h5.newSeek(addr, 4+bf.Rem())
 		// These don't matter for read-only.
-		logger.Warn("this code has not been reached before")
 		s := read16(bf)
 		logger.Info("max compact=", s)
 		s = read16(bf)
@@ -2997,34 +3021,38 @@ func (h5 *HDF5) readDataObjectHeaderV2(obj *object, addr uint64) {
 	}
 
 	// Bits 0-1 of the flags determine the size of the first chunk
-	nBytesInChunkSize := 1 << (ohFlags & 0x3)
-	chunkSize := readEnc(bf, uint8(nBytesInChunkSize))
+	nBytesInChunkSize := 1 << (ohFlags & 0b11)
 
-	newOffset := addr + uint64(bf.Count())
+	// we need nBytesInChunksize more bytes to read chunkSize
+	addr += uint64(bf.Count())
+	assert(bf.Rem() == 0, "should use all bytes")
+	bf = h5.newSeek(addr, int64(nBytesInChunkSize)+bf.Rem())
+	chunkSize := readEnc(bf, uint8(nBytesInChunkSize))
+	// we need chunkSize more bytes to read headers
+	addr += uint64(bf.Count())
+	assert(bf.Rem() == 0, "should use all bytes")
+	bf = h5.newSeek(addr, int64(chunkSize)+bf.Rem())
 
 	// Read fields that object header and continuation blocks have in common
 	logger.Info("size of chunk=", chunkSize)
 	obj.children = make(map[string]*object)
 	start := bf.Count()
-	h5.readCommon(obj, bf, version, ohFlags, newOffset, chunkSize)
+	h5.readCommon(obj, bf, version, ohFlags, addr, chunkSize)
 	used := bf.Count() - start
 	assert(used == int64(chunkSize),
 		fmt.Sprintf("readCommon should read %d bytes, read %d, delta %d",
 			chunkSize, used, int64(chunkSize)-used))
-
-	// 	logger.Info("done reading chunks")
+	addr += chunkSize
 
 	// Finally, compute the checksum
-	//	assert(int64(nRead) == cbf.Count(),
-	//		fmt.Sprintf("nread not matching count: %v %v", nRead, cbf.Count()))
-	h5.checkChecksum(addr, int(bf.Count()))
-	logger.Infof("obj %s at addr 0x%x\n", obj.name, obj.addr)
+	h5.checkChecksum(origAddr, int(addr-origAddr))
+	logger.Infof("obj %s at addr 0x%x\n", obj.name, origAddr)
 }
 
 func (h5 *HDF5) readDataObjectHeaderV1(obj *object, addr uint64) {
 	obj.addr = addr
 	logger.Infof("v1 addr=0x%x", addr)
-	bf := h5.newSeek(addr, 0) // TODO: figure out size
+	bf := h5.newSeek(addr, 16)
 	version := read8(bf)
 	logger.Info("v1 object header version=", version)
 	assertError(version == 1, ErrDataObjectHeaderVersion,
@@ -3041,14 +3069,10 @@ func (h5 *HDF5) readDataObjectHeaderV1(obj *object, addr uint64) {
 
 	// Read fields that object header and continuation blocks have in common
 	obj.children = make(map[string]*object)
-	count := bf.Count()
-	logger.Info("count = ", count)
-	rounded := (count + 7) & ^int64(7)
-	padding := rounded - count
-	if padding > 0 {
-		checkZeroes(bf, int(padding))
-	}
-	h5.readCommon(obj, bf, version, 0, addr+uint64(bf.Count()), uint64(headerSize))
+	checkZeroes(bf, 4)
+	count := uint64(bf.Count())
+	bf = h5.newSeek(addr+count, int64(headerSize))
+	h5.readCommon(obj, bf, version, 0, addr+count, uint64(headerSize))
 	logger.Info("done reading chunks")
 }
 
@@ -5006,85 +5030,7 @@ func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
 				}
 				val.value = h5.getDataAttr(val.df, *val)
 			}
-			// A scalar attribute can be stored as a single-length array
-			// This code undoes that.
-			fixit := func(value interface{}) interface{} {
-				switch v := value.(type) {
-				case string:
-				case float64:
-				case float32:
-				case int64:
-				case int32:
-				case int16:
-				case int8:
-				case uint64:
-				case uint32:
-				case uint16:
-				case uint8:
-					break
-				case []enumerated:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []compound:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []string:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []float64:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []float32:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []uint64:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []uint32:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []uint16:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []uint8:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []int64:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []int32:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []int16:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				case []int8:
-					if len(v) == 1 {
-						value = v[0]
-					}
-				default:
-					logger.Infof("Strange attribute type %T", value)
-				}
-				return value
-			}
-			value := fixit(val.value)
-			e, has := value.(enumerated)
-			if has {
-				e.values = fixit(e.values)
-				value = e
-			}
+			value := undoScalarAttribute(val.value)
 			filtered[val.name] = value
 			keys = append(keys, val.name)
 		}
@@ -5093,6 +5039,32 @@ func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
 	thrower.ThrowIfError(err)
 	om.Hide(ncpKey)
 	return om
+}
+
+// A scalar attribute can be stored as a single-length array.
+// This code undoes that to return an actual scalar.
+func undoScalarAttribute(value interface{}) interface{} {
+	// Opaque is a slice, but we don't want to undo it.
+	_, has := value.(opaque)
+	if has {
+		return value
+	}
+	_, has = value.(enumerated)
+	// Enumerated that haven't been cast can also be slices.
+	if has {
+		e, has := value.(enumerated)
+		if has {
+			e.values = undoScalarAttribute(e.values)
+			value = e
+		}
+		return value
+	}
+	// All other slices are undone
+	v := reflect.ValueOf(value)
+	if v.Kind() == reflect.Slice && v.Len() == 1 {
+		v = v.Index(0)
+	}
+	return v.Interface()
 }
 
 // TODO: make this smarter by finding the group first

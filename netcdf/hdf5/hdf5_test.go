@@ -1582,7 +1582,7 @@ func TestBadMagic(t *testing.T) {
 	fileName := "testdata/badmagic" // base filename without extension
 	_, err := Open(fileName)
 	if err != ErrBadMagic {
-		t.Error("bad magic error not seen")
+		t.Error("bad magic error not seen", err)
 		return
 	}
 }

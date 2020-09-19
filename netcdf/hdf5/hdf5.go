@@ -42,11 +42,12 @@ const (
 	dtversionStandard = iota + 1 // not what the doc calls it
 	dtversionArray
 	dtversionPacked
+	dtversionV4 // undocumented V4 datatype version
 )
 
-// For disabling code
+// For disabling/enabling code
 //
-// For some specific things that don't seem to happen, and we don't need to unit test.
+// Constants for some specific things that don't seem to happen, and we don't need to unit test.
 // Kept around just in case.
 const (
 	parseTime          = false
@@ -54,16 +55,20 @@ const (
 	floatEnums         = false
 )
 
-//
-// For some specific things that aren't useful and the code is disabled.
+// Vars for some specific things that aren't useful or are not implemented yet,
+// and so the code is disabled.
 // They are vars so they can be unit tested.
 var (
 	parseSBExtension     = false // happens, not useful
 	parseHeapDirectBlock = false // happens, not useful
 	useIndirectBlocks    = false // false until we verify the code
 	allowBitfields       = false // not used in NetCDF, but part of HDF5
-	allowNonStandard     = false // allow a few non-standard things for testing
+	superblockV3         = false // V3 enables other things which are not documented
+	allowNonStandard     = false // allow a few non-standard things for testing, such as ignoring non-standard headers
 )
+
+// undocumented datatype version 4 is enabled with superblockV3
+var maxDTVersion byte = 3
 
 // The hidden attribute which identifies what software wrote the file out.
 const ncpKey = "_NCProperties"
@@ -327,6 +332,12 @@ type log struct{}
 
 var _ = log{} // to silence staticcheck warning
 
+func init() {
+	if superblockV3 {
+		maxDTVersion = dtversionV4
+	}
+}
+
 func setNonStandard(non bool) bool {
 	old := allowNonStandard
 	allowNonStandard = non
@@ -414,6 +425,12 @@ func read64(r io.Reader) uint64 {
 
 func readEnc(r io.Reader, e uint8) uint64 {
 	switch e {
+	case 0:
+		if allowNonStandard {
+			logger.Warn("zero byte integer encoding")
+			return 0
+		}
+		fail(fmt.Sprint("bad encoded length: ", e))
 	case 1:
 		return uint64(read8(r))
 	case 2:
@@ -422,6 +439,7 @@ func readEnc(r io.Reader, e uint8) uint64 {
 		// 24-bit integer
 		// Read the first three bytes, add a zero,
 		// and then parse that as an int32.
+		logger.Warn("24-bit integer encoding")
 		b := make([]byte, 4)
 		read(r, b[:3])
 		bf := newResetReaderFromBytes(b)
@@ -492,7 +510,9 @@ func (h5 *HDF5) readSuperblock() {
 	case 2:
 		break
 	default:
-		thrower.Throw(ErrVersion)
+		if !superblockV3 {
+			thrower.Throw(ErrVersion)
+		}
 	}
 	if version < 2 {
 		// we've read 9 bytes of a 64 byte chunk
@@ -699,6 +719,13 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		logger.Info("Array-encoded datatype")
 	case dtversionPacked:
 		logger.Info("VAX and/or packed datatype")
+	case dtversionV4:
+		if maxDTVersion == dtversionV4 {
+			// allowed
+			logger.Info("Undocumented datatype version 4")
+			break
+		}
+		fallthrough
 	default:
 		fail(fmt.Sprint("Unknown datatype version: ", dtversion))
 	}
@@ -722,7 +749,8 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		} else {
 			attr.endian = binary.LittleEndian
 		}
-		assertError(paddingType == 0, ErrFixedPoint, "padding must be zero")
+		assertError(paddingType == 0, ErrFixedPoint,
+			fmt.Sprintf("fixed point padding must be zero 0x%x", bitFields))
 		logger.Info("len properties", bf.Rem())
 		assert(bf.Rem() > 0, "properties should be here")
 		bitOffset := read16(bf)
@@ -903,14 +931,17 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	case typeCompound: // compound
 		logger.Info("* compound")
 		logger.Info("dtversion", dtversion)
-		assert(dtversion >= 1 && dtversion <= 3,
+		assert(dtversion >= 1 && dtversion <= maxDTVersion,
 			fmt.Sprintln("compound datatype version", dtversion, "not supported"))
 		nmembers := bitFields & 0b11111111
 		logger.Info("* number of members:", nmembers)
 
-		padding := 0
-		if dtversion < 3 {
-			padding = 7
+		padding := 7
+		switch dtversion {
+		case dtversionStandard, dtversionArray:
+			break
+		default:
+			padding = 0
 		}
 		rem := int64(0)
 		if df != nil {
@@ -922,9 +953,9 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			var byteOffset uint32
 			var nbytes uint8
 			switch dtversion {
-			case 1, 2:
+			case dtversionStandard, dtversionArray:
 				nbytes = 4
-			case 3:
+			case dtversionPacked, dtversionV4:
 				switch {
 				case dtlength < 256:
 					nbytes = 1
@@ -941,7 +972,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			var compoundAttribute attribute
 			compoundAttribute.name = name
 			compoundAttribute.byteOffset = byteOffset
-			if dtversion == 1 {
+			if dtversion == dtversionStandard {
 				dimensionality := read8(bf)
 				logger.Info("dimensionality", dimensionality)
 				checkZeroes(bf, 3)
@@ -1013,7 +1044,11 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		logger.Info("number of members=", numberOfMembers)
 		names := make([]string, numberOfMembers)
 		padding := 7
-		if dtversion == dtversionPacked {
+		switch dtversion {
+		case dtversionStandard:
+		case dtversionArray:
+			break
+		default:
 			padding = 0
 		}
 		for i := uint32(0); i < numberOfMembers; i++ {
@@ -1104,7 +1139,8 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		logger.Info("Array")
 		dimensionality := read8(bf)
 		logger.Info("dimensionality", dimensionality)
-		if dtversion < 3 {
+		switch dtversion {
+		case dtversionStandard, dtversionArray:
 			checkZeroes(bf, 3)
 		}
 		dimensions := make([]uint64, dimensionality)
@@ -1298,43 +1334,56 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 	// First try direct blocks
 	width := int(link.tableWidth)
 	for entryNum, block := range link.block {
-		if offset < blockSize {
+		if offset < blockSize && block != invalidAddress {
 			blockToUse = block
 			break
 		}
 		offset -= blockSize
 		row := entryNum / width
-		// We double the third row and beyond.
-		if row >= 1 && (entryNum%width) == (width-1) {
-			logger.Info("doubled block size")
+		// We double the third row and beyond, up to the maximum.
+		// test is if we are at the end of a row, then we may double.
+		if row >= 1 && (entryNum%width) == (width-1) && blockSize < link.maximumBlockSize {
+			logger.Info("doubled block size", blockSize, "->", blockSize*2, "row=", row,
+				"max=", link.maximumBlockSize)
 			blockSize *= 2
 		}
 	}
-	if offset < blockSize {
+	if offset < blockSize && blockToUse != invalidAddress {
 		callback(obj, blockToUse, offset, length, creationOrder)
 		return
 	}
 	if useIndirectBlocks {
 		// now try indirect blocks
-		logger.Warn("Using indirect blocks")
+		logger.Warnf("Using indirect blocks offset=0x%x", offset)
+		//blockSize = link.blockSize
 		for entryNum, block := range link.iBlock {
-			if offset < blockSize {
+			logger.Infof("Trying block 0x%x offset=0x%x", block, offset)
+			if offset < blockSize && block != invalidAddress {
+				logger.Infof("Found indirect block 0x%x offset=0x%x", block, offset)
 				blockToUse = block
 				break
 			}
 			offset -= blockSize
 			if (entryNum % width) == (width - 1) {
-				logger.Info("doubled block size")
+				logger.Info("INDIRECT doubled block size", blockSize, "->", blockSize*2,
+					"max=", link.maximumBlockSize)
 				blockSize *= 2
 			}
 		}
 		assert(blockToUse != invalidAddress, "did not find direct or indirect block")
 
 		nextLink := *link
-		h5.readRootBlock(&nextLink, blockToUse, 0, link.rowsRootIndirect,
-			link.tableWidth, blockSize, link.maximumBlockSize)
 
-		h5.readLinkData(obj, link, offset, length, creationOrder, callback)
+		if h5.isMagic("FHDB", blockToUse) {
+			h5.readHeapDirectBlock(&nextLink, blockToUse, 0, blockSize)
+		} else {
+			nrows := log2(blockSize) - log2(link.blockSize*uint64(width)) + 1
+			nrows += 1
+			logger.Info("calculated rows=", nrows, "blocksize=", blockSize)
+			h5.readRootBlock(&nextLink, blockToUse, 0, uint16(nrows), 4, link.blockSize, link.maximumBlockSize)
+		}
+
+		h5.readLinkData(obj, &nextLink, offset, length, creationOrder, callback)
 		return
 	} else {
 		thrower.Throw(ErrIndirectBlocks)
@@ -1364,6 +1413,11 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 	bf := newResetReader(obf, int64(length))
 	version := read8(bf)
 	logger.Infof("* link version=%d", version)
+	if version == 0 {
+		b := make([]byte, bf.Rem())
+		read(bf, b)
+		logger.Fatal("Bad version 0 rest=0x%x", b)
+	}
 	checkVal(1, version, "Link version must be 1")
 	flags := read8(bf)
 	logger.Infof("* link flags=0x%x (%s)", flags, binaryToString(uint64(flags)))
@@ -1719,7 +1773,6 @@ func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
 		logger.Infof("(block size=%d)", blockSize)
 		logger.Info("flags", flags)
 		if !hasFlag8(flags, 1) {
-			// This flag is always set and this code never gets executed.
 			logger.Info("Do not check checksum")
 			return
 		}
@@ -1750,10 +1803,20 @@ func log2(v uint64) int {
 func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uint16, width uint16, startBlockSize uint64, maxBlockSize uint64) {
 	// sig version heapaddr blockoffset + variables + checksum
 	bSize := 4 + 1 + 8 + int64(link.maxHeapSize/8) + int64(nrows*width*8) + 4
+	//bSize := int64(startBlockSize)
+	logger.Infof("compare blocksize=%d to calc=%d", startBlockSize,
+		4+1+8+int64(link.maxHeapSize/8)+int64(nrows*width*8)+4)
+	maxRows := uint16(int(startBlockSize)-(4+1+8+int(link.maxHeapSize/8)+4)) / (width * 8)
+	if nrows > maxRows {
+		logger.Warn("Rows greater than max rows", nrows, "to", maxRows)
+		//nrows = maxRows
+		//bSize = (4 + 1 + 8 + int64(link.maxHeapSize/8) + int64(nrows*width*8) + 4)
+	}
 	bf := h5.newSeek(bta, bSize)
 	checkMagic(bf, 4, "FHIB")
 	version := read8(bf)
 	logger.Info("heap root block version=", version)
+	checkVal(0, version, "heap root block version must be zero")
 	heapHeaderAddr := read64(bf)
 	logger.Infof("heap header addr=0x%x", heapHeaderAddr)
 	blockOffset := uint64(read32(bf))
@@ -1785,12 +1848,20 @@ func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uin
 	blockSize := startBlockSize
 	for i := 0; i < int(nrows); i++ {
 		if i > 1 {
-			logger.Info("doubled block size")
-			blockSize *= 2
+			if i < maxRowsDirect {
+				if blockSize < maxBlockSize {
+					blockSize *= 2
+					logger.Info("doubled block size (direct)", blockSize, "->", blockSize*2)
+				}
+			} else if i >= maxRowsDirect {
+				blockSize *= 2
+				logger.Info("doubled block size (indirect)", blockSize, "->", blockSize*2)
+			}
 		}
 		for j := 0; j < int(width); j++ {
 			childDirectBlockAddress := read64(bf)
-			logger.Infof("child direct block address=0x%x", childDirectBlockAddress)
+			logger.Infof("child block address=0x%x row=%d maxrows=%d", childDirectBlockAddress,
+				i, maxRowsDirect)
 			if i < maxRowsDirect {
 				addrs = append(addrs, childDirectBlockAddress)
 				blockSizes = append(blockSizes, blockSize)
@@ -2497,8 +2568,10 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 				// Single-chunk indexing
 				fchunksize := read64(bf)
 				logger.Info("chunk size = ", fchunksize)
-				filters := read32(bf)
-				logger.Info("filters = ", filters)
+				if hasFlag8(flags, 0) {
+					filters := read32(bf)
+					logger.Info("filters = ", filters)
+				}
 				fail("single chunk indexing not supported")
 			case 2:
 				logger.Info("implicit indexing")
@@ -2515,7 +2588,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 				logger.Info("extensible array mb=", maxbits,
 					"ie=", indexElements, "mp=", minPointers, "me=", minElements,
 					"pb=", pageBits)
-				fail("extensibile array indexing not supported")
+				fail("extensible array indexing not supported")
 			case 5:
 				// btree array indexing is a superblock v3 feature
 				nodeSize := read32(bf)

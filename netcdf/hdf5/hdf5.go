@@ -2492,7 +2492,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 				"bad value for chunk indexing type")
 			switch cit {
 			case 1:
-				// Single-chunk indexing, has not been seen in the wild.
+				// Single-chunk indexing
 				fchunksize := read64(bf)
 				logger.Info("chunk size = ", fchunksize)
 				filters := read32(bf)
@@ -4765,7 +4765,7 @@ func (h5 *HDF5) printType(name string, attr *attribute, origNames map[string]boo
 		return signature
 
 	case typeVariableLength:
-x		if attr.vtType == 1 {
+		if attr.vtType == 1 {
 			// It's a string
 			return "string"
 		}

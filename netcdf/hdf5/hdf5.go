@@ -1,8 +1,9 @@
 // Package hdf5 implements HDF5 for NetCDF
 //
 // The specification for HDF5 is not comprehensive and leaves out many details.
-// A lot of this code was determined from reverse-engineering various HDF5 data files.
-// It's quite hacky for that reason.  It will get cleaned up in the future.
+// A lot of this code was determined from reverse-engineering various HDF5
+// data files. It's quite hacky for that reason.  It will get cleaned up
+// in the future.
 package hdf5
 
 import (
@@ -315,12 +316,16 @@ var (
 	maybeFail = fail         // fail function, can be disabled for testing
 )
 
-var fillValueUndefinedConstant = []byte{0xff} // only the pointer is used
+// Only the pointer is used here.  We don't actually use the value.
+// It's just a way to detect that something wasn't defined.
+var fillValueUndefinedConstant = []byte{0xff}
 
 var (
 	logger = internal.NewLogger()
-	log    = "don't use the log package" // prevents usage of standard log package
 )
+
+// Prevent usage of the standard log package.
+type log struct{}
 
 func setNonStandard(non bool) bool {
 	old := allowNonStandard
@@ -335,10 +340,6 @@ func setNonStandard(non bool) bool {
 		maybeFail = fail
 	}
 	return old
-}
-
-func init() {
-	_ = log // silence warning
 }
 
 // SetLogLevel sets the logging level to the given level, and returns
@@ -1150,6 +1151,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 			sharedType = true
 		}
 		if hasFlag8(flags, 1) {
+			// This flag never seems to be set
 			logger.Info("shared dataspace")
 			sharedSpace = true
 		}
@@ -1192,6 +1194,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 	var dims []uint64
 	var count int64
 	if sharedSpace {
+		// This flag does't seem to ever get set.
 		checkVal(datatypeSize, 10, "datatype size must be 10 for shared")
 		sVersion := read8(bf)
 		sType := read8(bf)
@@ -1370,6 +1373,7 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 	}
 	hasCSet := hasFlag8(flags, 4)
 	if hasCSet {
+		// This flag never seems to be set
 		cSet := read8(bf)
 		logger.Info("cset=", cSet)
 		assert(cSet == 0 || cSet == 1, "only ASCII and UTF-8 names")
@@ -1709,6 +1713,7 @@ func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
 		logger.Infof("(block size=%d)", blockSize)
 		logger.Info("flags", flags)
 		if !hasFlag8(flags, 1) {
+			// This flag is always set and this code never gets executed.
 			logger.Info("Do not check checksum")
 			return
 		}
@@ -1897,6 +1902,7 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 	flags := read8(bf)
 	logger.Infof("flags=%s", binaryToString(uint64(flags)))
 	if !hasFlag8(flags, 1) {
+		// this flag is always set and this code is never executed.
 		logger.Warn("not using checksums")
 	}
 	maxSizeObjects := read32(bf)
@@ -1990,10 +1996,8 @@ func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, he
 	bf = h5.newSeek(addr+uint64(bf.Count()), thisSize)
 	for i := 0; i < int(numSymbols); i++ {
 		logger.Info("Start: count=", bf.Count(), "rem=", bf.Rem())
-		if bf.Rem() < 24 {
-			logger.Info(i, "not enough space to read another entry", bf.Rem())
-			break
-		}
+		assert(bf.Rem() >= 24,
+			fmt.Sprintln(i, "not enough space to read another entry", bf.Rem()))
 		linkNameOffset := read64(bf) // 8
 		logger.Infof("%d: link name offset=0x%x", i, linkNameOffset)
 		linkName := h5.readLocalHeap(heapAddr, linkNameOffset)
@@ -2010,9 +2014,7 @@ func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, he
 		switch cacheType {
 		case 0:
 			rem := int(16)
-			if bf.Rem() < 16 {
-				rem = int(bf.Rem())
-			}
+			assert(bf.Rem() >= 16, "not enough data to read symbol table entry")
 			logger.Info("no data is cached")
 			checkZeroes(bf, rem)
 		case 1:
@@ -2061,9 +2063,8 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 	if nodeLevel > 0 {
 		logger.Infof("Start level %d", nodeLevel)
 	}
-	if leftAddress != invalidAddress || rightAddress != invalidAddress {
-		fail("Siblings unexpected")
-	}
+	assert(leftAddress == invalidAddress && rightAddress == invalidAddress,
+		"Siblings unexpected")
 	assert(nodeType == 0, "what we expect")
 	type keyAddr struct {
 		key  uint64
@@ -2984,6 +2985,7 @@ func (h5 *HDF5) readDataObjectHeaderV2(obj *object, addr uint64) {
 		// TODO: store these times and provide an API to view them
 	}
 	if maxPresent {
+		// maxPresent never seems to be true
 		// we need 4 more bytes for 2 2-byte fields
 		addr += uint64(bf.Count())
 		assert(bf.Rem() == 0, "should use all bytes")
@@ -3063,6 +3065,7 @@ func (h5 *HDF5) GetGroup(group string) (g api.Group, err error) {
 	var groupName string
 	switch {
 	case strings.HasPrefix(group, "/"):
+		// Never seems to get executed.
 		// Absolute path
 		groupName = group
 		if !strings.HasSuffix(groupName, "/") {
@@ -3901,7 +3904,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			logger.Info("Found fletcher32", val.length)
 			bf = newFletcher32Reader(bf, val.length)
 			if firstOffset > 0 {
-				logger.Warn("cannot seek -- fletcher")
+				skip(bf, int64(firstOffset))
 			}
 		}
 		if zlibFound {
@@ -3916,14 +3919,14 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			}
 			bf = newResetReader(zbf, int64(dsLength))
 			if firstOffset > 0 {
-				logger.Warn("cannot seek -- zlib")
+				skip(bf, int64(firstOffset))
 			}
 		}
 		if shuffleFound {
 			logger.Info("using shuffle", dsLength)
 			bf = newUnshuffleReader(bf, dsLength, shuffleParam)
 			if firstOffset > 0 {
-				logger.Info("cannot seek -- shuffle")
+				skip(bf, int64(firstOffset))
 			}
 		}
 		if skipBegin > 0 {
@@ -3931,9 +3934,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			if canSeek {
 				bf = h5.newSeek(valOffset+skipBegin, thisSize)
 			} else {
-				var err error
-				bf, err = newSkipReader(bf, thisSize, int64(skipBegin), int64(dsLength))
-				thrower.ThrowIfError(err)
+				skip(bf, int64(firstOffset))
 			}
 		}
 		thisSeg := &segment{
@@ -3960,13 +3961,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	for i := 0; i < segments.Len(); i++ {
 		seg := segments.get(i)
 		r := seg.r
-		if seg.offset > off {
-			extra := seg.offset - off
-			logger.Infof("Fill value reader at offset 0x%x length %d", seg.offset-extra,
-				extra)
-			readers = append(readers, makeFillValueReader(obj, nil, int64(extra)))
-			off += extra
-		}
+		assert(seg.offset <= off, "discontiguous data")
 		logger.Infof("Reader at offset 0x%x length %d", seg.offset, seg.length)
 		readers = append(readers, newResetReader(r, int64(seg.length)))
 		off += seg.length

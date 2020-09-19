@@ -24,9 +24,7 @@ func (c *callback) goCallback(key string) (string, bool) {
 
 func newTypedAttributeMap(h5 *HDF5, keys []string, values map[string]interface{}) (*util.OrderedMap, error) {
 	om, err := util.NewOrderedMap(keys, values)
-	if err != nil {
-		return nil, err
-	}
+	assertError(err == nil, err, "creating ordered map")
 	if h5 != nil {
 		c := callback{h5, om}
 		om.SetTypeCallbacks(c.regCallback, c.goCallback)

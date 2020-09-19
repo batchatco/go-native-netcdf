@@ -265,11 +265,10 @@ type filter struct {
 }
 
 type HDF5 struct {
-	fname     string
-	fileSize  int64
-	file      *raFile
-	groupName string // fully-qualified
-
+	fname         string
+	fileSize      int64
+	file          *raFile
+	groupName     string // fully-qualified
 	rootAddr      uint64
 	root          *linkInfo
 	attribute     *linkInfo
@@ -340,44 +339,6 @@ func setNonStandard(non bool) bool {
 
 func init() {
 	_ = log // silence warning
-}
-
-func assert(condition bool, msg string) {
-	if condition {
-		return
-	}
-	fail(msg)
-}
-
-func warnAssert(condition bool, msg string) {
-	if condition {
-		return
-	}
-	logger.Warn(msg)
-}
-
-func infoAssert(condition bool, msg string) {
-	if condition {
-		return
-	}
-	logger.Info(msg)
-}
-
-func fail(msg string) {
-	failError(ErrInternal, msg)
-}
-
-func failError(err error, msg string) {
-	logger.Error(msg)
-	thrower.Throw(err)
-}
-
-func assertError(condition bool, err error, msg string) {
-	if condition {
-		return
-	}
-	logger.Error(msg)
-	thrower.Throw(err)
 }
 
 // SetLogLevel sets the logging level to the given level, and returns
@@ -3877,29 +3838,6 @@ func newFletcher32Reader(r io.Reader, size uint64) remReader {
 	return newResetReaderFromBytes(b)
 }
 
-type segment struct {
-	offset uint64
-	length uint64
-	r      io.Reader
-}
-
-type segments []*segment
-
-func (s segments) Len() int      { return len(s) }
-func (s segments) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-
-type byOffset struct{ segments }
-
-func (s byOffset) Less(i, j int) bool {
-	if s.segments[i].offset < s.segments[j].offset {
-		return true
-	}
-	if s.segments[i].offset > s.segments[j].offset {
-		return false
-	}
-	return true
-}
-
 func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	shuffleFound bool, shuffleParam uint32, fletcher32Found bool) io.Reader {
 	nBlocks := len(obj.dataBlocks)
@@ -3908,9 +3846,9 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		return newResetReaderFromBytes([]byte{})
 	}
 	logger.Info("size=", size, "dtlength=", obj.objAttr.length, "dims=", obj.objAttr.dimensions)
-	segments := make([]*segment, 0)
 	firstOffset := uint64(0)
 	lastOffset := uint64(size)
+	segments := newSegments()
 	if obj.objAttr.isSlice {
 		if len(obj.objAttr.dimensions) > 0 && obj.objAttr.dimensions[0] > 0 {
 			dimSize := size / obj.objAttr.dimensions[0]
@@ -4011,27 +3949,28 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 				thisSeg.r = makeFillValueReader(obj, rr, int64(thisSeg.length))
 			}
 		}
-		segments = append(segments, thisSeg)
+		segments.append(thisSeg)
 		offset += dsLength
 	}
-	sort.Sort(byOffset{segments})
+	segments.sort()
 	readers := make([]io.Reader, 0)
 	off := firstOffset
 	remOffset := invalidAddress
 	logger.Info("firstoffset=", firstOffset, "lastOffset=", lastOffset)
-	for i := 0; i < len(segments); i++ {
-		r := segments[i].r
-		if segments[i].offset > off {
-			extra := segments[i].offset - off
-			logger.Infof("Fill value reader at offset 0x%x length %d", segments[i].offset-extra,
+	for i := 0; i < segments.Len(); i++ {
+		seg := segments.get(i)
+		r := seg.r
+		if seg.offset > off {
+			extra := seg.offset - off
+			logger.Infof("Fill value reader at offset 0x%x length %d", seg.offset-extra,
 				extra)
 			readers = append(readers, makeFillValueReader(obj, nil, int64(extra)))
 			off += extra
 		}
-		logger.Infof("Reader at offset 0x%x length %d", segments[i].offset, segments[i].length)
-		readers = append(readers, newResetReader(r, int64(segments[i].length)))
-		off += segments[i].length
-		remOffset = segments[i].offset + segments[i].length
+		logger.Infof("Reader at offset 0x%x length %d", seg.offset, seg.length)
+		readers = append(readers, newResetReader(r, int64(seg.length)))
+		off += seg.length
+		remOffset = seg.offset + seg.length
 	}
 	if size > offset && remOffset != invalidAddress {
 		extra := size - offset

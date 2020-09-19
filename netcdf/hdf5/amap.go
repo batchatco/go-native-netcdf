@@ -4,11 +4,14 @@ import (
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
 )
 
+// Adds callbacks to the standard OrderedMap so we can print
+// out more complex types than the default (structs, enums, etc.)
 type callback struct {
 	h5 *HDF5
 	om *util.OrderedMap
 }
 
+// CDL callback (regular)
 func (c *callback) regCallback(key string) (string, bool) {
 	ret := c.h5.findGlobalAttrType(key)
 	return ret, ret != ""

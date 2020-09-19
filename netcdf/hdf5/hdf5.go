@@ -466,9 +466,9 @@ func binaryToString(val uint64) string {
 
 func (h5 *HDF5) readSuperblock() {
 	const (
-		v0SBSize  = 96  // 56 in superblock + 40 in symbol table
-		v1SBSize  = 100 // 60 in superblock + 40 in symbol table
-		v23SBSize = 48  // 48 in superblock, no symbol table
+		v0SBSize  = 96  // v0, 56 in superblock + 40 in symbol table
+		v1SBSize  = 100 // v1,60 in superblock + 40 in symbol table
+		v23SBSize = 48  // v2&v3,48 in superblock, no symbol table
 	)
 	sbSize := int64(v23SBSize)
 	assertError(sbSize <= h5.fileSize, ErrCorrupted, "File is too small to have a superblock")
@@ -479,14 +479,15 @@ func (h5 *HDF5) readSuperblock() {
 
 	version := read8(bf)
 	logger.Info("superblock version=", version)
-	assert(version <= 3, fmt.Sprintf("bad superblock version: %v", version))
 	// adjust size now that we know the version
 	switch version {
 	case 0:
 		bf = h5.newSeek(uint64(bf.Count()), v0SBSize-bf.Count())
 	case 1:
 		bf = h5.newSeek(uint64(bf.Count()), v1SBSize-bf.Count())
-	case 3:
+	case 2:
+		break
+	default:
 		thrower.Throw(ErrVersion)
 	}
 	if version < 2 {
@@ -513,7 +514,8 @@ func (h5 *HDF5) readSuperblock() {
 	logger.Info("size of lengths=", b)
 	checkVal(8, b, "only accept 64-bit lengths")
 
-	if version < 2 {
+	switch version {
+	case 0, 1:
 		b = read8(bf)
 		checkVal(0, b, "reserved must always be zero")
 
@@ -535,10 +537,10 @@ func (h5 *HDF5) readSuperblock() {
 			s = read16(bf)
 			checkVal(0, s, "reserved must be zero")
 		}
-	} else {
+	case 2, 3:
 		flags := read8(bf)
-		if flags != 0 {
-			logger.Info("flags ignored: v>=2", flags)
+		if version == 2 && flags != 0 {
+			logger.Warn("v2 ignores flags", flags)
 		}
 		logger.Infof("file consistency flags=%s", binaryToString(uint64(flags)))
 	}
@@ -548,13 +550,14 @@ func (h5 *HDF5) readSuperblock() {
 	checkVal(0, baseAddress, "only support base address of zero")
 
 	sbExtension := invalidAddress
-	if version == 2 {
-		sbExtension = read64(bf)
-		logger.Infof("superblock extension address=%x", sbExtension)
-	} else {
+	switch version {
+	case 0, 1:
 		fsIndexAddr := read64(bf)
 		logger.Infof("free-space index address=%x", fsIndexAddr)
 		checkVal(invalidAddress, fsIndexAddr, "free-space index address not supported")
+	case 2, 3:
+		sbExtension = read64(bf)
+		logger.Infof("superblock extension address=%x", sbExtension)
 	}
 
 	eofAddr := read64(bf)
@@ -566,16 +569,11 @@ func (h5 *HDF5) readSuperblock() {
 	infoAssert(uint64(h5.fileSize) == eofAddr,
 		fmt.Sprint("Junk at end of file ignored. size=", h5.fileSize, " expected=", eofAddr))
 
-	if version == 2 {
-		rootAddr := read64(bf)
-		logger.Infof("root group object header address=%d", rootAddr)
-		h5.rootAddr = rootAddr
-	} else {
+	switch version {
+	case 0, 1:
 		driverInfoAddress := read64(bf)
 		logger.Infof("driver info address=0x%x", driverInfoAddress)
-	}
 
-	if version < 2 {
 		// get the root address
 		linkNameOffset := read64(bf) // link name offset
 		objectHeaderAddress := read64(bf)
@@ -591,7 +589,10 @@ func (h5 *HDF5) readSuperblock() {
 			logger.Infof("btree addr=0x%x heap addr=0x%x", btreeAddr, heapAddr)
 		}
 		h5.rootAddr = objectHeaderAddress
-	} else {
+	case 2, 3:
+		rootAddr := read64(bf)
+		logger.Infof("root group object header address=%d", rootAddr)
+		h5.rootAddr = rootAddr
 		h5.checkChecksum(0, 44)
 	}
 	if sbExtension != invalidAddress {
@@ -665,7 +666,7 @@ func checkZeroes(bf io.Reader, len int) {
 	padBytesCheck(bf, len, dontRound, logFunc)
 }
 
-// Assumes it is an Attribute
+// Assumes it is an attribute
 func (h5 *HDF5) readAttributeDirect(obj *object, addr uint64, offset uint64, length uint16,
 	creationOrder uint64) {
 	logger.Infof("* addr=0x%x offset=0x%x length=%d", addr, offset, length)
@@ -695,7 +696,7 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	case dtversionPacked:
 		logger.Info("VAX and/or packed datatype")
 	default:
-		fail(fmt.Sprint("datatype version: ", dtversion))
+		fail(fmt.Sprint("Unknown datatype version: ", dtversion))
 	}
 	vtType := uint8(0)
 	attr.dtversion = dtversion
@@ -898,7 +899,8 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	case typeCompound: // compound
 		logger.Info("* compound")
 		logger.Info("dtversion", dtversion)
-		assert(dtversion >= 1 && dtversion <= 3, "compound version")
+		assert(dtversion >= 1 && dtversion <= 3,
+			fmt.Sprintln("compound datatype version", dtversion, "not supported"))
 		nmembers := bitFields & 0b11111111
 		logger.Info("* number of members:", nmembers)
 
@@ -2502,7 +2504,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 				pageBits := read8(bf)
 				logger.Info("fixed array pagebits=", pageBits)
 			case 4:
-				// Extensible-array indexing, has not been seen in the wild.
+				// Extensible-array indexing is a superblock v3 feature
 				maxbits := read8(bf)
 				indexElements := read8(bf)
 				minPointers := read8(bf)
@@ -2513,7 +2515,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 					"pb=", pageBits)
 				fail("extensibile array indexing not supported")
 			case 5:
-				// Version 2 B-tree indexing, has not been seen in the wild.
+				// btree array indexing is a superblock v3 feature
 				nodeSize := read32(bf)
 				splitPercent := read8(bf)
 				mergePercent := read8(bf)
@@ -4763,8 +4765,7 @@ func (h5 *HDF5) printType(name string, attr *attribute, origNames map[string]boo
 		return signature
 
 	case typeVariableLength:
-		// TODO: find name of type
-		if attr.vtType == 1 {
+x		if attr.vtType == 1 {
 			// It's a string
 			return "string"
 		}

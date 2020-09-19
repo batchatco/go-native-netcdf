@@ -497,7 +497,7 @@ func ncGen(t *testing.T, fileNameNoExt string) string {
 
 const errorNcGen = "Error running ncgen command from netcdf package"
 
-func commonOneDim(t *testing.T, slow bool) {
+func commonOneDim(t *testing.T, slow convertType) {
 	t.Helper()
 	// Set up
 	fileName := "testdata/testonedim" // base filename without extension
@@ -646,7 +646,7 @@ func TestUnlimited(t *testing.T) {
 	checkAll(t, nc, unlims)
 }
 
-func commonUnlimitedEmpty(t *testing.T, slow bool) {
+func commonUnlimitedEmpty(t *testing.T, slow convertType) {
 	t.Helper()
 	fileName := "testdata/testempty" // base filename without extension
 	genName := ncGen(t, fileName)

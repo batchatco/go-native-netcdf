@@ -1,7 +1,6 @@
 // Package cdf supports v1 (classic), v2 (64-bit offset) and v5 file formats.
 package cdf
 
-// TODO: api for dimensions in case of unlimited
 import (
 	"bufio"
 	"bytes"
@@ -58,6 +57,14 @@ type variable struct {
 	begin  uint64 // 32-bits in V1, 64-bits in V2
 }
 
+type convertType bool
+
+// constants for convertType
+const (
+	fast = false // fast conversion, avoids some reflection.
+	slow = true  // slow conversion, uses reflection for everything.
+)
+
 type CDF struct {
 	fname        string
 	file         api.ReadSeekerCloser
@@ -69,14 +76,8 @@ type CDF struct {
 	globalAttrs  *util.OrderedMap
 	vars         *util.OrderedMap
 	specialCase  bool
-	slowConvert  bool
+	slowConvert  convertType // default is fast
 }
-
-// constants for slowconvert
-const (
-	fast = false
-	slow = true
-)
 
 const maxDimensions = 1024
 

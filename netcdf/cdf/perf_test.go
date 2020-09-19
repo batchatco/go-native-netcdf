@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func common(b testing.TB, num int, slow bool) {
+func common(b testing.TB, num int, slow convertType) {
 	b.Helper()
 	fileName := "testdata/solarforcing_small.nc"
 	for i := 0; i < num; i++ {

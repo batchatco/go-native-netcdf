@@ -1,4 +1,8 @@
 // Package hdf5 implements HDF5 for NetCDF
+//
+// The specification for HDF5 is not comprehensive and leaves out many details.
+// A lot of this code was determined from reverse-engineering various HDF5 data files.
+// It's quite hacky for that reason.  It will get cleaned up in the future.
 package hdf5
 
 import (
@@ -22,29 +26,34 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
+// Magic number at the head of a valid HDF5 file
+const magic = "\211HDF\r\n\032\n"
+
 const (
-	magic          = "\211HDF\r\n\032\n"
 	invalidAddress = ^uint64(0)
 	unlimitedSize  = ^uint64(0)
 )
 
+// Datatype versions
 const (
-	// The doc says only early versions of the library use 1,
-	// but that is not true.
-	dtversionStandard = iota + 1
+	// The doc says only early versions of the library use 1, but that's not actually
+	// true and it is fairly standard.
+	dtversionStandard = iota + 1 // not what the doc calls it
 	dtversionArray
 	dtversionPacked
 )
 
 // For disabling code
-
-// For some specific things that don't seem to happen
+//
+// For some specific things that don't seem to happen, and we don't need to unit test.
+// Kept around just in case.
 const (
 	parseTime          = false
 	parseCreationOrder = false
 	floatEnums         = false
 )
 
+//
 // For some specific things that aren't useful and the code is disabled.
 // They are vars so they can be unit tested.
 var (
@@ -55,6 +64,7 @@ var (
 	allowNonStandard     = false // allow a few non-standard things for testing
 )
 
+// The hidden attribute which identifies what software wrote the file out.
 const ncpKey = "_NCProperties"
 
 var (
@@ -85,8 +95,9 @@ var (
 	ErrNonExportedField        = errors.New("can't assign to non-exported field")
 )
 
+// Various filters on data
 const (
-	filterDeflate = iota + 1
+	filterDeflate = iota + 1 // zlib
 	filterShuffle
 	filterFletcher32
 	filterSzip        // not supported
@@ -157,6 +168,7 @@ const (
 	typeObjectReferenceCount
 )
 
+// Header type to string (htts)
 var htts = []string{
 	// 0-9
 	"NIL",
@@ -198,11 +210,6 @@ const (
 const (
 	dontRound = false // the number is the number of pad bytes to check for.
 	round     = true  // the number is the byte-boundary to check up to (1, 3 or 7).
-)
-
-var (
-	logFunc   = logger.Fatal // logging function for padBytesCheck()
-	maybeFail = fail         // fail function, can be disabled for testing
 )
 
 type attribute struct {
@@ -257,25 +264,6 @@ type filter struct {
 	cdv  []uint32
 }
 
-type object struct {
-	addr             uint64
-	link             *linkInfo
-	attr             *linkInfo
-	children         map[string]*object
-	name             string
-	attrlist         []*attribute
-	dataBlocks       []dataBlock
-	filters          []filter
-	objAttr          *attribute
-	fillValue        []byte // takes precedence over old fill value
-	fillValueOld     []byte
-	isGroup          bool
-	creationOrder    uint64
-	attrListIsSorted bool
-}
-
-var fillValueUndefinedConstant = []byte{0xff} // only the pointer is used
-
 type HDF5 struct {
 	fname     string
 	fileSize  int64
@@ -305,6 +293,30 @@ type linkInfo struct {
 	maximumBlockSize   uint64
 	rowsRootIndirect   uint16
 }
+
+type object struct {
+	addr             uint64
+	link             *linkInfo
+	attr             *linkInfo
+	children         map[string]*object
+	name             string
+	attrlist         []*attribute
+	dataBlocks       []dataBlock
+	filters          []filter
+	objAttr          *attribute
+	fillValue        []byte // takes precedence over old fill value
+	fillValueOld     []byte
+	isGroup          bool
+	creationOrder    uint64
+	attrListIsSorted bool
+}
+
+var (
+	logFunc   = logger.Fatal // logging function for padBytesCheck()
+	maybeFail = fail         // fail function, can be disabled for testing
+)
+
+var fillValueUndefinedConstant = []byte{0xff} // only the pointer is used
 
 var (
 	logger = internal.NewLogger()

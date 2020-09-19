@@ -320,12 +320,12 @@ var (
 // It's just a way to detect that something wasn't defined.
 var fillValueUndefinedConstant = []byte{0xff}
 
-var (
-	logger = internal.NewLogger()
-)
+var logger = internal.NewLogger()
 
 // Prevent usage of the standard log package.
 type log struct{}
+
+var _ = log{} // to silence staticcheck warning
 
 func setNonStandard(non bool) bool {
 	old := allowNonStandard
@@ -419,9 +419,13 @@ func readEnc(r io.Reader, e uint8) uint64 {
 	case 2:
 		return uint64(read16(r))
 	case 3:
-		high := read8(r)
-		low := read16(r)
-		return uint64(uint32(high)<<16) | uint64(low)
+		// 24-bit integer
+		// Read the first three bytes, add a zero,
+		// and then parse that as an int32.
+		b := make([]byte, 4)
+		read(r, b[:3])
+		bf := newResetReaderFromBytes(b)
+		return uint64(read32(bf))
 	case 4:
 		return uint64(read32(r))
 	case 8:
@@ -1973,9 +1977,7 @@ func (h5 *HDF5) readLocalHeap(addr uint64, offset uint64) string {
 	checkMagic(bf, 4, "HEAP")
 	version := read8(bf)
 	checkVal(0, version, "version 0 expected for local heap")
-	reserved := readEnc(bf, 3)
-	logger.Infof("reserved=0x%x", reserved)
-	checkVal(0, reserved, "reserved must be zero")
+	checkZeroes(bf, 3)
 	dsSize := read64(bf)
 	flOffset := read64(bf)
 	dsAddr := read64(bf)

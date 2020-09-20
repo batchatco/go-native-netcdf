@@ -804,6 +804,34 @@ func TestGroups(t *testing.T) {
 	}
 	defer ncb.Close()
 	checkGroup(ncb, []int32{5, 6, 7})
+
+	// Try lookups from root
+	names := []string{"/", "/a", "/a/b", "a", "a/b"}
+	for _, name := range names {
+		_, err = nc.GetGroup(name)
+		if err != nil {
+			t.Error("GetGroup", name, err)
+			return
+		}
+	}
+	// Try lookup from a
+	names = []string{"/a/b", "b"}
+	for _, name := range names {
+		_, err = nca.GetGroup(name)
+		if err != nil {
+			t.Error("GetGroup", name, err)
+			return
+		}
+	}
+	// Try not found
+	names = []string{"/c", "c"}
+	for _, name := range names {
+		_, err = nca.GetGroup(name)
+		if err != ErrNotFound {
+			t.Error("GetGroup", name, err)
+			return
+		}
+	}
 }
 
 func TestByte(t *testing.T) {

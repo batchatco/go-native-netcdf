@@ -61,6 +61,7 @@ const (
 var (
 	parseSBExtension     = false // happens, not useful
 	allowBitfields       = false // not used in NetCDF, but part of HDF5
+	allowReferences      = false // not used in NetCDF, but part of HDF5
 	allowNonStandard     = false // allow a few non-standard things for testing, such as ignoring non-standard headers
 	superblockV3         = false // V3 enables other things which are not documented
 	parseHeapDirectBlock = false
@@ -904,9 +905,11 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		}
 		logger.Info("bitfield rem: ", df.Rem())
 		if !allowBitfields {
-			b := make([]byte, df.Rem())
-			read(df, b)
-			logger.Infof("bitfield value: %x", b)
+			if df != nil {
+				b := make([]byte, df.Rem())
+				read(df, b)
+				logger.Infof("bitfield value: %#x", b)
+			}
 			logger.Infof("Bitfields ignored")
 			thrower.Throw(ErrBitfield)
 		}
@@ -1046,6 +1049,15 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 		if df == nil {
 			logger.Infof("no data")
 			break
+		}
+		if !allowReferences {
+			if df != nil {
+				b := make([]byte, df.Rem())
+				read(df, b)
+				logger.Infof("reference value: %#x", b)
+			}
+			logger.Infof("References ignored")
+			thrower.Throw(ErrReference)
 		}
 		if df.Rem() >= int64(dtlength) {
 			attr.df = newResetReaderSave(df, df.Rem())
@@ -4803,11 +4815,11 @@ func (h5 *HDF5) printType(name string, attr *attribute, origNames map[string]boo
 
 	case typeBitField:
 		// Not NetCDF
-		return "bitfield"
+		return "uchar" // same as uint8
 
 	case typeReference:
 		// Not NetCDF
-		return "reference"
+		return "uint64" // reference same as uint64
 	}
 	fail(fmt.Sprint("bogus type not handled: ", attr.class, attr.length))
 	panic("never gets here")
@@ -4918,11 +4930,11 @@ func (h5 *HDF5) printGoType(typeName string, attr *attribute, origNames map[stri
 
 	case typeBitField:
 		// Not NetCDF
-		return "bitfield"
+		return "uint8" // bitfield same as uint8
 
 	case typeReference:
 		// Not NetCDF
-		return "reference"
+		return "uint64" // reference same as uint64
 	}
 	fail(fmt.Sprint("bogus type not handled: ", attr.class, attr.length))
 	panic("never gets here")

@@ -322,3 +322,81 @@ func TestGoTypes(t *testing.T) {
 		}(m)
 	}
 }
+
+func TestBitfieldType(t *testing.T) {
+	// BitFields are not part of NetCDF.  They are in HDF5 though.
+	fileName := "testdata/bitfield.h5"
+	prevAllowBitfields := allowBitfields
+	allowBitfields = true
+	defer func() {
+		allowBitfields = prevAllowBitfields
+	}()
+
+	nc, err := Open(fileName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	a := nc.Attributes()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	attrName := "bitfield"
+	_, has := a.Get(attrName)
+	if !has {
+		t.Error("attribute", attrName, "not found")
+		return
+	}
+
+	expectedCDL := "uchar(*)"
+	val, has := a.GetType(attrName)
+	if !has || val != expectedCDL {
+		t.Errorf("%s: type mismatch got=(%s) exp=(%s)", fileName, val, expectedCDL)
+	}
+	expectedGo := "[]uint8"
+	val, has = a.GetGoType(attrName)
+	if !has || val != expectedGo {
+		t.Errorf("%s: type mismatch got=(%s) exp=(%s)", fileName, val, expectedGo)
+	}
+}
+
+func TestReferenceType(t *testing.T) {
+	// References are not part of NetCDF.  They are in HDF5 though.
+	fileName := "testdata/reference.h5"
+	prevAllowBitfields := allowBitfields
+	prevAllowReferences := allowReferences
+	allowReferences = true
+	defer func() {
+		allowBitfields = prevAllowBitfields
+		allowReferences = prevAllowReferences
+	}()
+	allowBitfields = true
+	allowReferences = true
+
+	nc, err := Open(fileName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+
+	varName := "Dataset3"
+	vg, err := nc.GetVarGetter(varName)
+	if err != nil {
+		t.Error("attribute", varName, "not found", err)
+		return
+	}
+
+	expectedCDL := "uint64"
+	val := vg.Type()
+	if val != expectedCDL {
+		t.Errorf("%s: type mismatch got=(%s) exp=(%s)", fileName, val, expectedCDL)
+	}
+	expectedGo := "uint64"
+	val = vg.GoType()
+	if val != expectedGo {
+		t.Errorf("%s: type mismatch got=(%s) exp=(%s)", fileName, val, expectedGo)
+	}
+}

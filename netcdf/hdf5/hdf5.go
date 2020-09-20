@@ -3757,22 +3757,22 @@ func (h5 *HDF5) allocReferences(bf io.Reader, dimLengths []uint64) interface{} {
 		err := binary.Read(bf, binary.LittleEndian, &addr)
 		thrower.ThrowIfError(err)
 		logger.Infof("Reference addr 0x%x", addr)
-		return int64(addr)
+		return addr
 	}
 
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
-		values := make([]int64, thisDim)
+		values := make([]uint64, thisDim)
 		for i := range values {
 			var addr uint64
 			err := binary.Read(bf, binary.LittleEndian, &addr)
 			thrower.ThrowIfError(err)
 			logger.Infof("Reference addr[%d] 0x%x", i, addr)
-			values[i] = int64(addr)
+			values[i] = addr
 		}
 		return values
 	}
-	vals := makeSlices(reflect.TypeOf(int64(0)), dimLengths)
+	vals := makeSlices(reflect.TypeOf(uint64(0)), dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
 		vals.Index(int(i)).Set(reflect.ValueOf(h5.allocReferences(bf, dimLengths[1:])))
 	}
@@ -5119,7 +5119,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 			continue
 		}
 		logger.Infof("DIMENSION_LIST=%T 0x%x", a.value, a.value)
-		varLen := a.value.([][]int64)
+		varLen := a.value.([][]uint64)
 		for _, v := range varLen {
 			for i, addr := range v {
 				// Each dimension in the dimension list points to an object address in the global heap
@@ -5151,7 +5151,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 			logger.Infof("value is %T %v", a.value, a.value)
 			for k, v := range a.value.([]compound) {
 				vals2 := v
-				v0 := vals2[0].Val.(int64)
+				v0 := vals2[0].Val.(uint64)
 				v1 := vals2[1].Val.(int32)
 				logger.Infof("single ref %d 0x%x %d %s", k, v0, v1, ob.name)
 			}

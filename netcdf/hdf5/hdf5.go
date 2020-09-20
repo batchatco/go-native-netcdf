@@ -59,17 +59,17 @@ const (
 // and so the code is disabled.
 // They are vars so they can be unit tested.
 var (
-	parseSBExtension = false // happens, not useful
-	allowBitfields   = false // not used in NetCDF, but part of HDF5
-	allowNonStandard = false // allow a few non-standard things for testing, such as ignoring non-standard headers
-	superblockV3     = false // V3 enables other things which are not documented
+	parseSBExtension     = false // happens, not useful
+	allowBitfields       = false // not used in NetCDF, but part of HDF5
+	allowNonStandard     = false // allow a few non-standard things for testing, such as ignoring non-standard headers
+	superblockV3         = false // V3 enables other things which are not documented
+	parseHeapDirectBlock = false
 )
 
 // Things that now work or have become useful, but are still switchable
 // with a variable.
 var (
-	parseHeapDirectBlock = true
-	useIndirectBlocks    = true
+	useIndirectBlocks = true
 )
 
 // undocumented datatype version 4 is enabled with superblockV3
@@ -287,6 +287,7 @@ type HDF5 struct {
 	groupObject   *object
 	sharedAttrs   map[uint64]*attribute
 	registrations map[string]interface{}
+	addrs         map[uint64]bool
 }
 
 type linkInfo struct {
@@ -1390,15 +1391,10 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 
 		nextLink := *link
 
-		if h5.isMagic("FHDB", blockToUse) {
-			logger.Infof("Read direct block 0x%x %d", blockToUse, blockSize)
-			h5.readHeapDirectBlock(&nextLink, blockToUse, 0, blockSize)
-		} else {
-			logger.Infof("Read indirect block 0x%x %d", blockToUse, blockSize)
-			nrows := log2(blockSize) - log2(link.blockSize*uint64(width)) + 1
-			logger.Info("calculated rows=", nrows, "blocksize=", blockSize)
-			h5.readRootBlock(&nextLink, blockToUse, 0, uint16(nrows))
-		}
+		logger.Infof("Read indirect block 0x%x %d", blockToUse, blockSize)
+		nrows := log2(blockSize) - log2(link.blockSize*uint64(width)) + 1
+		logger.Info("calculated rows=", nrows, "blocksize=", blockSize)
+		h5.readRootBlock(&nextLink, blockToUse, 0, uint16(nrows))
 
 		h5.readLinkData(obj, &nextLink, offset, length, creationOrder, callback)
 		return
@@ -1483,7 +1479,7 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 	logger.Infof("hard link=0x%x", hardAddr)
 	_, has := parent.children[string(linkName)]
 	assert(!has, "duplicate object")
-	if hasAddr(h5.rootObject, hardAddr) {
+	if h5.hasAddr(hardAddr) {
 		logger.Info("avoid link loop")
 		logger.Infof("done with name=%s", string(linkName))
 		return
@@ -1493,6 +1489,7 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 	parent.children[obj.name] = obj
 	obj.creationOrder = co
 	obj.addr = hardAddr
+	h5.addrs[hardAddr] = true
 	h5.readDataObjectHeader(obj, hardAddr)
 	logger.Info("obj name", obj.name)
 	logger.Infof("object (0x%x, %s) from parent (0x%x, %s)\n",
@@ -2099,13 +2096,14 @@ func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, he
 		}
 		_, has := parent.children[linkName]
 		assert(!has, "duplicate object")
-		if hasAddr(h5.rootObject, objectHeaderAddress) {
+		if h5.hasAddr(objectHeaderAddress) {
 			logger.Info("avoid link loop")
 			logger.Infof("done with name=%s", string(linkName))
 			return
 		}
 		obj := newObject()
 		obj.addr = objectHeaderAddress
+		h5.addrs[objectHeaderAddress] = true
 
 		obj.name = linkName
 		logger.Infof("object (0x%x, %s) from symbol table, parent (0x%x, %s)\n",
@@ -3245,6 +3243,7 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		groupObject:   nil,
 		sharedAttrs:   make(map[uint64]*attribute),
 		registrations: make(map[string]interface{}),
+		addrs:         make(map[uint64]bool),
 	}
 	h5.readSuperblock()
 	assert(h5.rootAddr != invalidAddress, "No root address")
@@ -3275,43 +3274,25 @@ func (h5 *HDF5) dumpObject(obj *object) {
 }
 
 func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Type) interface{} {
+	if cast == nil {
+		if signed {
+			cast = reflect.TypeOf(int8(0))
+		} else {
+			cast = reflect.TypeOf(uint8(0))
+		}
+	}
 	if len(dimLengths) == 0 {
 		value := read8(bf)
-		if cast != nil {
-			return reflect.ValueOf(value).Convert(cast).Interface()
-		}
-		if signed {
-			return int8(value)
-		}
-		return value
+		return reflect.ValueOf(value).Convert(cast).Interface()
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
-		var values interface{}
-		if cast != nil {
-			values = reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		} else {
-			if signed {
-				values = make([]int8, thisDim)
-			} else {
-				values = make([]uint8, thisDim)
-			}
-		}
+		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
 		err := binary.Read(bf, binary.LittleEndian, values)
 		thrower.ThrowIfError(err)
 		return values
 	}
-	var ty reflect.Type
-	if cast != nil {
-		ty = cast
-	} else {
-		if signed {
-			ty = reflect.TypeOf(int8(0))
-		} else {
-			ty = reflect.TypeOf(uint8(0))
-		}
-	}
-	vals := makeSlices(ty, dimLengths)
+	vals := makeSlices(cast, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocInt8s(bf, dimLengths[1:], signed, cast)))
 	}
@@ -3320,45 +3301,27 @@ func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Typ
 
 func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
 	cast reflect.Type) interface{} {
+	if cast == nil {
+		if signed {
+			cast = reflect.TypeOf(int16(0))
+		} else {
+			cast = reflect.TypeOf(uint16(0))
+		}
+	}
 	if len(dimLengths) == 0 {
 		var value uint16
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		if cast != nil {
-			return reflect.ValueOf(value).Convert(cast).Interface()
-		}
-		if signed {
-			return int16(value)
-		}
-		return value
+		return reflect.ValueOf(value).Convert(cast).Interface()
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
-		var values interface{}
-		if cast != nil {
-			values = reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		} else {
-			if signed {
-				values = make([]int16, thisDim)
-			} else {
-				values = make([]uint16, thisDim)
-			}
-		}
+		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
 		err := binary.Read(bf, endian, values)
 		thrower.ThrowIfError(err)
 		return values
 	}
-	var ty reflect.Type
-	if cast != nil {
-		ty = cast
-	} else {
-		if signed {
-			ty = reflect.TypeOf(int16(0))
-		} else {
-			ty = reflect.TypeOf(uint16(0))
-		}
-	}
-	vals := makeSlices(ty, dimLengths)
+	vals := makeSlices(cast, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocShorts(bf, dimLengths[1:], endian, signed,
 			cast)))
@@ -3368,45 +3331,27 @@ func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 
 func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
 	cast reflect.Type) interface{} {
+	if cast == nil {
+		if signed {
+			cast = reflect.TypeOf(int32(0))
+		} else {
+			cast = reflect.TypeOf(uint32(0))
+		}
+	}
 	if len(dimLengths) == 0 {
 		var value uint32
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		if cast != nil {
-			return reflect.ValueOf(value).Convert(cast).Interface()
-		}
-		if signed {
-			return int32(value)
-		}
-		return value
+		return reflect.ValueOf(value).Convert(cast).Interface()
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
-		var values interface{}
-		if cast != nil {
-			values = reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		} else {
-			if signed {
-				values = make([]int32, thisDim)
-			} else {
-				values = make([]uint32, thisDim)
-			}
-		}
+		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
 		err := binary.Read(bf, endian, values)
 		thrower.ThrowIfError(err)
 		return values
 	}
-	var ty reflect.Type
-	if cast != nil {
-		ty = cast
-	} else {
-		if signed {
-			ty = reflect.TypeOf(int32(0))
-		} else {
-			ty = reflect.TypeOf(uint32(0))
-		}
-	}
-	vals := makeSlices(ty, dimLengths)
+	vals := makeSlices(cast, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocInts(bf, dimLengths[1:], endian, signed,
 			cast)))
@@ -3416,45 +3361,27 @@ func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signe
 
 func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
 	cast reflect.Type) interface{} {
+	if cast == nil {
+		if signed {
+			cast = reflect.TypeOf(int64(0))
+		} else {
+			cast = reflect.TypeOf(uint64(0))
+		}
+	}
 	if len(dimLengths) == 0 {
 		var value uint64
 		err := binary.Read(bf, endian, &value)
 		thrower.ThrowIfError(err)
-		if cast != nil {
-			return reflect.ValueOf(value).Convert(cast).Interface()
-		}
-		if signed {
-			return int64(value)
-		}
-		return value
+		return reflect.ValueOf(value).Convert(cast).Interface()
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
-		var values interface{}
-		if cast != nil {
-			values = reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		} else {
-			if signed {
-				values = make([]int64, thisDim)
-			} else {
-				values = make([]uint64, thisDim)
-			}
-		}
+		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
 		err := binary.Read(bf, endian, values)
 		thrower.ThrowIfError(err)
 		return values
 	}
-	var ty reflect.Type
-	if cast != nil {
-		ty = cast
-	} else {
-		if signed {
-			ty = reflect.TypeOf(int64(0))
-		} else {
-			ty = reflect.TypeOf(uint64(0))
-		}
-	}
-	vals := makeSlices(ty, dimLengths)
+	vals := makeSlices(cast, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocInt64s(bf, dimLengths[1:], endian, signed,
 			cast)))
@@ -4490,23 +4417,8 @@ func (h5 *HDF5) Attributes() api.AttributeMap {
 	return h5.getAttributes(h5.rootObject.attrlist)
 }
 
-func hasAddr(obj *object, addr uint64) bool {
-	assert(obj != nil, "nil object for hasAddr")
-	if addr == obj.addr {
-		return true
-	}
-	assert(obj.children != nil, "expected children for object")
-	for _, o := range obj.children {
-		if o.addr == addr {
-			return true
-		}
-		if len(o.children) > 0 {
-			if hasAddr(o, addr) {
-				return true
-			}
-		}
-	}
-	return false
+func (h5 *HDF5) hasAddr(addr uint64) bool {
+	return h5.addrs[addr]
 }
 
 func (h5 *HDF5) findVariable(varName string) *object {

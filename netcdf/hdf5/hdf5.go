@@ -233,7 +233,6 @@ type attribute struct {
 	children      []*attribute // for variable, compound, enums, vlen.
 	enumNames     []string
 	enumValues    []interface{}
-	addr          uint64 // for reference and shared
 	shared        bool   // if shared
 	length        uint32 // datatype length
 	layout        []uint64
@@ -339,12 +338,6 @@ type log struct{}
 
 var _ = log{} // to silence staticcheck warning
 
-func init() {
-	if superblockV3 {
-		maxDTVersion = dtversionV4
-	}
-}
-
 func setNonStandard(non bool) bool {
 	old := allowNonStandard
 	allowNonStandard = non
@@ -432,25 +425,10 @@ func read64(r io.Reader) uint64 {
 
 func readEnc(r io.Reader, e uint8) uint64 {
 	switch e {
-	case 0:
-		if allowNonStandard {
-			logger.Warn("zero byte integer encoding")
-			return 0
-		}
-		fail(fmt.Sprint("bad encoded length: ", e))
 	case 1:
 		return uint64(read8(r))
 	case 2:
 		return uint64(read16(r))
-	case 3:
-		// 24-bit integer
-		// Read the first three bytes, add a zero,
-		// and then parse that as an int32.
-		logger.Warn("24-bit integer encoding")
-		b := make([]byte, 4)
-		read(r, b[:3])
-		bf := newResetReaderFromBytes(b)
-		return uint64(read32(bf))
 	case 4:
 		return uint64(read32(r))
 	case 8:
@@ -1003,7 +981,6 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 			}
 
 			logger.Infof("%d compound before: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
-
 			h5.printDatatype(obj, bf, nil, 0, &compoundAttribute)
 			logger.Infof("%d compound after: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
 			logger.Infof("%d compound dtlength", compoundAttribute.length)
@@ -2955,7 +2932,9 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 				if rem < 8 {
 					// allowed for padding up to 8-byte boundary
 				} else {
-					// This happens with compound data, for as yet unknown reasons.
+					// This happens with compound data in older files.  It appears there
+					// was a bug in the old code that would write out the type information multiple
+					// times.
 					logger.Infof("V1: %d junk bytes at end of record type=%s", rem,
 						headerTypeToString(int(headerType)))
 				}
@@ -4863,7 +4842,6 @@ func (h5 *HDF5) printGoType(typeName string, attr *attribute, origNames map[stri
 		return signature
 
 	case typeCompound:
-		// TODO: find name of type
 		members := make([]string, len(attr.children))
 		for i, cattr := range attr.children {
 			ty := h5.printGoType(typeName, cattr, origNames)

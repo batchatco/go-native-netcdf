@@ -31,12 +31,6 @@ type keyValList []keyVal
 
 var nilMap, _ = newTypedAttributeMap(nil, []string{}, map[string]interface{}{})
 
-func makeFill(fill interface{}) api.AttributeMap {
-	ret, _ := newTypedAttributeMap(nil, []string{"_FillValue"},
-		map[string]interface{}{"_FillValue": fill})
-	return ret
-}
-
 var values = keyValList{
 	{"str", "string", api.Variable{
 		Values:     "a",
@@ -447,6 +441,52 @@ var fills2 = keyValList{
 		Values:     [][]uint64{{0, 0}, {0, 0}},
 		Dimensions: []string{"d1", "d2"},
 		Attributes: makeFill(uint64(0))}},
+}
+
+// Set allowBitfields and return the old value
+func setBitfields(val bool) bool {
+	old := allowBitfields
+	allowBitfields = val
+	return old
+}
+
+// Set allowReferences and return the old value
+func setReferences(val bool) bool {
+	old := allowReferences
+	allowReferences = val
+	return old
+}
+
+// Set parseSbextension and return the old value
+func setSBExtension(val bool) bool {
+	old := parseSBExtension
+	parseSBExtension = val
+	return old
+}
+
+// Set superblockV3 and return the old value
+func setSuperblockV3(val bool) bool {
+	old := superblockV3
+	if val {
+		maxDTVersion = dtversionV4
+	} else {
+		maxDTVersion = dtversionPacked
+	}
+	superblockV3 = val
+	return old
+}
+
+// Set parseHeapDirectBlock and return the old value
+func setParseHeapDirectBlock(val bool) bool {
+	old := parseHeapDirectBlock
+	parseHeapDirectBlock = val
+	return old
+}
+
+func makeFill(fill interface{}) api.AttributeMap {
+	ret, _ := newTypedAttributeMap(nil, []string{"_FillValue"},
+		map[string]interface{}{"_FillValue": fill})
+	return ret
 }
 
 func genIsNewer(genName string, srcName string) bool {
@@ -1828,10 +1868,7 @@ func TestBitfield(t *testing.T) {
 	}
 
 	// Enable bitfields and try again
-	allowBitfields = true
-	defer func() {
-		allowBitfields = false
-	}()
+	defer setBitfields(setBitfields(true))
 	nc, err = Open(fileName)
 	if err != nil {
 		t.Error(err)

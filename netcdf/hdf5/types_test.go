@@ -326,12 +326,7 @@ func TestGoTypes(t *testing.T) {
 func TestBitfieldType(t *testing.T) {
 	// BitFields are not part of NetCDF.  They are in HDF5 though.
 	fileName := "testdata/bitfield.h5"
-	prevAllowBitfields := allowBitfields
-	allowBitfields = true
-	defer func() {
-		allowBitfields = prevAllowBitfields
-	}()
-
+	defer setBitfields(setBitfields(true))
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)
@@ -365,16 +360,8 @@ func TestBitfieldType(t *testing.T) {
 func TestReferenceType(t *testing.T) {
 	// References are not part of NetCDF.  They are in HDF5 though.
 	fileName := "testdata/reference.h5"
-	prevAllowBitfields := allowBitfields
-	prevAllowReferences := allowReferences
-	allowReferences = true
-	defer func() {
-		allowBitfields = prevAllowBitfields
-		allowReferences = prevAllowReferences
-	}()
-	allowBitfields = true
-	allowReferences = true
-
+	defer setBitfields(setBitfields(true))
+	defer setReferences(setReferences(true))
 	nc, err := Open(fileName)
 	if err != nil {
 		t.Error(err)

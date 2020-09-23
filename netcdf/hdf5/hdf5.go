@@ -3117,6 +3117,8 @@ func (h5 *HDF5) readDataObjectHeaderV1(obj *object, addr uint64) {
 	logger.Info("done reading chunks")
 }
 
+// Close closes this group and closes any underlying files if they are no
+// longer being used by any other groups.
 func (h5 *HDF5) Close() {
 	if h5.file != nil {
 		h5.file.Close()
@@ -3140,6 +3142,8 @@ func canonicalizePath(s string) string {
 	return prefix + strings.Join(nspl, "/")
 }
 
+// GetGroup gets the given group or returns an error if not found.
+// The group can start with "/" for absolute names, or relative.
 func (h5 *HDF5) GetGroup(group string) (g api.Group, err error) {
 	defer thrower.RecoverError(&err)
 	var groupName string
@@ -4325,6 +4329,7 @@ loop:
 	return ptype
 }
 
+// Attributes returns the global attributes for this group.
 func (h5 *HDF5) Attributes() api.AttributeMap {
 	// entry point, panic can bubble up
 	assert(h5.rootObject != nil, "nil root object")
@@ -4438,6 +4443,7 @@ func (h5 *HDF5) getTypeObj(typeName string) (*object, bool) {
 	return obj, true
 }
 
+// GetType gets the CDL description of the type and sets the bool to true if found.
 func (h5 *HDF5) GetType(typeName string) (string, bool) {
 	obj, has := h5.getTypeObj(typeName)
 	if !has {
@@ -4448,6 +4454,7 @@ func (h5 *HDF5) GetType(typeName string) (string, bool) {
 	return sig, true
 }
 
+// GettGoType gets the Go description of the type and sets the bool to true if found.
 func (h5 *HDF5) GetGoType(typeName string) (string, bool) {
 	obj, has := h5.groupObject.children[typeName]
 	if !has {
@@ -4471,6 +4478,7 @@ func (h5 *HDF5) GetGoType(typeName string) (string, bool) {
 	return fmt.Sprintf("type %s %s", typeName, sig), true
 }
 
+// ListTypes returns the user-defined type names.
 func (h5 *HDF5) ListTypes() []string {
 	var ret []string
 	for typeName, obj := range h5.groupObject.children {
@@ -4507,6 +4515,7 @@ func (h5 *HDF5) ListTypes() []string {
 	return ret
 }
 
+// ListDimensions lists the names of the dimensions in this group.
 func (h5 *HDF5) ListDimensions() []string {
 	var ret []string
 	children := h5.groupObject.sortChildren()
@@ -4539,6 +4548,8 @@ func (h5 *HDF5) ListDimensions() []string {
 	return ret
 }
 
+// GetDimension returns the size of the given dimension and sets
+// the bool to true if found.
 func (h5 *HDF5) GetDimension(name string) (uint64, bool) {
 	for _, obj := range h5.groupObject.children {
 		if obj.isGroup {
@@ -5001,6 +5012,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 	return nil
 }
 
+// GetVariable returns the named variable or sets the error if not found.
 func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 	err = ErrInternal
 	defer thrower.RecoverError(&err)
@@ -5023,6 +5035,9 @@ func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 		nil
 }
 
+// GetVarGetter is an function that returns an interface that allows you to get
+// smaller slices of a variable, in case the variable is very large and you want to
+// reduce memory usage.
 func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 	defer thrower.RecoverError(&err)
 	found := h5.findVariable(varName)
@@ -5073,6 +5088,7 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 	return internal.NewSlicer(getSlice, d, dims, attrs, ty, goTy), nil
 }
 
+// ListSubgroups returns the names of the subgroups of this group.
 func (h5 *HDF5) ListSubgroups() []string {
 	// entry point
 	// Only go one level down
@@ -5123,6 +5139,7 @@ func (obj *object) sortChildren() []*object {
 	return children
 }
 
+// ListVariables lists the variables in this group.
 func (h5 *HDF5) ListVariables() []string {
 	// entry point, panic can bubble up
 	var ret []string

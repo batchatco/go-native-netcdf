@@ -48,12 +48,17 @@ type VarGetter interface {
 }
 
 type Group interface {
+	// Close closes this group and closes any underlying files if they are no
+	// longer being used by any other groups.
 	Close()
 
+	// Attributes returns the global attributes for this group.
 	Attributes() AttributeMap
 
+	// ListVariables lists the variables in this group.
 	ListVariables() []string
 
+	// GetVariable returns the named variable or sets the error if not found.
 	GetVariable(name string) (*Variable, error)
 
 	// GetVarGetter is an function that returns an interface that allows you to get
@@ -61,14 +66,16 @@ type Group interface {
 	// reduce memory usage.
 	GetVarGetter(name string) (VarGetter, error)
 
+	// ListSubgroups returns the names of the subgroups of this group
 	ListSubgroups() []string
 
-	// group can "/" for top-level
+	// GetGroup gets the given group or returns an error if not found.
+	// The group can start with "/" for absolute names, or relative.
 	GetGroup(group string) (g Group, err error)
 
 	// Experimental API to get user-defined type information
 
-	// List types returns the user-defined type names.
+	// ListTypes returns the user-defined type names.
 	ListTypes() []string
 
 	// GetType gets the CDL description of the type and sets the bool to true if found.
@@ -77,7 +84,10 @@ type Group interface {
 	// GettGoType gets the Go description of the type and sets the bool to true if found.
 	GetGoType(string) (string, bool)
 
+	// ListDimensions lists the names of the dimensions in this group.
 	ListDimensions() []string
 
+	// GetDimension returns the size of the given dimension and sets
+	// the bool to true if found.
 	GetDimension(string) (uint64, bool)
 }

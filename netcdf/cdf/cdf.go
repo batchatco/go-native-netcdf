@@ -99,10 +99,12 @@ var (
 	logger = internal.NewLogger()
 )
 
+// ListVariables lists the variables in this group.
 func (cdf *CDF) ListVariables() []string {
 	return cdf.vars.Keys()
 }
 
+// ListSubgroups returns the names of the subgroups of this group
 func (cdf *CDF) ListSubgroups() []string {
 	return nil
 }
@@ -546,7 +548,8 @@ func (cdf *CDF) readHeader() (err error) {
 	return nil
 }
 
-// Close the CDF & release resources.
+// Close closes this group and closes any underlying files if they are no
+// longer being used by any other groups.
 func (cdf *CDF) Close() {
 	defer thrower.RecoverError(nil)
 	assert(cdf.fileRefCount > 0, "ref count off", ErrInternal)
@@ -560,6 +563,8 @@ func (cdf *CDF) Close() {
 	}
 }
 
+// GetGroup gets the given group or returns an error if not found.
+// The group can start with "/" for absolute names, or relative.
 func (cdf *CDF) GetGroup(group string) (g api.Group, err error) {
 	// TODO: use hdf5 file refcounting
 	// TODO: fake groups with "/" in names
@@ -600,6 +605,7 @@ func New(file api.ReadSeekerCloser) (ag api.Group, err error) {
 	return api.Group(c), nil
 }
 
+// Attributes returns the global attributes for this group.
 func (cdf *CDF) Attributes() api.AttributeMap {
 	return cdf.globalAttrs
 }
@@ -833,11 +839,15 @@ func cdlType(vType uint32) string {
 	panic("never gets here")
 }
 
+// GetVarGetter is an function that returns an interface that allows you to get
+// smaller slices of a variable, in case the variable is very large and you want to
+// reduce memory usage.
 func (cdf *CDF) GetVarGetter(name string) (slicer api.VarGetter, err error) {
 	defer thrower.RecoverError(&err)
 	return cdf.getVarCommon(name)
 }
 
+// GetVariable returns the named variable or sets the error if not found.
 func (cdf *CDF) GetVariable(name string) (v *api.Variable, err error) {
 	defer thrower.RecoverError(&err)
 	sl, err := cdf.getVarCommon(name)

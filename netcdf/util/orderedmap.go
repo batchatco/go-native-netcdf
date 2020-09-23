@@ -162,6 +162,8 @@ func (om *OrderedMap) pGoType(val interface{}) (string, bool) {
 	return prelim, true
 }
 
+// GetGoType returns the Go description of the given variable and sets the
+// bool to true if found.
 func (om *OrderedMap) GetGoType(key string) (ty string, has bool) {
 	val, has := om.Get(key)
 	if !has {
@@ -264,6 +266,8 @@ func (om *OrderedMap) pType(val interface{}) (string, bool) {
 	return prelim, true
 }
 
+// GetType returns the CDL description of the given variable and sets the
+// bool to true if found.
 func (om *OrderedMap) GetType(key string) (ty string, has bool) {
 	val, has := om.Get(key)
 	if !has {

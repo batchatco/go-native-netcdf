@@ -50,27 +50,36 @@ const (
 // Constants for some specific things that don't seem to happen, and we don't need to unit test.
 // Kept around just in case.
 const (
-	parseTime          = false
-	parseCreationOrder = false
-	floatEnums         = false
+	// The time class doesn't appear to have ever been implemented.
+	parseTime = false
+	// The same with the creation order for indexed groups; it never appears in files.
+	parseCreationOrder = false // same with this
+	// Enums only ever seem to be ints, though the spec hints they don't have to be.
+	floatEnums = false
 )
 
 // Vars for some specific things that aren't useful or are not implemented yet,
 // and so the code is disabled.
 // They are vars so they can be unit tested.
 var (
-	parseSBExtension     = false // happens, not useful
-	allowBitfields       = false // not used in NetCDF, but part of HDF5
-	allowReferences      = false // not used in NetCDF, but part of HDF5
-	allowNonStandard     = false // allow a few non-standard things for testing, such as ignoring non-standard headers
-	superblockV3         = false // V3 enables other things which are not documented
-	parseHeapDirectBlock = false
-)
+	// We don't implement any extended types, so we don't allow the superblock extension
+	parseSBExtension = false
 
-// Things that now work or have become useful, but are still switchable
-// with a variable.
-var (
-	useIndirectBlocks = true
+	// Bitfields are not part of NetCDF, but they are part of HDF5.
+	allowBitfields = false
+
+	// References are not part of NetCDF, but they are part of HDF5.
+	allowReferences = false
+
+	// Allow a few non-standard things for testing, such as ignoring non-standard headers
+	allowNonStandard = false
+
+	// We have not fully implemented V3 of the superblock.  Enabling this allows some
+	// undocumented things to appear, like datatype V4, which we do not support.
+	superblockV3 = false
+
+	// We don't need to parse heap direct blocks
+	parseHeapDirectBlock = false
 )
 
 // undocumented datatype version 4 is enabled with superblockV3
@@ -97,7 +106,6 @@ var (
 	ErrCorrupted               = errors.New("corrupted file")
 	ErrLayout                  = errors.New("data layout version not supported")
 	ErrSuperblock              = errors.New("superblock extension not supported")
-	ErrIndirectBlocks          = errors.New("indirect blocks not implemented")
 	ErrBitfield                = errors.New("bitfields not supported")
 	ErrArrays                  = errors.New("arrays not supported")
 	ErrExternal                = errors.New("external data files not supported")
@@ -605,7 +613,7 @@ func (h5 *HDF5) readSuperblock() {
 		h5.checkChecksum(0, 44)
 	}
 	if sbExtension != invalidAddress {
-		logger.Info("superblock extension not supported")
+		logger.Warn("superblock extension not supported")
 		if parseSBExtension {
 			obj := newObject()
 			h5.readDataObjectHeader(obj, sbExtension)
@@ -1357,40 +1365,35 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 		callback(obj, blockToUse, offset, length, creationOrder)
 		return
 	}
-	if useIndirectBlocks {
-		// now try indirect blocks
-		logger.Infof("Using indirect blocks offset=0x%x", offset)
-		blockSize *= 2
-		//blockSize = link.blockSize
-		for entryNum, block := range link.iBlock {
-			logger.Infof("Trying block 0x%x offset=0x%x", block, offset)
-			if offset < blockSize && block != invalidAddress {
-				logger.Infof("Found indirect block 0x%x offset=0x%x", block, offset)
-				blockToUse = block
-				break
-			}
-			offset -= blockSize
-			if (entryNum % width) == (width - 1) {
-				logger.Info("INDIRECT doubled block size", blockSize, "->", blockSize*2,
-					"max=", link.maximumBlockSize)
-				blockSize *= 2
-			}
+
+	// now try indirect blocks
+	logger.Infof("Using indirect blocks offset=0x%x", offset)
+	blockSize *= 2
+	//blockSize = link.blockSize
+	for entryNum, block := range link.iBlock {
+		logger.Infof("Trying block 0x%x offset=0x%x", block, offset)
+		if offset < blockSize && block != invalidAddress {
+			logger.Infof("Found indirect block 0x%x offset=0x%x", block, offset)
+			blockToUse = block
+			break
 		}
-		assert(blockToUse != invalidAddress, "did not find direct or indirect block")
-
-		nextLink := *link
-
-		logger.Infof("Read indirect block 0x%x %d", blockToUse, blockSize)
-		nrows := log2(blockSize) - log2(link.blockSize*uint64(width)) + 1
-		logger.Info("calculated rows=", nrows, "blocksize=", blockSize)
-		h5.readRootBlock(&nextLink, blockToUse, 0, uint16(nrows))
-
-		h5.readLinkData(obj, &nextLink, offset, length, creationOrder, callback)
-		return
-	} else {
-		thrower.Throw(ErrIndirectBlocks)
-		panic("never gets here")
+		offset -= blockSize
+		if (entryNum % width) == (width - 1) {
+			logger.Info("INDIRECT doubled block size", blockSize, "->", blockSize*2,
+				"max=", link.maximumBlockSize)
+			blockSize *= 2
+		}
 	}
+	assert(blockToUse != invalidAddress, "did not find direct or indirect block")
+
+	nextLink := *link
+
+	logger.Infof("Read indirect block 0x%x %d", blockToUse, blockSize)
+	nrows := log2(blockSize) - log2(link.blockSize*uint64(width)) + 1
+	logger.Info("calculated rows=", nrows, "blocksize=", blockSize)
+	h5.readRootBlock(&nextLink, blockToUse, 0, uint16(nrows))
+
+	h5.readLinkData(obj, &nextLink, offset, length, creationOrder, callback)
 }
 
 func (h5 *HDF5) readLinkData(obj *object, link *linkInfo, offset uint64, length uint16,

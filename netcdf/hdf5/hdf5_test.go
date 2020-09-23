@@ -444,43 +444,42 @@ var fills2 = keyValList{
 }
 
 // Set allowBitfields and return the old value
-func setBitfields(val bool) bool {
-	old := allowBitfields
-	allowBitfields = val
-	return old
+func setBitfields(val bool) (prev bool) {
+	prev, allowBitfields = allowBitfields, val
+	return prev
 }
 
 // Set allowReferences and return the old value
-func setReferences(val bool) bool {
-	old := allowReferences
-	allowReferences = val
-	return old
+func setReferences(val bool) (prev bool) {
+	prev, allowReferences = allowReferences, val
+	return prev
 }
 
 // Set parseSbextension and return the old value
-func setSBExtension(val bool) bool {
-	old := parseSBExtension
-	parseSBExtension = val
-	return old
+func setSBExtension(val bool) (prev bool) {
+	if !val {
+		panic("don't disable sb extension")
+	}
+	prev, parseSBExtension = parseSBExtension, val
+	return prev
 }
 
 // Set superblockV3 and return the old value
-func setSuperblockV3(val bool) bool {
-	old := superblockV3
-	if val {
+func setSuperblockV3(val bool) (prev bool) {
+	prev, superblockV3 = superblockV3, val
+	// Parsing V3 superblocks will cause us to run into the undocumanted
+	// V4 datatype.
+	maxDTVersion = dtversionPacked
+	if superblockV3 {
 		maxDTVersion = dtversionV4
-	} else {
-		maxDTVersion = dtversionPacked
 	}
-	superblockV3 = val
-	return old
+	return prev
 }
 
 // Set parseHeapDirectBlock and return the old value
-func setParseHeapDirectBlock(val bool) bool {
-	old := parseHeapDirectBlock
-	parseHeapDirectBlock = val
-	return old
+func setParseHeapDirectBlock(val bool) (prev bool) {
+	parseHeapDirectBlock, prev = val, parseHeapDirectBlock
+	return prev
 }
 
 func makeFill(fill interface{}) api.AttributeMap {

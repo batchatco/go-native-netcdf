@@ -457,9 +457,6 @@ func setReferences(val bool) (prev bool) {
 
 // Set parseSbextension and return the old value
 func setSBExtension(val bool) (prev bool) {
-	if !val {
-		panic("don't disable sb extension")
-	}
 	prev, parseSBExtension = parseSBExtension, val
 	return prev
 }

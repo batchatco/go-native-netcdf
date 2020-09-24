@@ -49,9 +49,93 @@ type unshuffleReader struct {
 	shuffleParam uint32
 }
 
-// newFletcher32reader creates a reader implemting the fletcher32 algorithm.
-// TODO: make this streaming instead of reading bytes up front.
+// Streaming version of a fletcher32 reader
+type fletcher struct {
+	r            io.Reader
+	size         uint64
+	count        uint64
+	sum1         uint32
+	sum2         uint32
+	partial      uint8
+	checksum     uint32
+	readChecksum bool
+}
+
+// newFletcher32reader creates a reader implementing the fletcher32 algorithm.
 func newFletcher32Reader(r io.Reader, size uint64) remReader {
+	assert(size >= 4, "bad size for fletcher")
+	return &fletcher{
+		r:            r,
+		size:         size,
+		count:        0,
+		sum1:         0,
+		sum2:         0,
+		partial:      0,
+		checksum:     0,
+		readChecksum: false}
+}
+
+func (fl *fletcher) Rem() int64 {
+	return int64((fl.size - 4) - fl.count)
+}
+
+func (fl *fletcher) Count() int64 {
+	return int64(fl.count)
+}
+
+func (fl *fletcher) Read(b []byte) (int, error) {
+	thisLen := uint64(len(b))
+	if thisLen+fl.count > fl.size-4 {
+		thisLen = (fl.size - 4) - fl.count
+	}
+	n, err := fl.r.Read(b[:thisLen])
+	if err != nil && err != io.EOF {
+		return 0, err
+	}
+	addToSums := func(val uint16) {
+		fl.sum1 = (fl.sum1 + uint32(val)) % 65535
+		fl.sum2 = (fl.sum1 + fl.sum2) % 65535
+	}
+	for i := 0; i < n; i++ {
+		var val uint16
+		switch {
+		case fl.count%2 == 1:
+			// Previous read left us with an odd count.
+			// Recover the partial read and compute val.
+			val = (uint16(fl.partial) << 8) | uint16(b[i])
+			addToSums(val)
+		case i == n-1:
+			// Can't complete a read, so save the partial.
+			fl.partial = b[i]
+		default:
+			val = (uint16(b[i]) << 8) | uint16(b[i+1])
+			addToSums(val)
+			i++
+		}
+	}
+	fl.count += uint64(n)
+	if fl.count == fl.size-4 {
+		if fl.size%2 == 1 {
+			// Retrieve partial and complete sum as if next byte were zero.
+			val := uint16(fl.partial) << 8
+			addToSums(val)
+		}
+		calcedSum := (uint32(fl.sum2) << 16) | uint32(fl.sum1)
+		if !fl.readChecksum {
+			binary.Read(fl.r, binary.LittleEndian, &fl.checksum)
+		}
+		if calcedSum != fl.checksum {
+			logger.Infof("checksum failure: sum=%#x file sum=%#x\n", calcedSum,
+				fl.checksum)
+			thrower.Throw(ErrFletcherChecksum)
+		}
+	}
+	return n, nil
+}
+
+// oldFletcher32reader creates a reader implementing the fletcher32 algorithm.
+// It is inefficient and is here for testing purposes only.
+func oldFletcher32Reader(r io.Reader, size uint64) remReader {
 	assert(size >= 4, "bad size for fletcher")
 	b := make([]byte, size-4)
 	read(r, b)
@@ -66,7 +150,7 @@ func newFletcher32Reader(r io.Reader, size uint64) remReader {
 	}
 	calcedSum := fletcher32(values)
 	if calcedSum != checksum {
-		logger.Error("calced sum=", calcedSum, "file sum=", checksum)
+		logger.Infof("checksum failure: calced sum=%#x filesum=%#x\n", calcedSum, checksum)
 		thrower.Throw(ErrFletcherChecksum)
 	}
 	return newResetReaderFromBytes(b)
@@ -221,7 +305,8 @@ func unshuffle(val []byte, n uint32) {
 	if n == 1 {
 		return // avoids allocation
 	}
-	// inefficent algorithm because it allocates data
+	// shuffle params are never very large in practice, so this isn't wasteful
+	// of memory.
 	tmp := make([]byte, len(val))
 	nelems := len(val) / int(n)
 	for i := 0; i < int(n); i++ {

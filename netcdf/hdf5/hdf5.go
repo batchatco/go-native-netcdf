@@ -1380,7 +1380,7 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 		}
 		offset -= blockSize
 		if (entryNum % width) == (width - 1) {
-			logger.Info("INDIRECT doubled block size", blockSize, "->", blockSize*2,
+			logger.Warn("INDIRECT doubled block size", blockSize, "->", blockSize*2,
 				"max=", link.maximumBlockSize)
 			blockSize *= 2
 		}
@@ -1419,11 +1419,6 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 	bf := newResetReader(obf, int64(length))
 	version := read8(bf)
 	logger.Infof("* link version=%d", version)
-	if version == 0 {
-		b := make([]byte, bf.Rem())
-		read(bf, b)
-		logger.Fatalf("Bad version 0 rest=0x%x", b)
-	}
 	checkVal(1, version, "Link version must be 1")
 	flags := read8(bf)
 	logger.Infof("* link flags=0x%x (%s)", flags, binaryToString(uint64(flags)))
@@ -2590,11 +2585,6 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 				address = read64(bf)
 				logger.Infof("v4 address=0x%x", address)
 				rem -= 8
-				if rem > 0 {
-					b := make([]byte, rem)
-					read(bf, b)
-					logger.Warnf("%d bytes remaining (not used): %v", rem, b)
-				}
 			default:
 				logger.Infof("Expected an 8-byte address, got a %d-byte one", rem)
 				b := make([]byte, rem)

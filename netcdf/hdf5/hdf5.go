@@ -613,11 +613,12 @@ func (h5 *HDF5) readSuperblock() {
 		h5.checkChecksum(0, 44)
 	}
 	if sbExtension != invalidAddress {
-		logger.Warn("superblock extension not supported")
 		if parseSBExtension {
+			logger.Warn("parsing unsupported superblock extension")
 			obj := newObject()
 			h5.readDataObjectHeader(obj, sbExtension)
 		} else {
+			logger.Warn("superblock extension not supported")
 			thrower.Throw(ErrSuperblock)
 		}
 	}
@@ -2557,7 +2558,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 					filters := read32(bf)
 					logger.Info("filters = ", filters)
 				}
-				fail("single chunk indexing not supported")
+				failError(ErrVersion, "single chunk indexing not supported")
 			case 2:
 				logger.Info("implicit indexing")
 			case 3:
@@ -2573,14 +2574,14 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 				logger.Info("extensible array mb=", maxbits,
 					"ie=", indexElements, "mp=", minPointers, "me=", minElements,
 					"pb=", pageBits)
-				fail("extensible array indexing not supported")
+				failError(ErrVersion, "extensible array indexing not supported")
 			case 5:
 				// btree array indexing is a superblock v3 feature
 				nodeSize := read32(bf)
 				splitPercent := read8(bf)
 				mergePercent := read8(bf)
 				logger.Info("b-tree indexing size=", nodeSize, "split%=", splitPercent, "merge%=", mergePercent)
-				fail("Version 2 B-tree array indexing not supported")
+				failError(ErrVersion, "Version 2 B-tree array indexing not supported")
 			}
 			rem := bf.Rem()
 			var address uint64
@@ -3096,8 +3097,14 @@ func (h5 *HDF5) readDataObjectHeaderV1(obj *object, addr uint64) {
 	bf := h5.newSeek(addr, 16)
 	version := read8(bf)
 	logger.Info("v1 object header version=", version)
-	assertError(version == 1, ErrDataObjectHeaderVersion,
-		fmt.Sprint("only handle version 1, got: ", version))
+	switch version {
+	case 1:
+		break
+	case 0:
+		logger.Warn("Data object header version should be 1, but is zero. Continuing anyway.")
+	default:
+		fail(fmt.Sprintf("Invalid data object header version: %d", version))
+	}
 
 	reserved := read8(bf)
 	checkVal(0, reserved, "reserved")

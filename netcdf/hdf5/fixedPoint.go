@@ -18,6 +18,44 @@ type fixedPointManagerType struct {
 var fixedPointManager = fixedPointManagerType{}
 var _ typeManager = fixedPointManager
 
+func (fixedPointManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	prefix := ""
+	if !attr.signed {
+		prefix = "u"
+	}
+	switch attr.length {
+	case 1:
+		return prefix + "byte"
+	case 2:
+		return prefix + "short"
+	case 4:
+		return prefix + "int"
+	case 8:
+		return prefix + "int64"
+	default:
+		panic("bad int length")
+	}
+}
+
+func (fixedPointManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	prefix := ""
+	if !attr.signed {
+		prefix = "u"
+	}
+	switch attr.length {
+	case 1:
+		return prefix + "int8"
+	case 2:
+		return prefix + "int16"
+	case 4:
+		return prefix + "int32"
+	case 8:
+		return prefix + "int64"
+	default:
+		panic("bad int length")
+	}
+}
+
 func (fixedPointManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	var values interface{}

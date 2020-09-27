@@ -15,6 +15,16 @@ type bitfieldManagerType struct {
 var bitfieldManager = bitfieldManagerType{}
 var _ typeManager = bitfieldManager
 
+func (bitfieldManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	// Not NetCDF
+	return "uchar" // same as uint8
+}
+
+func (bitfieldManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+	// Not NetCDF
+	return "uint8" // bitfield same as uint8
+}
+
 func (bitfieldManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	values := allocInt8s(bf, dimensions, false, nil)

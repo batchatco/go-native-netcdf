@@ -3,6 +3,7 @@ package hdf5
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/batchatco/go-thrower"
 )
@@ -13,6 +14,48 @@ type enumManagerType struct {
 
 var enumManager = enumManagerType{}
 var _ typeManager = enumManager
+
+func (enumManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	assert(len(attr.children) == 1, "enum should have one child")
+	enumAttr := attr.children[0]
+	assert(len(enumAttr.children) == 0, "no recursion")
+	ty := h5.printType(name, enumAttr, origNames)
+	assert(ty != "", "unable to parse enum attr")
+	list := make([]string, len(enumAttr.enumNames))
+	for i, name := range enumAttr.enumNames {
+		list[i] = fmt.Sprintf("\t%s = %v", name, enumAttr.enumValues[i])
+	}
+	interior := strings.Join(list, ",\n")
+	signature := fmt.Sprintf("%s enum {\n%s\n}", ty, interior)
+	namedType := h5.findSignature(signature, name, origNames, h5.printType)
+	if namedType != "" {
+		return namedType
+	}
+	return signature
+}
+
+func (enumManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+	assert(len(attr.children) == 1, "enum should have one child")
+	enumAttr := attr.children[0]
+	assert(len(enumAttr.children) == 0, "no recursion")
+	ty := h5.printGoType(typeName, enumAttr, origNames)
+	assert(ty != "", "unable to parse enum attr")
+	list := make([]string, len(enumAttr.enumNames))
+	for i, enumName := range enumAttr.enumNames {
+		if i == 0 {
+			list[i] = fmt.Sprintf("\t%s %s = %v", enumName, typeName, enumAttr.enumValues[i])
+		} else {
+			list[i] = fmt.Sprintf("\t%s = %v", enumName, enumAttr.enumValues[i])
+		}
+	}
+	interior := strings.Join(list, "\n")
+	signature := fmt.Sprintf("%s\nconst (\n%s\n)\n", ty, interior)
+	namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+	if namedType != "" {
+		return namedType
+	}
+	return signature
+}
 
 func (enumManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {

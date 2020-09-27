@@ -16,6 +16,16 @@ type referenceManagerType struct {
 var referenceManager = referenceManagerType{}
 var _ typeManager = referenceManager
 
+func (referenceManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	// Not NetCDF
+	return "uint64" // reference same as uint64
+}
+
+func (referenceManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	// Not NetCDF
+	return "uint64" // reference same as uint64
+}
+
 func (referenceManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	return h5.allocReferences(bf, dimensions) // already converted
@@ -35,12 +45,7 @@ func (referenceManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, b
 	case 1:
 		break
 	default:
-		if df != nil {
-			b := make([]byte, df.Rem())
-			bf := newResetReader(df, df.Rem())
-			read(bf, b)
-			logger.Infof("dt val=%#x", b)
-		}
+		assert(df == nil, "references can't be attributes")
 		maybeFail(fmt.Sprintf("invalid rtype value: %#b dtlength=%v", rType, attr.length))
 		return
 	}
@@ -51,11 +56,7 @@ func (referenceManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, b
 		return
 	}
 	if !allowReferences {
-		if df != nil {
-			b := make([]byte, df.Rem())
-			read(df, b)
-			logger.Infof("reference value: %#x", b)
-		}
+		assert(df == nil, "references can't be attributes")
 		logger.Infof("References ignored")
 		thrower.Throw(ErrReference)
 	}

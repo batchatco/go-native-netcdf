@@ -13,6 +13,24 @@ type opaqueManagerType struct {
 var opaqueManager = opaqueManagerType{}
 var _ typeManager = opaqueManager
 
+func (opaqueManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	signature := fmt.Sprintf("opaque(%d)", attr.length)
+	namedType := h5.findSignature(signature, name, origNames, h5.printType)
+	if namedType != "" {
+		return namedType
+	}
+	return signature
+}
+
+func (opaqueManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+	signature := fmt.Sprintf("[%d]uint8", attr.length) // TODO
+	namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+	if namedType != "" {
+		return namedType
+	}
+	return signature
+}
+
 func (opaqueManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	cast := h5.cast(*attr)

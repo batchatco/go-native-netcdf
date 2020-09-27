@@ -1,6 +1,7 @@
 package hdf5
 
 import (
+	"fmt"
 	"io"
 	"reflect"
 
@@ -16,29 +17,38 @@ type vlenManagerType struct {
 var vlenManager = vlenManagerType{}
 var _ typeManager = vlenManager
 
-func (vlenManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
-	logger.Info("dimensions=", dimensions)
+func (vlenManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	if attr.vtType == 1 {
 		// It's a string
-		// TODO: use the padding and character set information
-		logger.Info("variable-length string", len(dimensions))
-		return h5.allocStrings(bf, dimensions) // already converted
+		return "string"
 	}
-	logger.Info("variable-length type", typeNames[int(attr.children[0].class)])
-	logger.Info("dimensions=", dimensions, "rem=", bf.(remReader).Rem())
-	cast := h5.cast(*attr)
-	values := h5.allocVariable(bf, dimensions, *attr.children[0], cast)
-	logger.Infof("vl kind %T", values)
-	if cast != nil {
-		return values
+	vAttr := attr.children[0]
+	ty := h5.printType(name, vAttr, origNames)
+	assert(ty != "", "unable to parse vlen attr")
+	signature := fmt.Sprintf("%s(*)", ty)
+	namedType := h5.findSignature(signature, name, origNames, h5.printType)
+	if namedType != "" {
+		return namedType
 	}
-	return convert(values)
+	return signature
 }
 
-func (vlenManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
-	return []byte{0}
+func (vlenManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+	if attr.vtType == 1 {
+		// It's a string
+		return "string"
+	}
+	vAttr := attr.children[0]
+	ty := h5.printGoType(typeName, vAttr, origNames)
+	assert(ty != "", "unable to parse vlen attr")
+	signature := fmt.Sprintf("[]%s", ty)
+	namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+	if namedType != "" {
+		return namedType
+	}
+	return signature
 }
+
 func (vlenManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* variable-length, dtlength=", attr.length,
 		"proplen=", bf.Rem())
@@ -80,6 +90,30 @@ func (vlenManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf rem
 
 	attr.df = newResetReaderSave(df, df.Rem())
 	logger.Infof("Type of this vattr: %T", attr.value)
+}
+
+func (vlenManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+	return []byte{0}
+}
+
+func (vlenManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+	dimensions []uint64) interface{} {
+	logger.Info("dimensions=", dimensions)
+	if attr.vtType == 1 {
+		// It's a string
+		// TODO: use the padding and character set information
+		logger.Info("variable-length string", len(dimensions))
+		return h5.allocStrings(bf, dimensions) // already converted
+	}
+	logger.Info("variable-length type", typeNames[int(attr.children[0].class)])
+	logger.Info("dimensions=", dimensions, "rem=", bf.(remReader).Rem())
+	cast := h5.cast(*attr)
+	values := h5.allocVariable(bf, dimensions, *attr.children[0], cast)
+	logger.Infof("vl kind %T", values)
+	if cast != nil {
+		return values
+	}
+	return convert(values)
 }
 
 func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {

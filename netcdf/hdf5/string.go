@@ -12,6 +12,14 @@ type stringManagerType struct {
 var stringManager = stringManagerType{}
 var _ typeManager = stringManager
 
+func (stringManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	return "string"
+}
+
+func (stringManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	return "string"
+}
+
 func (stringManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	logger.Info("regular string", len(dimensions), "dtlen=", attr.length)

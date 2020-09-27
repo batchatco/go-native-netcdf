@@ -18,6 +18,28 @@ type floatingPointManagerType struct {
 var floatingPointManager = floatingPointManagerType{}
 var _ typeManager = floatingPointManager
 
+func (floatingPointManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	switch attr.length {
+	case 4:
+		return "float"
+	case 8:
+		return "double"
+	default:
+		panic("bad fp length")
+	}
+}
+
+func (floatingPointManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+	switch attr.length {
+	case 4:
+		return "float32"
+	case 8:
+		return "float64"
+	default:
+		panic("bad fp length")
+	}
+}
+
 func (floatingPointManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	var values interface{}

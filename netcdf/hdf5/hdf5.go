@@ -7,7 +7,6 @@
 package hdf5
 
 import (
-	"bytes"
 	"compress/zlib"
 	"encoding/binary"
 	"errors"
@@ -142,6 +141,23 @@ const (
 	// 10
 	typeArray
 )
+
+var dispatch = []typeManager{
+	// 0-4
+	fixedPointManager,
+	floatingPointManager,
+	timeManager,
+	stringManager,
+	bitfieldManager,
+	// 5-9
+	opaqueManager,
+	compoundManager,
+	referenceManager,
+	enumManager,
+	vlenManager,
+	// 10
+	arrayManager,
+}
 
 // data type names
 var typeNames = []string{
@@ -283,6 +299,7 @@ type filter struct {
 	cdv  []uint32
 }
 
+// HDF5 implements api.Group for HDF5
 type HDF5 struct {
 	fname         string
 	fileSize      int64
@@ -328,6 +345,12 @@ type object struct {
 	isGroup          bool
 	creationOrder    uint64
 	attrListIsSorted bool
+}
+
+type typeManager interface {
+	Parse(h5 *HDF5, attr *attribute, bitFields uint32, f remReader, d remReader)
+	FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte
+	Alloc(h5 *HDF5, r io.Reader, attr *attribute, dimensions []uint64) interface{}
 }
 
 var (
@@ -693,7 +716,7 @@ func (h5 *HDF5) readAttributeDirect(obj *object, addr uint64, offset uint64, len
 	h5.readAttribute(obj, bf, creationOrder)
 }
 
-func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount int64, attr *attribute) {
+func (h5 *HDF5) printDatatype(bf remReader, df remReader, objCount int64, attr *attribute) {
 	assert(bf.Rem() >= 8, "short data")
 	b0 := read8(bf)
 	b1 := read8(bf)
@@ -723,470 +746,24 @@ func (h5 *HDF5) printDatatype(obj *object, bf remReader, df remReader, objCount 
 	default:
 		fail(fmt.Sprint("Unknown datatype version: ", dtversion))
 	}
-	vtType := uint8(0)
 	attr.dtversion = dtversion
 	attr.class = dtclass
 	attr.length = dtlength
 	assert(attr.length != 0, "attr length can't be zero")
-	switch dtclass {
-	// TODO: make functions because this is too long
-	case typeFixedPoint:
-		logger.Info("* fixed-point")
-		// Same structure for all versions, no need to check
-		byteOrder := bitFields & 0b1
-		paddingType := (bitFields >> 1) & 0b11
-		signed := (bitFields >> 3) & 0b1
-		attr.signed = signed == 0b1
-		logger.Infof("byteOrder=%d paddingType=%d, signed=%d", byteOrder, paddingType, signed)
-		if byteOrder != 0 {
-			attr.endian = binary.BigEndian
-		} else {
-			attr.endian = binary.LittleEndian
-		}
-		assertError(paddingType == 0, ErrFixedPoint,
-			fmt.Sprintf("fixed point padding must be zero 0x%x", bitFields))
-		logger.Info("len properties", bf.Rem())
-		assert(bf.Rem() > 0, "properties should be here")
-		bitOffset := read16(bf)
-		bitPrecision := read16(bf)
-		logger.Infof("bitOffset=%d bitPrecision=%d blen=%d", bitOffset, bitPrecision,
-			bf.Count())
-		assertError(bitOffset == 0, ErrFixedPoint, "bit offset must be zero")
-		switch dtlength {
-		case 1, 2, 4, 8:
-			break
-		default:
-			thrower.Throw(ErrFixedPoint)
-		}
-		if df == nil {
-			logger.Infof("no data")
-			break
-		}
-		if df.Rem() >= int64(dtlength) {
-			attr.df = newResetReaderSave(df, df.Rem())
-		}
-
-	case typeFloatingPoint:
-		logger.Info("* floating-point")
-		assertError(dtversion == 1, ErrFloatingPoint, "Only support version 1 of float")
-		endian := ((bitFields >> 5) & 0b10) | (bitFields & 0b1)
-		switch endian {
-		case 0:
-			attr.endian = binary.LittleEndian
-		case 1:
-			attr.endian = binary.BigEndian
-		default:
-			fail(fmt.Sprint("unhandled byte order: ", endian))
-		}
-		loPad := (bitFields & 0b10) == 0b10
-		assertError(!loPad, ErrFloatingPoint, "low pad not supported")
-		hiPad := (bitFields & 0b100) == 0b100
-		assertError(!hiPad, ErrFloatingPoint, "high pad not supported")
-		intPad := (bitFields & 0b1000) == 0b1000
-		assertError(!intPad, ErrFloatingPoint, "internal pad not supported")
-		mantissaNormalization := (bitFields >> 4) & 0b11
-		logger.Info("* mantissa normalization:", mantissaNormalization)
-		sign := (bitFields >> 8) & 0b11111111
-		logger.Info("* sign: ", sign)
-		assert(bf.Rem() >= 12,
-			fmt.Sprint("Properties need to be at least 12 bytes, was ", bf.Rem()))
-		bitOffset := read16(bf)
-		bitPrecision := read16(bf)
-		exponentLocation := read8(bf)
-		exponentSize := read8(bf)
-		mantissaLocation := read8(bf)
-		mantissaSize := read8(bf)
-		exponentBias := read32(bf)
-
-		logger.Infof("* bitOffset=%d bitPrecision=%d exponentLocation=%d exponentSize=%d mantissaLocation=%d mantissaSize=%d exponentBias=%d",
-			bitOffset,
-			bitPrecision,
-			exponentLocation,
-			exponentSize,
-			mantissaLocation,
-			mantissaSize,
-			exponentBias)
-		assertError(bitOffset == 0, ErrFloatingPoint, "bit offset must be zero")
-		assertError(mantissaNormalization == 2, ErrFloatingPoint, "mantissa normalization must be 2")
-		switch dtlength {
-		case 4:
-			assertError(sign == 31, ErrFloatingPoint, "float32 sign location must be 31")
-			assertError(bitPrecision == 32, ErrFloatingPoint, "float32 precision must be 32")
-			assertError(exponentLocation == 23, ErrFloatingPoint, "float32 exponent location must be 23")
-			assertError(exponentSize == 8, ErrFloatingPoint, "float32 exponent size must be 8")
-			assertError(exponentBias == 127, ErrFloatingPoint, "float32 exponent bias must be 127")
-		case 8:
-			assertError(sign == 63, ErrFloatingPoint, "float64 sign location must be 63")
-			assertError(bitPrecision == 64, ErrFloatingPoint, "float64 precision must be 64")
-			assertError(exponentLocation == 52, ErrFloatingPoint, "float64 exponent location must be 52")
-			assertError(exponentSize == 11, ErrFloatingPoint, "float64 exponent size must be 11")
-			assertError(exponentBias == 1023, ErrFloatingPoint, "float64 exponent bias must be 1023")
-		default:
-			logger.Error("bad dtlenth for fp", dtlength)
-			thrower.Throw(ErrFloatingPoint)
-		}
-		if df == nil {
-			logger.Infof("no data")
-			break
-		}
-		logger.Info("data len", df.Rem())
-		assert(df.Rem() >= int64(dtlength), "floating-point data short")
-		attr.df = newResetReaderSave(df, df.Rem())
-
-	case typeTime:
-		// uncomment the following to enable
-		if parseTime {
-			logger.Info("time, len(data)=", df.Rem())
-			var endian binary.ByteOrder
-			if bitFields == 0 {
-				endian = binary.LittleEndian
-				logger.Info("time little-endian")
-			} else {
-				endian = binary.BigEndian
-				logger.Infof("time big-endian")
-			}
-			var bp int16
-			err := binary.Read(bf, endian, &bp)
-			thrower.ThrowIfError(err)
-			logger.Info("time bit precision=", bp)
-			if df.Rem() > 0 {
-				fail("time")
-			}
-		} else {
-			logger.Fatal("time code has never been executed before and does nothing")
-		}
-	case typeString:
-		logger.Info("string")
-		checkVal(1, dtversion, "Only support version 1 of string")
-		padding := bitFields & 0b1111
-		set := (bitFields >> 3) & 0b1111
-		if df == nil {
-			logger.Infof("no data")
-			break
-		}
-		b := make([]byte, df.Rem())
-		read(df, b)
-		logger.Infof("* string padding=%d set=%d b[%s]=%s", padding, set,
-			attr.name, getString(b))
-		attr.value = getString(b)
-
-	case typeBitField:
-		endian := hasFlag8(uint8(bitFields), 0)
-		switch endian {
-		case false:
-			attr.endian = binary.LittleEndian
-		case true:
-			attr.endian = binary.BigEndian
-		}
-		loPad := hasFlag8(uint8(bitFields), 1)
-		assert(!loPad, "low pad not supported")
-		hiPad := hasFlag8(uint8(bitFields), 2)
-		assert(!hiPad, "high pad not supported")
-		bitOffset := read16(bf)
-		checkVal(0, bitOffset, "bit offset must be zero")
-		bitPrecision := read16(bf)
-		logger.Infof("BitField offset %d, precision %d", bitOffset, bitPrecision)
-		if df == nil || df.Rem() == 0 {
-			logger.Infof("no data")
-			break
-		}
-		logger.Info("bitfield rem: ", df.Rem())
-		if !allowBitfields {
-			if df != nil {
-				b := make([]byte, df.Rem())
-				read(df, b)
-				logger.Infof("bitfield value: %#x", b)
-			}
-			logger.Infof("Bitfields ignored")
-			thrower.Throw(ErrBitfield)
-		}
-		if df.Rem() >= int64(dtlength) {
-			attr.df = newResetReaderSave(df, df.Rem())
-		}
-
-	case typeOpaque:
-		if bf.Rem() == 0 {
-			logger.Info("No properties for opaque")
-			break
-		}
-		plen := int(bf.Rem())
-		tag := make([]byte, plen)
-		// not sure what the purpose of the tag is
-		read(bf, tag)
-		stringTag := getString(tag)
-		logger.Info("tag=", stringTag)
-		taglen := len(stringTag)
-		for i := taglen; i < plen; i++ {
-			checkVal(0, tag[i],
-				fmt.Sprint("reserved byte should be zero: ", i))
-		}
-		if df != nil && df.Rem() >= int64(dtlength) {
-			attr.df = newResetReaderSave(df, df.Rem())
-		}
-
-	case typeCompound: // compound
-		logger.Info("* compound")
-		logger.Info("dtversion", dtversion)
-		assert(dtversion >= 1 && dtversion <= maxDTVersion,
-			fmt.Sprintln("compound datatype version", dtversion, "not supported"))
-		nmembers := bitFields & 0b11111111
-		logger.Info("* number of members:", nmembers)
-
-		padding := 7
-		switch dtversion {
-		case dtversionStandard, dtversionArray:
-			break
-		default:
-			padding = 0
-		}
-		rem := int64(0)
-		if df != nil {
-			rem = df.Rem()
-		}
-		for i := 0; i < int(nmembers); i++ {
-			name := readNullTerminatedName(bf, padding)
-			logger.Info(i, "compound name=", name)
-			var byteOffset uint32
-			var nbytes uint8
-			switch dtversion {
-			case dtversionStandard, dtversionArray:
-				nbytes = 4
-			case dtversionPacked, dtversionV4:
-				switch {
-				case dtlength < 256:
-					nbytes = 1
-				case dtlength < 65536:
-					nbytes = 2
-				case dtlength < 16777216:
-					nbytes = 3
-				default:
-					nbytes = 4
-				}
-			}
-			byteOffset = uint32(readEnc(bf, nbytes))
-			logger.Infof("[%d] byteOffset=0x%x", nbytes, byteOffset)
-			var compoundAttribute attribute
-			compoundAttribute.name = name
-			compoundAttribute.byteOffset = byteOffset
-			if dtversion == dtversionStandard {
-				dimensionality := read8(bf)
-				logger.Info("dimensionality", dimensionality)
-				checkZeroes(bf, 3)
-				perm := read32(bf)
-				logger.Info("permutation", perm)
-				if perm != 0 {
-					maybeFail(
-						fmt.Sprint("permutation field should be zero, was ", perm))
-				}
-				reserved := read32(bf)
-				checkVal(0, reserved, "reserved dt")
-				compoundAttribute.dimensions = make([]uint64, 4)
-				for i := 0; i < 4; i++ {
-					dsize := read32(bf)
-					logger.Info("dimension", i, "size", dsize)
-					compoundAttribute.dimensions[i] = uint64(dsize)
-				}
-				compoundAttribute.dimensions = compoundAttribute.dimensions[:dimensionality]
-			}
-
-			logger.Infof("%d compound before: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
-			h5.printDatatype(obj, bf, nil, 0, &compoundAttribute)
-			logger.Infof("%d compound after: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
-			logger.Infof("%d compound dtlength", compoundAttribute.length)
-			attr.children = append(attr.children, &compoundAttribute)
-		}
-		logger.Info("Compound length is", attr.length)
-		if rem > 0 {
-			attrSize := calcAttrSize(attr)
-			logger.Info("compound alloced", df.Count(), df.Rem()+df.Count(),
-				"attrSize=", attrSize)
-			var bff io.Reader
-			bff = df
-			if attrSize > df.Rem() {
-				logger.Info("Adding fill value reader")
-				bff = makeFillValueReader(obj, df, attrSize)
-			}
-			attr.df = newResetReaderSave(bff, bff.(remReader).Rem())
-			logger.Info("rem=", df.Rem(), "nread=", bff.(remReader).Count())
-		}
-		logger.Info("Finished compound", "rem=", bf.Rem())
-
-	case typeReference:
-		logger.Info("* reference")
-		checkVal(1, dtversion, "Only support version 1 of reference")
-		rType := bitFields & 0b1111
-		switch rType {
-		case 0:
-			break
-		case 1:
-			break
-		default:
-			if df != nil {
-				b := make([]byte, df.Rem())
-				bf := newResetReader(df, df.Rem())
-				read(bf, b)
-				logger.Infof("dt val=%#x", b)
-			}
-			maybeFail(fmt.Sprintf("invalid rtype value: %#b dtlength=%v", rType, dtlength))
-			return
-		}
-		logger.Info("* rtype=object")
-		warnAssert((bitFields & ^uint32(0b1111)) == 0, "reserved must be zero")
-		if df == nil {
-			logger.Infof("no data")
-			break
-		}
-		if !allowReferences {
-			if df != nil {
-				b := make([]byte, df.Rem())
-				read(df, b)
-				logger.Infof("reference value: %#x", b)
-			}
-			logger.Infof("References ignored")
-			thrower.Throw(ErrReference)
-		}
-		if df.Rem() >= int64(dtlength) {
-			attr.df = newResetReaderSave(df, df.Rem())
-		}
-
-	case typeEnumerated:
-		logger.Info("blen begin", bf.Count())
-		var enumAttr attribute
-		h5.printDatatype(obj, bf, nil, 0, &enumAttr)
-		logger.Info("blen now", bf.Count())
-		numberOfMembers := bitFields & 0b11111111
-		logger.Info("number of members=", numberOfMembers)
-		names := make([]string, numberOfMembers)
-		padding := 7
-		switch dtversion {
-		case dtversionStandard:
-		case dtversionArray:
-			break
-		default:
-			padding = 0
-		}
-		for i := uint32(0); i < numberOfMembers; i++ {
-			name := readNullTerminatedName(bf, padding)
-			names[i] = name
-		}
-		enumAttr.enumNames = names
-		logger.Info("enum names:", names)
-		assert(enumAttr.class == typeFixedPoint, "only fixed-point enums supported")
-		switch enumAttr.length {
-		case 1, 2, 4, 8:
-			break
-		default:
-			thrower.Throw(ErrFixedPoint)
-		}
-		switch dtlength {
-		case 1, 2, 4, 8:
-			break
-		default:
-			thrower.Throw(ErrFixedPoint)
-		}
-		values := make([]interface{}, numberOfMembers)
-		for i := uint32(0); i < numberOfMembers; i++ {
-			values[i] = h5.getDataAttr(bf, enumAttr)
-			switch values[i].(type) {
-			case uint64, int64:
-			case uint32, int32:
-			case uint16, int16:
-			case uint8, int8:
-			default:
-				// Other enumeration types are not supported in NetCDF
-				fail("unknown enumeration type")
-			}
-		}
-		enumAttr.enumValues = values
-		logger.Info("enum values:", values)
-		attr.children = []*attribute{&enumAttr}
-		if df != nil && df.Rem() > 0 {
-			// Read away some bytes
-			attrDf := newResetReaderSave(df, df.Rem())
-			attr.df = makeFillValueReader(obj, attrDf, calcAttrSize(attr))
-		}
-
-	case typeVariableLength:
-		logger.Info("* variable-length, dtlength=", dtlength,
-			"proplen=", bf.Rem())
-		//checkVal(1, dtversion, "Only support version 1 of variable-length")
-		vtType = uint8(bitFields & 0b1111) // XXX: we will need other bits too for decoding
-		vtPad := uint8(bitFields>>4) & 0b1111
-		// The value of pad here may not have anything to do with reading data, just
-		// writing.  So we could accept all of them
-		assert(vtPad == 0 || vtPad == 1, "only do v0 and v1 versions of VL padding")
-		vtCset := (bitFields >> 8) & 0b1111
-		logger.Infof("type=%d paddingtype=%d cset=%d", vtType, vtPad, vtCset)
-		switch vtType {
-		case 0:
-			checkVal(0, vtCset, "cset when not string")
-			logger.Infof("sequence")
-		case 1:
-			if vtCset == 0 {
-				logger.Infof("string (ascii)")
-			} else {
-				logger.Infof("string (utf8)")
-			}
-		default:
-			fail("unknown variable-length type")
-		}
-		var variableAttr attribute
-		h5.printDatatype(obj, bf, nil, 0, &variableAttr)
-		logger.Info("variable class", variableAttr.class,
-			"vtType", vtType)
-		attr.children = append(attr.children, &variableAttr)
-		attr.vtType = vtType
-		rem := int64(0)
-		if df != nil {
-			rem = df.Rem()
-		}
-		if rem < int64(dtlength) {
-			logger.Infof("variable-length short data: %d vs. %d", rem, dtlength)
-			break
-		}
-		logger.Info("len data is", rem, "dlen", df.Count())
-
-		attr.df = newResetReaderSave(df, df.Rem())
-		logger.Infof("Type of this vattr: %T", attr.value)
-
-	case typeArray:
-		logger.Info("Array")
-		dimensionality := read8(bf)
-		logger.Info("dimensionality", dimensionality)
-		switch dtversion {
-		case dtversionStandard, dtversionArray:
-			checkZeroes(bf, 3)
-		}
-		dimensions := make([]uint64, dimensionality)
-		for i := 0; i < int(dimensionality); i++ {
-			dimensions[i] = uint64(read32(bf))
-			logger.Info("dim=", dimensions[i])
-		}
-		logger.Info("dimensions=", dimensions)
-		if dtversion < 3 {
-			for i := 0; i < int(dimensionality); i++ {
-				perm := read32(bf)
-				logger.Info("perm=", perm)
-			}
-		}
-		var arrayAttr attribute
-		h5.printDatatype(obj, bf, nil, 0, &arrayAttr)
-		arrayAttr.dimensions = dimensions
-		attr.children = append(attr.children, &arrayAttr)
-		if df != nil && df.Rem() > 0 {
-			logger.Info("Using an array in an attribute")
-			attr.df = newResetReaderSave(df, df.Rem())
-		}
-
-	default:
-		fail(fmt.Sprint("bogus type not handled: ", dtclass))
-	}
+	getDispatch(int(dtclass)).Parse(h5, attr, bitFields, bf, df)
 	if df != nil && df.Rem() > 0 {
 		// It is normal for there to be extra data, not sure why yet.
 		// It does not break any unit tests, so the extra data seems unnecessary.
 		logger.Info("did not read all data", df.Rem(), typeNames[dtclass])
 		skip(df, df.Rem())
 	}
+}
+
+func getDispatch(class int) typeManager {
+	if class < 0 || class >= len(dispatch) {
+		fail(fmt.Sprintf("Unknown class: %d", class))
+	}
+	return dispatch[class]
 }
 
 func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) {
@@ -1270,7 +847,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 	logger.Info("sizeRem=", bf.Rem())
 	if !sharedType {
 		pf := newResetReaderFromBytes(dtb)
-		h5.printDatatype(obj, pf, bf, count, attr)
+		h5.printDatatype(pf, bf, count, attr)
 	} else {
 		checkVal(datatypeSize, 10, "datatype size must be 10 for shared")
 		bff := newResetReaderFromBytes(dtb)
@@ -2670,7 +2247,7 @@ func (h5 *HDF5) readDatatype(obj *object, bf io.Reader) *attribute {
 	logger.Info("print datatype with properties from chunk")
 	var objAttr attribute
 	pf := newResetReader(bf, bf.(remReader).Rem())
-	h5.printDatatype(obj, pf, nil, 0, &objAttr)
+	h5.printDatatype(pf, nil, 0, &objAttr)
 	return &objAttr
 }
 
@@ -3268,149 +2845,6 @@ func (h5 *HDF5) dumpObject(obj *object) {
 	}
 }
 
-func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Type) interface{} {
-	if cast == nil {
-		if signed {
-			cast = reflect.TypeOf(int8(0))
-		} else {
-			cast = reflect.TypeOf(uint8(0))
-		}
-	}
-	if len(dimLengths) == 0 {
-		value := read8(bf)
-		return reflect.ValueOf(value).Convert(cast).Interface()
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		err := binary.Read(bf, binary.LittleEndian, values)
-		thrower.ThrowIfError(err)
-		return values
-	}
-	vals := makeSlices(cast, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocInt8s(bf, dimLengths[1:], signed, cast)))
-	}
-	return vals.Interface()
-}
-
-func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
-	cast reflect.Type) interface{} {
-	if cast == nil {
-		if signed {
-			cast = reflect.TypeOf(int16(0))
-		} else {
-			cast = reflect.TypeOf(uint16(0))
-		}
-	}
-	if len(dimLengths) == 0 {
-		var value uint16
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
-		return reflect.ValueOf(value).Convert(cast).Interface()
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
-		return values
-	}
-	vals := makeSlices(cast, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocShorts(bf, dimLengths[1:], endian, signed,
-			cast)))
-	}
-	return vals.Interface()
-}
-
-func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
-	cast reflect.Type) interface{} {
-	if cast == nil {
-		if signed {
-			cast = reflect.TypeOf(int32(0))
-		} else {
-			cast = reflect.TypeOf(uint32(0))
-		}
-	}
-	if len(dimLengths) == 0 {
-		var value uint32
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
-		return reflect.ValueOf(value).Convert(cast).Interface()
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
-		return values
-	}
-	vals := makeSlices(cast, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocInts(bf, dimLengths[1:], endian, signed,
-			cast)))
-	}
-	return vals.Interface()
-}
-
-func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
-	cast reflect.Type) interface{} {
-	if cast == nil {
-		if signed {
-			cast = reflect.TypeOf(int64(0))
-		} else {
-			cast = reflect.TypeOf(uint64(0))
-		}
-	}
-	if len(dimLengths) == 0 {
-		var value uint64
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
-		return reflect.ValueOf(value).Convert(cast).Interface()
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
-		return values
-	}
-	vals := makeSlices(cast, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocInt64s(bf, dimLengths[1:], endian, signed,
-			cast)))
-	}
-	return vals.Interface()
-}
-
-func allocOpaque(bf io.Reader, dimLengths []uint64, length uint32,
-	cast reflect.Type) interface{} {
-	if len(dimLengths) == 0 {
-		if cast != nil {
-			b := reflect.New(cast)
-			read(bf, b.Interface())
-			return reflect.Indirect(b).Interface()
-		}
-		b := make([]byte, length)
-		read(bf, b)
-		return opaque(b)
-	}
-	thisDim := dimLengths[0]
-	var ty reflect.Type
-	if cast != nil {
-		ty = cast
-	} else {
-		ty = reflect.TypeOf(opaque{})
-	}
-	vals := makeSlices(ty, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		val := allocOpaque(bf, dimLengths[1:], length, cast)
-		vals.Index(int(i)).Set(reflect.ValueOf(val))
-	}
-	return vals.Interface()
-}
-
 func makeSlices(ty reflect.Type, dimLengths []uint64) reflect.Value {
 	sliceType := reflect.SliceOf(ty)
 	for i := 1; i < len(dimLengths); i++ {
@@ -3426,48 +2860,6 @@ func makeStringSlices(dimLengths []uint64) reflect.Value {
 		sliceType = reflect.SliceOf(sliceType)
 	}
 	return reflect.MakeSlice(sliceType, int(dimLengths[0]), int(dimLengths[0]))
-}
-
-func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) interface{} {
-	if len(dimLengths) == 0 {
-		var value float32
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
-		return value
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		values := make([]float32, thisDim)
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
-		return values
-	}
-	vals := makeSlices(reflect.TypeOf(float32(0)), dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocFloats(bf, dimLengths[1:], endian)))
-	}
-	return vals.Interface()
-}
-
-func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) interface{} {
-	if len(dimLengths) == 0 {
-		var value float64
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
-		return value
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		values := make([]float64, thisDim)
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
-		return values
-	}
-	vals := makeSlices(reflect.TypeOf(float64(0)), dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(allocDoubles(bf, dimLengths[1:], endian)))
-	}
-	return vals.Interface()
 }
 
 // check: whether or not to fail if padded bytes are not zeroed.  They
@@ -3499,267 +2891,6 @@ func padBytesCheck(obf io.Reader, pad32 int, round bool,
 		}
 	}
 	return success
-}
-
-func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute,
-	cast reflect.Type) interface{} {
-	length := int64(attr.length)
-	class := typeNames[attr.class]
-	logger.Info(bf.(remReader).Count(), "Alloc compounds", dimLengths, class,
-		"length=", length,
-		"nchildren=", len(attr.children), "rem=", bf.(remReader).Rem())
-	dtlen := uint64(0)
-	for i := range attr.children {
-		clen := uint64(calcAttrSize(attr.children[i]))
-		dtlen += clen
-	}
-	if len(dimLengths) == 0 {
-		rem := bf.(remReader).Rem()
-		if length > rem {
-			logger.Warn("not enough room", length, rem)
-		} else {
-			rem = length
-		}
-		cbf := newResetReader(bf, rem)
-		varray := make([]compoundField, len(attr.children))
-		for i, c := range attr.children {
-			byteOffset := c.byteOffset
-			clen := uint64(calcAttrSize(c))
-			if int64(byteOffset) > cbf.Count() {
-				skipLen := int64(byteOffset) - cbf.Count()
-				logger.Info("skip to offset", skipLen)
-				skip(cbf, int64(skipLen))
-			}
-			ccbf := newResetReader(cbf, int64(clen))
-			varray[i].Val = h5.getDataAttr(ccbf, *c)
-			varray[i].Name = c.name
-		}
-		if cbf.Count() < length {
-			rem := length - cbf.Count()
-			skip(cbf, int64(rem))
-		}
-		if cast != nil {
-			fields := make([]reflect.StructField, len(attr.children))
-			for i := range fields {
-				fields[i] = cast.Field(i)
-			}
-			stp := reflect.New(reflect.StructOf(fields))
-			st := reflect.Indirect(stp)
-			for i := range varray {
-				assertError(st.Field(i).CanSet(), ErrNonExportedField,
-					"can't set non-exported field")
-				st.Field(i).Set(reflect.ValueOf(varray[i].Val))
-			}
-			return st.Interface()
-		}
-		logger.Info(bf.(remReader).Count(), "return compound count=", bf.(remReader).Count())
-		return compound(varray)
-	}
-	var t reflect.Type
-	if cast != nil {
-		t = cast
-	} else {
-		var x compound
-		t = reflect.TypeOf(x)
-	}
-	vals2 := makeSlices(t, dimLengths)
-	thisDim := dimLengths[0]
-	for i := uint64(0); i < thisDim; i++ {
-		if !vals2.Index(int(i)).CanSet() {
-			thrower.Throw(ErrNonExportedField)
-		}
-		vals2.Index(int(i)).Set(reflect.ValueOf(h5.allocCompounds(bf, dimLengths[1:], attr, cast)))
-	}
-	return vals2.Interface()
-}
-
-func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute,
-	cast reflect.Type) interface{} {
-	logger.Info("allocVariable", dimLengths, "count=", bf.(remReader).Count(),
-		"rem=", bf.(remReader).Rem())
-	if len(dimLengths) == 0 {
-		var length uint32
-		var addr uint64
-		var index uint32
-		err := binary.Read(bf, binary.LittleEndian, &length)
-		thrower.ThrowIfError(err)
-		err = binary.Read(bf, binary.LittleEndian, &addr)
-		thrower.ThrowIfError(err)
-		err = binary.Read(bf, binary.LittleEndian, &index)
-		thrower.ThrowIfError(err)
-		logger.Infof("length %d(0x%x) addr 0x%x index %d(0x%x)\n",
-			length, length, addr, index, index)
-		var val0 interface{}
-		var s []byte
-		var bff remReader
-		if length == 0 {
-			// If there's no value to read, we fake one to get the type.
-			attr.dimensions = nil
-			s = make([]byte, attr.length)
-			bff = newResetReaderFromBytes(s)
-		} else {
-			bff, _ = h5.readGlobalHeap(addr, index)
-		}
-		var t reflect.Type
-		val0 = h5.getDataAttr(bff, attr)
-		if cast != nil {
-			t = cast.Elem()
-		} else {
-			t = reflect.ValueOf(val0).Type()
-		}
-		sl := reflect.MakeSlice(reflect.SliceOf(t), int(length), int(length))
-		if cast != nil {
-			sl = sl.Convert(cast)
-		}
-		if length > 0 {
-			sl.Index(0).Set(reflect.ValueOf(val0))
-			for i := 1; i < int(length); i++ {
-				val := h5.getDataAttr(bff, attr)
-				sl.Index(i).Set(reflect.ValueOf(val))
-			}
-		}
-		return sl.Interface()
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		// For scalars, this can be faster using binary.Read
-		vals := make([]interface{}, thisDim)
-		for i := uint64(0); i < thisDim; i++ {
-			logger.Info("Alloc inner", i, "of", thisDim)
-			vals[i] = h5.allocVariable(bf, dimLengths[1:], attr, cast)
-		}
-		assert(vals[0] != nil, "we never return nil")
-		t := reflect.ValueOf(vals[0]).Type()
-		vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))
-		for i := 0; i < int(thisDim); i++ {
-			vals2.Index(i).Set(reflect.ValueOf(vals[i]))
-		}
-		return vals2.Interface()
-	}
-
-	// TODO: we sometimes know the type (float32) and can do something smarter here
-
-	vals := make([]interface{}, thisDim)
-	for i := uint64(0); i < thisDim; i++ {
-		logger.Info("Alloc outer", i, "of", thisDim)
-		vals[i] = h5.allocVariable(bf, dimLengths[1:], attr, cast)
-	}
-	t := reflect.ValueOf(vals[0]).Type()
-	vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))
-	for i := 0; i < int(thisDim); i++ {
-		vals2.Index(i).Set(reflect.ValueOf(vals[i]))
-	}
-	return vals2.Interface()
-}
-
-// Regular strings are fixed length, as opposed to variable length ones
-func (h5 *HDF5) allocRegularStrings(bf io.Reader, dimLengths []uint64,
-	dtlen uint32) interface{} {
-	if len(dimLengths) == 0 {
-		b := make([]byte, dtlen)
-		read(bf, b)
-		return getString(b)
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		b := make([]byte, thisDim)
-		read(bf, b)
-		return getString(b)
-	}
-	vals := makeStringSlices(dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(h5.allocRegularStrings(bf, dimLengths[1:], dtlen)))
-	}
-	return vals.Interface()
-}
-
-func (h5 *HDF5) allocReferences(bf io.Reader, dimLengths []uint64) interface{} {
-	if len(dimLengths) == 0 {
-		var addr uint64
-		err := binary.Read(bf, binary.LittleEndian, &addr)
-		thrower.ThrowIfError(err)
-		logger.Infof("Reference addr 0x%x", addr)
-		return addr
-	}
-
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		values := make([]uint64, thisDim)
-		for i := range values {
-			var addr uint64
-			err := binary.Read(bf, binary.LittleEndian, &addr)
-			thrower.ThrowIfError(err)
-			logger.Infof("Reference addr[%d] 0x%x", i, addr)
-			values[i] = addr
-		}
-		return values
-	}
-	vals := makeSlices(reflect.TypeOf(uint64(0)), dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(h5.allocReferences(bf, dimLengths[1:])))
-	}
-	return vals.Interface()
-}
-
-func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {
-	logger.Info("allocStrings", dimLengths)
-	if len(dimLengths) == 0 {
-		// alloc one scalar
-		var length uint32
-		var addr uint64
-		var index uint32
-
-		var err error
-		err = binary.Read(bf, binary.LittleEndian, &length)
-		thrower.ThrowIfError(err)
-		err = binary.Read(bf, binary.LittleEndian, &addr)
-		thrower.ThrowIfError(err)
-		err = binary.Read(bf, binary.LittleEndian, &index)
-		thrower.ThrowIfError(err)
-		logger.Infof("String length %d (0x%x), addr 0x%x, index %d (0x%x)",
-			length, length, addr, index, index)
-		if length == 0 {
-			return ""
-		}
-		bff, sz := h5.readGlobalHeap(addr, index)
-		s := make([]byte, sz)
-		read(bff, s)
-		logger.Info("string=", string(s))
-		return getString(s) // TODO: should be s[:length]
-	}
-	thisDim := dimLengths[0]
-	if len(dimLengths) == 1 {
-		values := make([]string, thisDim)
-		for i := uint64(0); i < thisDim; i++ {
-			var length uint32
-			var addr uint64
-			var index uint32
-
-			err := binary.Read(bf, binary.LittleEndian, &length)
-			thrower.ThrowIfError(err)
-			err = binary.Read(bf, binary.LittleEndian, &addr)
-			thrower.ThrowIfError(err)
-			err = binary.Read(bf, binary.LittleEndian, &index)
-			thrower.ThrowIfError(err)
-			logger.Infof("String length %d (0x%x), addr 0x%x, index %d (0x%x)",
-				length, length, addr, index, index)
-			if length == 0 {
-				values[i] = ""
-				continue
-			}
-			bff, sz := h5.readGlobalHeap(addr, index)
-			s := make([]byte, sz)
-			read(bff, s)
-			values[i] = getString(s) // TODO: should be s[:length]
-		}
-		return values
-	}
-	ty := reflect.TypeOf("")
-	vals := makeSlices(ty, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(h5.allocStrings(bf, dimLengths[1:])))
-	}
-	return vals.Interface()
 }
 
 func readAll(bf io.Reader, b []byte) (uint64, error) {
@@ -3950,77 +3081,7 @@ func makeFillValueReader(obj *object, bf io.Reader, length int64) io.Reader {
 		} else {
 			objFillValue = []byte{0}
 		}
-
-		switch obj.objAttr.class {
-		case typeFixedPoint:
-			switch obj.objAttr.length {
-			case 1:
-				if undefinedFillValue {
-					fv := math.MinInt8 + 1
-					objFillValue = []byte{byte(fv)}
-				}
-			case 2:
-				if undefinedFillValue {
-					fv := int16(math.MinInt16 + 1)
-					var bb bytes.Buffer
-					err := binary.Write(&bb, obj.objAttr.endian, fv)
-					thrower.ThrowIfError(err)
-					objFillValue = bb.Bytes()
-				}
-			case 4:
-				if undefinedFillValue {
-					fv := int32(math.MinInt32 + 1)
-					var bb bytes.Buffer
-					err := binary.Write(&bb, obj.objAttr.endian, fv)
-					thrower.ThrowIfError(err)
-					objFillValue = bb.Bytes()
-				}
-			case 8:
-				if undefinedFillValue {
-					fv := int64(math.MinInt64 + 1)
-					var bb bytes.Buffer
-					err := binary.Write(&bb, obj.objAttr.endian, fv)
-					thrower.ThrowIfError(err)
-					objFillValue = bb.Bytes()
-				}
-			}
-		// Floating point uses NaN for undefined fill values, not -1
-		case typeFloatingPoint:
-			switch obj.objAttr.length {
-			case 4:
-				var fv float32
-				if undefinedFillValue {
-					fv = float32(math.NaN())
-				}
-				var buf bytes.Buffer
-				err := binary.Write(&buf, obj.objAttr.endian, &fv)
-				thrower.ThrowIfError(err)
-				objFillValue = buf.Bytes()
-				logger.Info("fill value encoded", objFillValue)
-			case 8:
-				var fv float64
-				if undefinedFillValue {
-					fv = math.NaN()
-				}
-				var buf bytes.Buffer
-				err := binary.Write(&buf, obj.objAttr.endian, &fv)
-				thrower.ThrowIfError(err)
-				objFillValue = buf.Bytes()
-				logger.Info("fill value encoded", objFillValue)
-			default:
-				thrower.Throw(ErrInternal)
-			}
-
-		// Strings can't have negative lengths or references, so override undefined
-		case typeString:
-			// return all zeros to get zero lengths
-			objFillValue = []byte{0}
-
-		// Strings can't have negative lengths or references, so override undefined
-		case typeVariableLength:
-			objFillValue = []byte{0}
-
-		}
+		objFillValue = getDispatch(int(obj.objAttr.class)).FillValue(obj, objFillValue, undefinedFillValue)
 	}
 	if len(objFillValue) == 0 {
 		logger.Error("zero sized fill value")
@@ -4093,7 +3154,6 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 	for i, v := range attr.dimensions {
 		logger.Info("dimension", i, "=", v)
 	}
-	var values interface{}
 	logger.Info("getDataAttr, class", typeNames[attr.class],
 		"length", attr.length, "rem", bf.(remReader).Rem(), "dims=", attr.dimensions)
 	dimensions := attr.dimensions
@@ -4105,131 +3165,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		}
 		dimensions = nd
 	}
-	switch attr.class {
-	case typeBitField:
-		values = allocInt8s(bf, dimensions, false, nil)
-		return values
-
-	case typeFixedPoint: // fixed-point
-		switch attr.length {
-		case 1:
-			values = allocInt8s(bf, dimensions, attr.signed, nil)
-		case 2:
-			values = allocShorts(bf, dimensions, attr.endian, attr.signed, nil)
-		case 4:
-			values = allocInts(bf, dimensions, attr.endian, attr.signed, nil)
-		case 8:
-			values = allocInt64s(bf, dimensions, attr.endian, attr.signed, nil)
-		default:
-			fail(fmt.Sprintf("bad size fixed: %d (%v)", attr.length, attr))
-		}
-		return values // already converted
-
-	case typeFloatingPoint: // floating-point
-		switch attr.length {
-		case 4:
-			values = allocFloats(bf, dimensions, attr.endian)
-			logger.Info("done alloc floats, rem=", bf.(remReader).Rem())
-		case 8:
-			values = allocDoubles(bf, dimensions, attr.endian)
-		default:
-			fail(fmt.Sprintf("bad size float: %d", attr.length))
-		}
-		return values // already converted
-
-	case typeString: // string
-		logger.Info("regular string", len(dimensions), "dtlen=", attr.length)
-		return h5.allocRegularStrings(bf, dimensions, attr.length) // already converted
-
-	case typeVariableLength:
-		logger.Info("dimensions=", dimensions)
-		if attr.vtType == 1 {
-			// It's a string
-			// TODO: use the padding and character set information
-			logger.Info("variable-length string", len(dimensions))
-			return h5.allocStrings(bf, dimensions) // already converted
-		}
-		logger.Info("variable-length type", typeNames[int(attr.children[0].class)])
-		logger.Info("dimensions=", dimensions, "rem=", bf.(remReader).Rem())
-		cast := h5.cast(attr)
-		values = h5.allocVariable(bf, dimensions, *attr.children[0], cast)
-		logger.Infof("vl kind %T", values)
-		if cast != nil {
-			return values
-		}
-		return convert(values)
-
-	case typeCompound:
-		cast := h5.cast(attr)
-		values = h5.allocCompounds(bf, dimensions, attr, cast)
-		return values
-
-	case typeReference:
-		return h5.allocReferences(bf, dimensions) // already converted
-
-	case typeEnumerated:
-		enumAttr := attr.children[0]
-		cast := h5.cast(*enumAttr)
-		switch enumAttr.class {
-		case typeFixedPoint:
-			switch enumAttr.length {
-			case 1:
-				values = allocInt8s(bf, dimensions, enumAttr.signed, cast)
-			case 2:
-				values = allocShorts(bf, dimensions, enumAttr.endian, enumAttr.signed, cast)
-			case 4:
-				values = allocInts(bf, dimensions, enumAttr.endian, enumAttr.signed, cast)
-			case 8:
-				values = allocInt64s(bf, dimensions, enumAttr.endian, enumAttr.signed, cast)
-			default:
-				fail(fmt.Sprintf("bad size enum fixed: %d", enumAttr.length))
-			}
-		case typeFloatingPoint:
-			if floatEnums {
-				// Floating point enums are not part of NetCDF.
-				switch enumAttr.length {
-				case 4:
-					values = allocFloats(bf, dimensions, enumAttr.endian)
-				case 8:
-					values = allocDoubles(bf, dimensions, enumAttr.endian)
-				default:
-					fail(fmt.Sprintf("bad size enum float: %d", attr.length))
-				}
-				break
-			}
-			fallthrough
-		default:
-			fail(fmt.Sprint("can't handle this class: ", enumAttr.class))
-		}
-		if cast != nil {
-			return values
-		}
-		return enumerated{values}
-
-	case typeArray:
-		logger.Info("orig dimensions=", attr.dimensions)
-		logger.Info("Array length=", attr.length)
-		logger.Info("Array dimensions=", dimensions)
-		arrayAttr := attr.children[0]
-		logger.Info("child dimensions=", arrayAttr.dimensions)
-		logger.Info("childlength=", arrayAttr.length)
-		newDimensions := append(dimensions, arrayAttr.dimensions...)
-		arrayAttr.dimensions = newDimensions
-		logger.Info("new dimensions=", newDimensions)
-		cbf := bf.(remReader)
-		logger.Info(cbf.Count(), "child length", arrayAttr.length)
-		logger.Info(cbf.Count(), "array", "class", arrayAttr.class)
-		return h5.getDataAttr(cbf, *arrayAttr)
-
-	case typeOpaque:
-		cast := h5.cast(attr)
-		return allocOpaque(bf, dimensions, attr.length, cast)
-
-	default:
-		logger.Fatal("unhandled type, getDataAttr", attr.class)
-	}
-	fail("we should have converted everything already")
-	panic("silence warning")
+	return getDispatch(int(attr.class)).Alloc(h5, bf, &attr, dimensions)
 }
 
 func (h5 *HDF5) cast(attr attribute) reflect.Type {
@@ -4451,7 +3387,7 @@ func (h5 *HDF5) GetType(typeName string) (string, bool) {
 	return sig, true
 }
 
-// GettGoType gets the Go description of the type and sets the bool to true if found.
+// GetGoType gets the Go description of the type and sets the bool to true if found.
 func (h5 *HDF5) GetGoType(typeName string) (string, bool) {
 	obj, has := h5.groupObject.children[typeName]
 	if !has {
@@ -4850,8 +3786,9 @@ func (h5 *HDF5) printGoType(typeName string, attr *attribute, origNames map[stri
 	panic("never gets here")
 }
 
-func (h5 *HDF5) parseAttr(a *attribute) {
+func (h5 *HDF5) parseAttr(obj *object, a *attribute) {
 	if a.df != nil {
+		a.df = makeFillValueReader(obj, a.df, calcAttrSize(a))
 		logger.Infof("Reparsing attribute %s %s %p", a.name, typeNames[a.class], a)
 		assert(!a.shared, "shared attr unexpected here")
 		// very hacky
@@ -4947,7 +3884,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 	logger.Infof("Getting dimensions addr 0x%x", obj.addr)
 	dimNames := make([]string, 0)
 	for i := range obj.attrlist {
-		h5.parseAttr(obj.attrlist[i])
+		h5.parseAttr(obj, obj.attrlist[i])
 		a := obj.attrlist[i]
 		if a.name != "DIMENSION_LIST" {
 			continue
@@ -4977,7 +3914,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 	f = func(ob *object) {
 		logger.Infof("obj %s 0x%x", ob.name, ob.addr)
 		for i := range ob.attrlist {
-			h5.parseAttr(ob.attrlist[i])
+			h5.parseAttr(ob, ob.attrlist[i])
 			a := ob.attrlist[i]
 			if a.name != "REFERENCE_LIST" {
 				continue
@@ -4996,7 +3933,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 	}
 	f(h5.rootObject)
 	for i := range obj.attrlist {
-		h5.parseAttr(obj.attrlist[i])
+		h5.parseAttr(obj, obj.attrlist[i])
 		a := obj.attrlist[i]
 		switch a.name {
 		case "NAME":
@@ -5117,7 +4054,7 @@ func (h5 *HDF5) sortAttrList(obj *object) {
 		return
 	}
 	for i := range obj.attrlist {
-		h5.parseAttr(obj.attrlist[i])
+		h5.parseAttr(obj, obj.attrlist[i])
 	}
 	sort.Slice(obj.attrlist, func(i, j int) bool {
 		return obj.attrlist[i].creationOrder < obj.attrlist[j].creationOrder

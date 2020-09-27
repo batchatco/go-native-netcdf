@@ -235,6 +235,7 @@ func TestListTypes(t *testing.T) {
 }
 
 func TestGoTypes(t *testing.T) {
+	defer SetLogLevel(SetLogLevel(3))
 	type expected map[string]string
 	expAll := map[string]expected{
 		// Precede the type name with "type"

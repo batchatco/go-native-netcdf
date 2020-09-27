@@ -1,11 +1,10 @@
 package hdf5
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"reflect"
-
-	"encoding/binary"
 
 	"github.com/batchatco/go-thrower"
 )

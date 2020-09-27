@@ -11,11 +11,9 @@ import (
 	"math"
 	"os"
 	"os/exec"
-
+	"path"
 	"strings"
 	"testing"
-
-	"path"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 )

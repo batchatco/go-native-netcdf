@@ -26,7 +26,7 @@ func (stringManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return allocRegularStrings(bf, dimensions, attr.length) // already converted
 }
 
-func (stringManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (stringManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	// return all zeros to get zero lengths
 	return []byte{0}
 }

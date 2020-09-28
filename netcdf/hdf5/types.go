@@ -5,6 +5,7 @@ import (
 	"io"
 )
 
+// Each type implements this interface.
 type typeManager interface {
 	Parse(h5 *HDF5, attr *attribute, bitFields uint32, f remReader, d remReader)
 	DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte
@@ -37,11 +38,13 @@ func getDispatch(class uint8) typeManager {
 	return dispatch[class]
 }
 
+// Parse is a wrapper around the table lookup of the type to get the interface
 func Parse(class uint8, h5 *HDF5, attr *attribute, bitFields uint32, f remReader, d remReader) {
 	getDispatch(class).Parse(h5, attr, bitFields, f, d)
 }
 
-func FillValue(class uint8, obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+// DefaultFillValue is a wrapper around the table lookup of the type to get the interface
+func DefaultFillValue(class uint8, obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return getDispatch(class).DefaultFillValue(obj, objFillValue, undefinedFillValue)
 }
 

@@ -19,12 +19,12 @@ var (
 func (compoundManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	members := make([]string, len(attr.children))
 	for i, cattr := range attr.children {
-		ty := h5.printType(name, cattr, origNames)
+		ty := TypeString(cattr.class, h5, name, cattr, origNames)
 		members[i] = fmt.Sprintf("\t%s %s;\n", ty, cattr.name)
 	}
 	interior := strings.Join(members, "")
 	signature := fmt.Sprintf("compound {\n%s}", interior)
-	namedType := h5.findSignature(signature, name, origNames, h5.printType)
+	namedType := h5.findSignature(signature, name, origNames, TypeString)
 	if namedType != "" {
 		return namedType
 	}
@@ -34,12 +34,12 @@ func (compoundManagerType) TypeString(h5 *HDF5, name string, attr *attribute, or
 func (compoundManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	members := make([]string, len(attr.children))
 	for i, cattr := range attr.children {
-		ty := h5.printGoType(typeName, cattr, origNames)
+		ty := GoTypeString(cattr.class, h5, typeName, cattr, origNames)
 		members[i] = fmt.Sprintf("\t%s %s", cattr.name, ty)
 	}
 	interior := strings.Join(members, "\n")
 	signature := fmt.Sprintf("struct {\n%s\n}\n", interior)
-	namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
 	if namedType != "" {
 		return namedType
 	}
@@ -53,7 +53,7 @@ func (compoundManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return values
 }
 
-func (compoundManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (compoundManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 

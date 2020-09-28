@@ -55,7 +55,7 @@ func (floatingPointManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return values // already converted
 }
 
-func (floatingPointManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (floatingPointManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	switch obj.objAttr.length {
 	case 4:
 		var fv float32

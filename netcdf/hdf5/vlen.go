@@ -22,10 +22,10 @@ func (vlenManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNa
 		return "string"
 	}
 	vAttr := attr.children[0]
-	ty := h5.printType(name, vAttr, origNames)
+	ty := TypeString(vAttr.class, h5, name, vAttr, origNames)
 	assert(ty != "", "unable to parse vlen attr")
 	signature := fmt.Sprintf("%s(*)", ty)
-	namedType := h5.findSignature(signature, name, origNames, h5.printType)
+	namedType := h5.findSignature(signature, name, origNames, TypeString)
 	if namedType != "" {
 		return namedType
 	}
@@ -38,10 +38,10 @@ func (vlenManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, 
 		return "string"
 	}
 	vAttr := attr.children[0]
-	ty := h5.printGoType(typeName, vAttr, origNames)
+	ty := GoTypeString(vAttr.class, h5, typeName, vAttr, origNames)
 	assert(ty != "", "unable to parse vlen attr")
 	signature := fmt.Sprintf("[]%s", ty)
-	namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
 	if namedType != "" {
 		return namedType
 	}
@@ -91,7 +91,7 @@ func (vlenManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf rem
 	logger.Infof("Type of this vattr: %T", attr.value)
 }
 
-func (vlenManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (vlenManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return []byte{0}
 }
 

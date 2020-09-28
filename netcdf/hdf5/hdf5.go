@@ -142,31 +142,6 @@ const (
 	typeArray
 )
 
-type typeManager interface {
-	Parse(h5 *HDF5, attr *attribute, bitFields uint32, f remReader, d remReader)
-	FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte
-	Alloc(h5 *HDF5, r io.Reader, attr *attribute, dimensions []uint64) interface{}
-	TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string
-	GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string
-}
-
-var dispatch = []typeManager{
-	// 0-4
-	fixedPointManager,
-	floatingPointManager,
-	timeManager,
-	stringManager,
-	bitfieldManager,
-	// 5-9
-	opaqueManager,
-	compoundManager,
-	referenceManager,
-	enumManager,
-	vlenManager,
-	// 10
-	arrayManager,
-}
-
 // data type names
 var typeNames = []string{
 	"typeFixedPoint",
@@ -752,20 +727,13 @@ func (h5 *HDF5) printDatatype(bf remReader, df remReader, objCount int64, attr *
 	attr.class = dtclass
 	attr.length = dtlength
 	assert(attr.length != 0, "attr length can't be zero")
-	getDispatch(int(dtclass)).Parse(h5, attr, bitFields, bf, df)
+	Parse(dtclass, h5, attr, bitFields, bf, df)
 	if df != nil && df.Rem() > 0 {
 		// It is normal for there to be extra data, not sure why yet.
 		// It does not break any unit tests, so the extra data seems unnecessary.
 		logger.Info("did not read all data", df.Rem(), typeNames[dtclass])
 		skip(df, df.Rem())
 	}
-}
-
-func getDispatch(class int) typeManager {
-	if class < 0 || class >= len(dispatch) {
-		fail(fmt.Sprintf("Unknown class: %d", class))
-	}
-	return dispatch[class]
 }
 
 func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) {
@@ -3084,7 +3052,7 @@ func makeFillValueReader(obj *object, bf io.Reader, length int64) io.Reader {
 		} else {
 			objFillValue = []byte{0}
 		}
-		objFillValue = getDispatch(int(obj.objAttr.class)).FillValue(obj, objFillValue, undefinedFillValue)
+		objFillValue = DefaultFillValue(obj.objAttr.class, obj, objFillValue, undefinedFillValue)
 	}
 	if len(objFillValue) == 0 {
 		logger.Error("zero sized fill value")
@@ -3168,7 +3136,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		}
 		dimensions = nd
 	}
-	return getDispatch(int(attr.class)).Alloc(h5, bf, &attr, dimensions)
+	return Alloc(attr.class, h5, bf, &attr, dimensions)
 }
 
 func (h5 *HDF5) cast(attr attribute) reflect.Type {
@@ -3177,7 +3145,7 @@ func (h5 *HDF5) cast(attr attribute) reflect.Type {
 	for name := range h5.registrations {
 		origNames[name] = true
 	}
-	ty := h5.printGoType(varName, &attr, origNames)
+	ty := GoTypeString(attr.class, h5, varName, &attr, origNames)
 	assert(ty != "", "did not calculate go type")
 	has := false
 	var proto interface{}
@@ -3222,7 +3190,7 @@ loop:
 				assert(has, fmt.Sprint("couldn't find ", tailType))
 				origNames := map[string]bool{}
 				origNames[tailType] = true
-				elemType = h5.printGoType(tailType, obj.objAttr, origNames)
+				elemType = GoTypeString(obj.objAttr.class, h5, tailType, obj.objAttr, origNames)
 			}
 			sig := fmt.Sprintf("[]%s", elemType)
 			if sig == ty {
@@ -3245,7 +3213,7 @@ loop:
 					assert(has, fmt.Sprint("couldn't find ", tailType))
 					origNames := map[string]bool{}
 					origNames[tailType] = true
-					fType = h5.printGoType(tailType, obj.objAttr, origNames)
+					fType = GoTypeString(obj.objAttr.class, h5, tailType, obj.objAttr, origNames)
 				}
 				fields = append(fields, fmt.Sprintf("\t%s %s", field.Name, fType))
 			}
@@ -3318,7 +3286,7 @@ func (h5 *HDF5) findGlobalAttrType(attrName string) string {
 			continue
 		}
 		origNames := map[string]bool{}
-		base := h5.printType(attrName, attr, origNames)
+		base := TypeString(attr.class, h5, attrName, attr, origNames)
 		dims := ""
 		if len(attr.dimensions) == 1 && attr.dimensions[0] == 1 {
 		} else {
@@ -3338,7 +3306,7 @@ func (h5 *HDF5) findGlobalAttrGoType(attrName string) string {
 			continue
 		}
 		origNames := map[string]bool{}
-		base := h5.printGoType(attrName, attr, origNames)
+		base := GoTypeString(attr.class, h5, attrName, attr, origNames)
 		dims := ""
 		if len(attr.dimensions) == 1 && attr.dimensions[0] == 1 {
 		} else {
@@ -3358,7 +3326,7 @@ func (h5 *HDF5) findType(varName string) string {
 		return ""
 	}
 	origNames := map[string]bool{varName: true}
-	return h5.printType(varName, obj.objAttr, origNames)
+	return TypeString(obj.objAttr.class, h5, varName, obj.objAttr, origNames)
 }
 
 func (h5 *HDF5) getTypeObj(typeName string) (*object, bool) {
@@ -3386,7 +3354,7 @@ func (h5 *HDF5) GetType(typeName string) (string, bool) {
 		return "", false
 	}
 	origNames := map[string]bool{typeName: true}
-	sig := h5.printType(typeName, obj.objAttr, origNames)
+	sig := TypeString(obj.objAttr.class, h5, typeName, obj.objAttr, origNames)
 	return sig, true
 }
 
@@ -3410,7 +3378,7 @@ func (h5 *HDF5) GetGoType(typeName string) (string, bool) {
 		return "", false
 	}
 	origNames := map[string]bool{typeName: true}
-	sig := h5.printGoType(typeName, obj.objAttr, origNames)
+	sig := GoTypeString(obj.objAttr.class, h5, typeName, obj.objAttr, origNames)
 	return fmt.Sprintf("type %s %s", typeName, sig), true
 }
 
@@ -3519,7 +3487,7 @@ func (h5 *HDF5) GetDimension(name string) (uint64, bool) {
 }
 
 func (h5 *HDF5) findSignature(signature string, name string, origNames map[string]bool,
-	printer func(name string, attr *attribute, origNames map[string]bool) string) string {
+	printer func(class uint8, h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string) string {
 	if h5.groupObject == nil {
 		return ""
 	}
@@ -3556,21 +3524,13 @@ func (h5 *HDF5) findSignature(signature string, name string, origNames map[strin
 			continue
 		}
 		origNames[varName] = true
-		sig := printer(name, obj.objAttr, origNames)
+		sig := printer(obj.objAttr.class, h5, name, obj.objAttr, origNames)
 		origNames[varName] = false
 		if sig != "" && sig == signature {
 			return obj.name
 		}
 	}
 	return ""
-}
-
-func (h5 *HDF5) printType(name string, attr *attribute, origNames map[string]bool) string {
-	return getDispatch(int(attr.class)).TypeString(h5, name, attr, origNames)
-}
-
-func (h5 *HDF5) printGoType(typeName string, attr *attribute, origNames map[string]bool) string {
-	return getDispatch(int(attr.class)).GoTypeString(h5, typeName, attr, origNames)
 }
 
 func (h5 *HDF5) parseAttr(obj *object, a *attribute) {
@@ -3804,9 +3764,9 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 	dims := h5.getDimensions(found)
 	attrs := h5.getAttributes(found.attrlist)
 	origNames := map[string]bool{varName: true}
-	ty := h5.printType(varName, found.objAttr, origNames)
+	ty := TypeString(found.objAttr.class, h5, varName, found.objAttr, origNames)
 	origNames = map[string]bool{varName: true}
-	goTy := h5.printGoType(varName, found.objAttr, origNames)
+	goTy := GoTypeString(found.objAttr.class, h5, varName, found.objAttr, origNames)
 	return internal.NewSlicer(getSlice, d, dims, attrs, ty, goTy), nil
 }
 

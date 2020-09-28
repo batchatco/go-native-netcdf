@@ -15,7 +15,7 @@ var (
 
 func (opaqueManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	signature := fmt.Sprintf("opaque(%d)", attr.length)
-	namedType := h5.findSignature(signature, name, origNames, h5.printType)
+	namedType := h5.findSignature(signature, name, origNames, TypeString)
 	if namedType != "" {
 		return namedType
 	}
@@ -24,7 +24,7 @@ func (opaqueManagerType) TypeString(h5 *HDF5, name string, attr *attribute, orig
 
 func (opaqueManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	signature := fmt.Sprintf("[%d]uint8", attr.length) // TODO
-	namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
 	if namedType != "" {
 		return namedType
 	}
@@ -37,7 +37,7 @@ func (opaqueManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return allocOpaque(bf, dimensions, attr.length, cast)
 }
 
-func (opaqueManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (opaqueManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 

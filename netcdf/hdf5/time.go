@@ -31,7 +31,7 @@ func (timeManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute, dimensions
 	return nil
 }
 
-func (timeManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (timeManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	fail("time")
 	return objFillValue
 }

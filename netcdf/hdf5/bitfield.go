@@ -30,7 +30,7 @@ func (bitfieldManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return values
 }
 
-func (bitfieldManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (bitfieldManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 

@@ -74,7 +74,7 @@ func (fixedPointManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return values // already converted
 }
 
-func (fixedPointManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (fixedPointManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	switch obj.objAttr.length {
 	case 1:
 		if undefinedFillValue {

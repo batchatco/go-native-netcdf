@@ -31,7 +31,7 @@ func (referenceManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return h5.allocReferences(bf, dimensions) // already converted
 }
 
-func (referenceManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (referenceManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 

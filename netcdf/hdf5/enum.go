@@ -19,7 +19,7 @@ func (enumManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNa
 	assert(len(attr.children) == 1, "enum should have one child")
 	enumAttr := attr.children[0]
 	assert(len(enumAttr.children) == 0, "no recursion")
-	ty := h5.printType(name, enumAttr, origNames)
+	ty := TypeString(enumAttr.class, h5, name, enumAttr, origNames)
 	assert(ty != "", "unable to parse enum attr")
 	list := make([]string, len(enumAttr.enumNames))
 	for i, name := range enumAttr.enumNames {
@@ -27,7 +27,7 @@ func (enumManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNa
 	}
 	interior := strings.Join(list, ",\n")
 	signature := fmt.Sprintf("%s enum {\n%s\n}", ty, interior)
-	namedType := h5.findSignature(signature, name, origNames, h5.printType)
+	namedType := h5.findSignature(signature, name, origNames, TypeString)
 	if namedType != "" {
 		return namedType
 	}
@@ -38,7 +38,7 @@ func (enumManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, 
 	assert(len(attr.children) == 1, "enum should have one child")
 	enumAttr := attr.children[0]
 	assert(len(enumAttr.children) == 0, "no recursion")
-	ty := h5.printGoType(typeName, enumAttr, origNames)
+	ty := GoTypeString(enumAttr.class, h5, typeName, enumAttr, origNames)
 	assert(ty != "", "unable to parse enum attr")
 	list := make([]string, len(enumAttr.enumNames))
 	for i, enumName := range enumAttr.enumNames {
@@ -50,7 +50,7 @@ func (enumManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, 
 	}
 	interior := strings.Join(list, "\n")
 	signature := fmt.Sprintf("%s\nconst (\n%s\n)\n", ty, interior)
-	namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
 	if namedType != "" {
 		return namedType
 	}
@@ -99,7 +99,7 @@ func (enumManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return enumerated{values}
 }
 
-func (enumManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (enumManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 

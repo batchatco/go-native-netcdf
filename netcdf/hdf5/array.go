@@ -15,7 +15,7 @@ var (
 
 func (arrayManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	arrayAttr := attr.children[0]
-	ty := h5.printType(name, arrayAttr, origNames)
+	ty := TypeString(arrayAttr.class, h5, name, arrayAttr, origNames)
 	assert(ty != "", "unable to parse array attr")
 	dStr := make([]string, len(arrayAttr.dimensions))
 	for i, d := range arrayAttr.dimensions {
@@ -23,14 +23,14 @@ func (arrayManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origN
 	}
 	dims := strings.Join(dStr, ",")
 	signature := fmt.Sprintf("%s(%s)", ty, dims)
-	namedType := h5.findSignature(signature, name, origNames, h5.printType)
+	namedType := h5.findSignature(signature, name, origNames, TypeString)
 	assert(namedType == "", "arrays are not named types")
 	return signature
 }
 
 func (arrayManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	arrayAttr := attr.children[0]
-	ty := h5.printGoType(typeName, arrayAttr, origNames)
+	ty := GoTypeString(arrayAttr.class, h5, typeName, arrayAttr, origNames)
 	assert(ty != "", "unable to parse array attr")
 	dStr := make([]string, len(arrayAttr.dimensions))
 	for i, d := range arrayAttr.dimensions {
@@ -38,7 +38,7 @@ func (arrayManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute,
 	}
 	dims := strings.Join(dStr, "")
 	signature := fmt.Sprintf("%s%s", dims, ty)
-	namedType := h5.findSignature(signature, typeName, origNames, h5.printGoType)
+	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
 	assert(namedType == "", "arrays are not named types")
 	return signature
 }
@@ -60,7 +60,7 @@ func (arrayManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return h5.getDataAttr(cbf, *arrayAttr)
 }
 
-func (arrayManagerType) FillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (arrayManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 

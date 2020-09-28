@@ -109,9 +109,9 @@ var (
 	ErrArrays                  = errors.New("arrays not supported")
 	ErrExternal                = errors.New("external data files not supported")
 	ErrFloatingPoint           = errors.New("non-standard floating point not handled")
-
-	ErrReference        = errors.New("unsupported reference type")
-	ErrNonExportedField = errors.New("can't assign to non-exported field")
+	ErrFixedPoint              = errors.New("non-standard fixed-point not handled")
+	ErrReference               = errors.New("unsupported reference type")
+	ErrNonExportedField        = errors.New("can't assign to non-exported field")
 )
 
 // Various filters on data

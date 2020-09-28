@@ -109,9 +109,9 @@ var (
 	ErrArrays                  = errors.New("arrays not supported")
 	ErrExternal                = errors.New("external data files not supported")
 	ErrFloatingPoint           = errors.New("non-standard floating point not handled")
-	ErrFixedPoint              = errors.New("non-standard fixed-point not handled")
-	ErrReference               = errors.New("unsupported reference type")
-	ErrNonExportedField        = errors.New("can't assign to non-exported field")
+
+	ErrReference        = errors.New("unsupported reference type")
+	ErrNonExportedField = errors.New("can't assign to non-exported field")
 )
 
 // Various filters on data
@@ -949,7 +949,7 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 	// now try indirect blocks
 	logger.Infof("Using indirect blocks offset=0x%x", offset)
 	blockSize *= 2
-	//blockSize = link.blockSize
+	// blockSize = link.blockSize
 	for entryNum, block := range link.iBlock {
 		logger.Infof("Trying block 0x%x offset=0x%x", block, offset)
 		if offset < blockSize && block != invalidAddress {
@@ -1124,7 +1124,7 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 	for i := 0; i < int(numRec); i++ {
 		logger.Infof("reading record %d of %d", i, numRec)
 		switch ty {
-		case 5: //for indexing the ‘name’ field for links in indexed groups.
+		case 5: // for indexing the ‘name’ field for links in indexed groups.
 			logger.Info("Name field for links in indexed groups")
 			hash := read32(bf)
 			// heap ID
@@ -2333,8 +2333,8 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		assert(uint64(size) <= (chunkSize-uint64(nReadSave)),
 			fmt.Sprint("too big: ", size, chunkSize, nReadSave))
 		if hasFlag8(hFlags, 1) {
-			//var d = make([]byte, size)
-			//read(bf, d)
+			// var d = make([]byte, size)
+			// read(bf, d)
 			f := newResetReader(bf, int64(size))
 			length := read16(f)
 			logger.Info("shared message length", length)
@@ -2440,8 +2440,8 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 				return string(b)
 			}
 			year := get(4)    // 4
-			month := get(2)   //6
-			day := get(2)     //8
+			month := get(2)   // 6
+			day := get(2)     // 8
 			hour := get(2)    // 10
 			minute := get(2)  // 12
 			second := get(2)  // 14
@@ -3014,7 +3014,8 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		thisSeg := &segment{
 			offset: offset + skipBegin,
 			length: dsLength - (skipBegin + skipEnd),
-			r:      bf}
+			r:      bf,
+		}
 		if int64(thisSeg.offset+thisSeg.length) > h5.fileSize {
 			if int64(thisSeg.offset) >= h5.fileSize {
 				thisSeg.r = makeFillValueReader(obj, nil, int64(thisSeg.length))
@@ -3751,7 +3752,8 @@ func (h5 *HDF5) GetVariable(varName string) (av *api.Variable, err error) {
 	return &api.Variable{
 			Values:     data,
 			Dimensions: dims,
-			Attributes: attrs},
+			Attributes: attrs,
+		},
 		nil
 }
 

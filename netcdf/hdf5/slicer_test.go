@@ -16,12 +16,14 @@ func TestSlicer(t *testing.T) {
 		{0, 1, 2, 3, 4},
 		{5, 6, 6, 8, 9},
 		{10, 11, 12, 13, 14},
-		{15, 16, 17, 18, 19}}
+		{15, 16, 17, 18, 19},
+	}
 	contents := keyValList{
 		{"tid", "", api.Variable{
 			Values:     tidValues,
 			Attributes: nilMap,
-			Dimensions: []string{"lat", "lon"}}},
+			Dimensions: []string{"lat", "lon"},
+		}},
 	}
 
 	// Now read and verify it
@@ -49,13 +51,15 @@ func TestSlicer(t *testing.T) {
 			got := api.Variable{
 				Values:     slice,
 				Dimensions: slicer.Dimensions(),
-				Attributes: slicer.Attributes()}
+				Attributes: slicer.Attributes(),
+			}
 			tid := contents[0]
 			exp := keyValList{
 				{tid.name, "byte", api.Variable{
 					Values:     tidValues[i : i+sliceSize],
 					Dimensions: tid.val.Dimensions,
-					Attributes: tid.val.Attributes}},
+					Attributes: tid.val.Attributes,
+				}},
 			}
 			if !exp.check(t, "tid", baseType, got, true) {
 				t.Error("fail")

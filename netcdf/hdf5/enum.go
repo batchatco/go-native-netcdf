@@ -8,12 +8,12 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
-type enumManagerType struct {
-	typeManager
-}
+type enumManagerType struct{}
 
-var enumManager = enumManagerType{}
-var _ typeManager = enumManager
+var (
+	enumManager             = enumManagerType{}
+	_           typeManager = enumManager
+)
 
 func (enumManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	assert(len(attr.children) == 1, "enum should have one child")

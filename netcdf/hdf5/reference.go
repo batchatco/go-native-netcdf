@@ -9,12 +9,12 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
-type referenceManagerType struct {
-	typeManager
-}
+type referenceManagerType struct{}
 
-var referenceManager = referenceManagerType{}
-var _ typeManager = referenceManager
+var (
+	referenceManager             = referenceManagerType{}
+	_                typeManager = referenceManager
+)
 
 func (referenceManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF

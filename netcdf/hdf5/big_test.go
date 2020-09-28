@@ -169,19 +169,23 @@ func BenchmarkTestBig(b *testing.B) {
 		{"lat", "double", api.Variable{
 			Values:     []float64{5},
 			Attributes: nilMap,
-			Dimensions: []string{"lat"}}},
+			Dimensions: []string{"lat"},
+		}},
 		{"lon", "double", api.Variable{
 			Values:     []float64{7},
 			Attributes: nilMap,
-			Dimensions: []string{"lon"}}},
+			Dimensions: []string{"lon"},
+		}},
 		{"elevation", "short", api.Variable{
 			Values: [][]int8{
 				{0, 1, 2, 3, 4},
 				{0, 1, 2, 3, 4},
 				{0, 1, 2, 3, 4},
-				{0, 1, 2, 3, 4}},
+				{0, 1, 2, 3, 4},
+			},
 			Attributes: nilMap,
-			Dimensions: []string{"lat", "lon"}}},
+			Dimensions: []string{"lat", "lon"},
+		}},
 	}
 	defer nc.Close()
 	checkAllSlicer(b, nc, exp)

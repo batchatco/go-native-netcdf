@@ -72,7 +72,8 @@ func newFletcher32Reader(r io.Reader, size uint64) remReader {
 		sum2:         0,
 		partial:      0,
 		checksum:     0,
-		readChecksum: false}
+		readChecksum: false,
+	}
 }
 
 func (fl *fletcher) Rem() int64 {
@@ -174,14 +175,16 @@ func newResetReaderFromBytes(b []byte) remReader {
 	ret := &resetReader{
 		lr:    &io.LimitedReader{R: file, N: size},
 		size:  size,
-		bytes: b}
+		bytes: b,
+	}
 	return ret
 }
 
 func newResetReader(file io.Reader, size int64) remReader {
 	ret := &resetReader{
 		lr:   &io.LimitedReader{R: file, N: size},
-		size: size}
+		size: size,
+	}
 	return ret
 }
 
@@ -196,14 +199,16 @@ func newResetReaderOffset(file *raFile, size int64, offset uint64) remReader {
 	bf := bufio.NewReader(ra)
 	ret := &resetReader{
 		lr:   &io.LimitedReader{R: bf, N: size},
-		size: size}
+		size: size,
+	}
 	return ret
 }
 
 func newRaFile(file io.ReadSeeker) *raFile {
 	return &raFile{
 		rcFile:      newRefCountedFile(file),
-		seekPointer: 0}
+		seekPointer: 0,
+	}
 }
 
 func (f *raFile) Close() error {
@@ -213,14 +218,16 @@ func (f *raFile) Close() error {
 func (f *raFile) seekAt(offset int64) *raFile {
 	return &raFile{
 		rcFile:      f.rcFile,
-		seekPointer: offset}
+		seekPointer: offset,
+	}
 }
 
 func (f *raFile) dup() *raFile {
 	f.rcFile.reference()
 	return &raFile{
 		rcFile:      f.rcFile,
-		seekPointer: f.seekPointer}
+		seekPointer: f.seekPointer,
+	}
 }
 
 func (f *raFile) Read(p []byte) (int, error) {

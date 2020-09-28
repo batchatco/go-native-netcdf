@@ -18,8 +18,10 @@ import (
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 )
 
-const ncDir = "/home/bat/src/netcdf/"
-const h5Dir = "/home/bat/src/hdf5/"
+const (
+	ncDir = "/home/bat/src/netcdf/"
+	h5Dir = "/home/bat/src/hdf5/"
+)
 
 var logThisFile = map[string]bool{
 	//"single_latest.h5": true,
@@ -255,7 +257,7 @@ func convertCommon(t *testing.T, dir string, suffix string) {
 			if logThisFile[baseName] {
 				t.Log("logging on", baseName)
 				defer SetLogLevel(SetLogLevel(3))
-				//defer thrower.SetCatching(thrower.SetCatching(thrower.DontCatch))
+				// defer thrower.SetCatching(thrower.SetCatching(thrower.DontCatch))
 			}
 			t.Log("TEST:", file)
 			nc, err := openFile(file)
@@ -312,7 +314,7 @@ func convertCommon(t *testing.T, dir string, suffix string) {
 						}
 						for _, k := range vr.Attributes.Keys() {
 							a, ok := vr.Attributes.Get(k)
-							//t.Logf("Attribute: %v value: %#v", k, a)
+							// t.Logf("Attribute: %v value: %#v", k, a)
 							_ = a
 							if !ok {
 								logit("get attr failed", file, k)
@@ -327,7 +329,7 @@ func convertCommon(t *testing.T, dir string, suffix string) {
 							logit("get group", file, group, err.Error())
 							break
 						}
-						//t.Log("dump group", group)
+						// t.Log("dump group", group)
 						dumpGroup(nc2)
 					}
 					for _, k := range nc.Attributes().Keys() {
@@ -335,7 +337,7 @@ func convertCommon(t *testing.T, dir string, suffix string) {
 						if !ok {
 							logit("global getattr", file, k, err.Error())
 						} else {
-							//t.Logf("Global attribute: %v value: %#v", k, a)
+							// t.Logf("Global attribute: %v value: %#v", k, a)
 							_ = a
 						}
 					}
@@ -357,11 +359,11 @@ func quickTests(t *testing.T) bool {
 }
 
 func TestConvert(t *testing.T) {
-	//defer thrower.SetCatching(thrower.SetCatching(thrower.DontCatch))
+	// defer thrower.SetCatching(thrower.SetCatching(thrower.DontCatch))
 	if quickTests(t) {
 		return
 	}
-	//defer SetLogLevel(SetLogLevel(3))
+	// defer SetLogLevel(SetLogLevel(3))
 	t.Log("TestConvert start")
 	// 74.7 -> 83.8% coverage
 	convertCommon(t, ncDir, ".nc")
@@ -383,9 +385,9 @@ func TestOneFile(t *testing.T) {
 	if !doTest {
 		return
 	}
-	//defer SetLogLevel(SetLogLevel(3))
+	// defer SetLogLevel(SetLogLevel(3))
 	defer setNonStandard(setNonStandard(true))
-	//convertCommon(t, "/home/bat/src/netcdf/nc_test4/tst_vars3.nc", "")
+	// convertCommon(t, "/home/bat/src/netcdf/nc_test4/tst_vars3.nc", "")
 	filename := "/home/bat/src/hdf5/tools/test/h5stat/testfiles/h5stat_newgrat.h5"
 	defer setSuperblockV3(setSuperblockV3(true))
 	defer setSBExtension(setSBExtension(true))
@@ -450,66 +452,114 @@ func TestFunky(t *testing.T) {
 			"array2D": [][][]int32{
 				{{1, 2, 3}, {4, 5, 6}},
 				{{7, 8, 9}, {10, 11, 12}},
-				{{13, 14, 15}, {16, 17, 18}}},
+				{{13, 14, 15}, {16, 17, 18}},
+			},
 			"array3D": [][][][]int32{
 				{
 					{{1, 2, 3}, {4, 5, 6}},
 					{{7, 8, 9}, {10, 11, 12}},
-					{{13, 14, 15}, {16, 17, 18}}},
+					{{13, 14, 15}, {16, 17, 18}},
+				},
 				{
 					{{19, 20, 21}, {22, 23, 24}},
 					{{25, 26, 27}, {28, 29, 30}},
-					{{31, 32, 33}, {34, 35, 36}}},
+					{{31, 32, 33}, {34, 35, 36}},
+				},
 				{
 					{{37, 38, 39}, {40, 41, 42}},
 					{{43, 44, 45}, {46, 47, 48}},
-					{{49, 50, 51}, {52, 53, 54}}},
+					{{49, 50, 51}, {52, 53, 54}},
+				},
 				{
 					{{55, 56, 57}, {58, 59, 60}},
 					{{61, 62, 63}, {64, 65, 66}},
-					{{67, 68, 69}, {70, 71, 72}}}},
+					{{67, 68, 69}, {70, 71, 72}},
+				},
+			},
 			"bitfield":   []byte{0x1, 0x2},
 			"bitfield2D": [][]byte{{0x1, 0x2}, {0x3, 0x4}, {0x5, 0x6}},
 			"bitfield3D": [][][]byte{
 				{{0x1, 0x2}, {0x3, 0x4}, {0x5, 0x6}},
 				{{0x7, 0x8}, {0x9, 0xa}, {0xb, 0xc}},
 				{{0xd, 0xe}, {0xf, 0x10}, {0x11, 0x12}},
-				{{0x13, 0x14}, {0x15, 0x16}, {0x17, 0x18}}},
+				{{0x13, 0x14}, {0x15, 0x16}, {0x17, 0x18}},
+			},
 			"compound": []compound{
 				{{Name: "a", Val: int8(1)}, {Name: "b", Val: float64(2)}},
-				{{Name: "a", Val: int8(3)}, {Name: "b", Val: float64(4)}}},
+				{{Name: "a", Val: int8(3)}, {Name: "b", Val: float64(4)}},
+			},
 			"compound2D": [][]compound{
-				{{{Name: "a", Val: int8(1)}, {Name: "b", Val: float64(2)}},
-					{{Name: "a", Val: int8(3)}, {Name: "b", Val: float64(4)}}},
-				{{{Name: "a", Val: int8(5)}, {Name: "b", Val: float64(6)}},
-					{{Name: "a", Val: int8(7)}, {Name: "b", Val: float64(8)}}},
-				{{{Name: "a", Val: int8(9)}, {Name: "b", Val: float64(10)}},
-					{{Name: "a", Val: int8(11)}, {Name: "b", Val: float64(12)}}}},
+				{
+					{{Name: "a", Val: int8(1)}, {Name: "b", Val: float64(2)}},
+					{{Name: "a", Val: int8(3)}, {Name: "b", Val: float64(4)}},
+				},
+				{
+					{{Name: "a", Val: int8(5)}, {Name: "b", Val: float64(6)}},
+					{{Name: "a", Val: int8(7)}, {Name: "b", Val: float64(8)}},
+				},
+				{
+					{{Name: "a", Val: int8(9)}, {Name: "b", Val: float64(10)}},
+					{{Name: "a", Val: int8(11)}, {Name: "b", Val: float64(12)}},
+				},
+			},
 			"compound3D": [][][]compound{
-				{{{{Name: "a", Val: int8(1)}, {Name: "b", Val: float64(2)}},
-					{{Name: "a", Val: int8(3)}, {Name: "b", Val: float64(4)}}},
-					{{{Name: "a", Val: int8(5)}, {Name: "b", Val: float64(6)}},
-						{{Name: "a", Val: int8(7)}, {Name: "b", Val: float64(8)}}},
-					{{{Name: "a", Val: int8(9)}, {Name: "b", Val: float64(10)}},
-						{{Name: "a", Val: int8(11)}, {Name: "b", Val: float64(12)}}}},
-				{{{{Name: "a", Val: int8(13)}, {Name: "b", Val: float64(14)}},
-					{{Name: "a", Val: int8(15)}, {Name: "b", Val: float64(16)}}},
-					{{{Name: "a", Val: int8(17)}, {Name: "b", Val: float64(18)}},
-						{{Name: "a", Val: int8(19)}, {Name: "b", Val: float64(20)}}},
-					{{{Name: "a", Val: int8(21)}, {Name: "b", Val: float64(22)}},
-						{{Name: "a", Val: int8(23)}, {Name: "b", Val: float64(24)}}}},
-				{{{{Name: "a", Val: int8(25)}, {Name: "b", Val: float64(26)}},
-					{{Name: "a", Val: int8(27)}, {Name: "b", Val: float64(28)}}},
-					{{{Name: "a", Val: int8(29)}, {Name: "b", Val: float64(30)}},
-						{{Name: "a", Val: int8(31)}, {Name: "b", Val: float64(32)}}},
-					{{{Name: "a", Val: int8(33)}, {Name: "b", Val: float64(34)}},
-						{{Name: "a", Val: int8(35)}, {Name: "b", Val: float64(36)}}}},
-				{{{{Name: "a", Val: int8(37)}, {Name: "b", Val: float64(38)}},
-					{{Name: "a", Val: int8(39)}, {Name: "b", Val: float64(40)}}},
-					{{{Name: "a", Val: int8(41)}, {Name: "b", Val: float64(42)}},
-						{{Name: "a", Val: int8(43)}, {Name: "b", Val: float64(44)}}},
-					{{{Name: "a", Val: int8(45)}, {Name: "b", Val: float64(46)}},
-						{{Name: "a", Val: int8(47)}, {Name: "b", Val: float64(48)}}}}},
+				{
+					{
+						{{Name: "a", Val: int8(1)}, {Name: "b", Val: float64(2)}},
+						{{Name: "a", Val: int8(3)}, {Name: "b", Val: float64(4)}},
+					},
+					{
+						{{Name: "a", Val: int8(5)}, {Name: "b", Val: float64(6)}},
+						{{Name: "a", Val: int8(7)}, {Name: "b", Val: float64(8)}},
+					},
+					{
+						{{Name: "a", Val: int8(9)}, {Name: "b", Val: float64(10)}},
+						{{Name: "a", Val: int8(11)}, {Name: "b", Val: float64(12)}},
+					},
+				},
+				{
+					{
+						{{Name: "a", Val: int8(13)}, {Name: "b", Val: float64(14)}},
+						{{Name: "a", Val: int8(15)}, {Name: "b", Val: float64(16)}},
+					},
+					{
+						{{Name: "a", Val: int8(17)}, {Name: "b", Val: float64(18)}},
+						{{Name: "a", Val: int8(19)}, {Name: "b", Val: float64(20)}},
+					},
+					{
+						{{Name: "a", Val: int8(21)}, {Name: "b", Val: float64(22)}},
+						{{Name: "a", Val: int8(23)}, {Name: "b", Val: float64(24)}},
+					},
+				},
+				{
+					{
+						{{Name: "a", Val: int8(25)}, {Name: "b", Val: float64(26)}},
+						{{Name: "a", Val: int8(27)}, {Name: "b", Val: float64(28)}},
+					},
+					{
+						{{Name: "a", Val: int8(29)}, {Name: "b", Val: float64(30)}},
+						{{Name: "a", Val: int8(31)}, {Name: "b", Val: float64(32)}},
+					},
+					{
+						{{Name: "a", Val: int8(33)}, {Name: "b", Val: float64(34)}},
+						{{Name: "a", Val: int8(35)}, {Name: "b", Val: float64(36)}},
+					},
+				},
+				{
+					{
+						{{Name: "a", Val: int8(37)}, {Name: "b", Val: float64(38)}},
+						{{Name: "a", Val: int8(39)}, {Name: "b", Val: float64(40)}},
+					},
+					{
+						{{Name: "a", Val: int8(41)}, {Name: "b", Val: float64(42)}},
+						{{Name: "a", Val: int8(43)}, {Name: "b", Val: float64(44)}},
+					},
+					{
+						{{Name: "a", Val: int8(45)}, {Name: "b", Val: float64(46)}},
+						{{Name: "a", Val: int8(47)}, {Name: "b", Val: float64(48)}},
+					},
+				},
+			},
 
 			"enum": enumerated{values: []int32{0, 0}},
 
@@ -519,7 +569,8 @@ func TestFunky(t *testing.T) {
 				{{1, 1}, {1, 1}, {1, 1}},
 				{{1, 1}, {1, 1}, {1, 1}},
 				{{1, 1}, {1, 1}, {1, 1}},
-				{{1, 1}, {1, 1}, {1, 1}}}},
+				{{1, 1}, {1, 1}, {1, 1}},
+			}},
 			"float": []float32{1, 2},
 
 			"float2D": [][]float32{{1, 2}, {3, 4}, {5, 6}},
@@ -528,7 +579,8 @@ func TestFunky(t *testing.T) {
 				{{1, 2}, {3, 4}, {5, 6}},
 				{{7, 8}, {9, 10}, {11, 12}},
 				{{13, 14}, {15, 16}, {17, 18}},
-				{{19, 20}, {21, 22}, {23, 24}}},
+				{{19, 20}, {21, 22}, {23, 24}},
+			},
 
 			"integer": []int32{1, 2},
 
@@ -538,14 +590,16 @@ func TestFunky(t *testing.T) {
 				{{1, 2}, {3, 4}, {5, 6}},
 				{{7, 8}, {9, 10}, {11, 12}},
 				{{13, 14}, {15, 16}, {17, 18}},
-				{{19, 20}, {21, 22}, {23, 24}}},
+				{{19, 20}, {21, 22}, {23, 24}},
+			},
 			"opaque":   []opaque{{0x1}, {0x2}},
 			"opaque2D": [][]opaque{{{0x1}, {0x2}}, {{0x3}, {0x4}}, {{0x5}, {0x6}}},
 			"opaque3D": [][][]opaque{
 				{{{0x1}, {0x2}}, {{0x3}, {0x4}}, {{0x5}, {0x6}}},
 				{{{0x7}, {0x8}}, {{0x9}, {0xa}}, {{0xb}, {0xc}}},
 				{{{0xd}, {0xe}}, {{0xf}, {0x10}}, {{0x11}, {0x12}}},
-				{{{0x13}, {0x14}}, {{0x15}, {0x16}}, {{0x17}, {0x18}}}},
+				{{{0x13}, {0x14}}, {{0x15}, {0x16}}, {{0x17}, {0x18}}},
+			},
 
 			"reference":   []uint64{800, 800},
 			"reference2D": [][]uint64{{800, 800}, {800, 800}, {800, 800}},
@@ -558,31 +612,39 @@ func TestFunky(t *testing.T) {
 
 			"vlen": [][]int32{
 				{1},
-				{2, 3}},
+				{2, 3},
+			},
 
 			"vlen2D": [][][]int32{
 				{{0}, {1}},
 				{{2, 3}, {4, 5}},
-				{{6, 7, 8}, {9, 10, 11}}},
+				{{6, 7, 8}, {9, 10, 11}},
+			},
 
 			"vlen3D": [][][][]int32{
 				{
 					{{0}, {1}},
 					{{2}, {3}},
-					{{4}, {5}}},
+					{{4}, {5}},
+				},
 				{
 					{{6, 7}, {8, 9}},
 					{{10, 11}, {12, 13}},
-					{{14, 15}, {16, 17}}},
+					{{14, 15}, {16, 17}},
+				},
 				{
 					{{18, 19, 20}, {21, 22, 23}},
 					{{24, 25, 26}, {27, 28, 29}},
-					{{30, 31, 32}, {33, 34, 35}}},
+					{{30, 31, 32}, {33, 34, 35}},
+				},
 
 				{
 					{{36, 37, 38, 39}, {40, 41, 42, 43}},
 					{{44, 45, 46, 47}, {48, 49, 50, 51}},
-					{{52, 53, 54, 55}, {56, 57, 58, 59}}}}})
+					{{52, 53, 54, 55}, {56, 57, 58, 59}},
+				},
+			},
+		})
 	if err != nil {
 		t.Error("FAIL:", err)
 		return
@@ -590,7 +652,7 @@ func TestFunky(t *testing.T) {
 	h5, _ := nc.(*HDF5)
 	for _, key := range exp.Keys() {
 		_ = h5.findGlobalAttrType(key)
-		//t.Logf("attribute type for %s = %s.", key, ty)
+		// t.Logf("attribute type for %s = %s.", key, ty)
 	}
 	checkAllAttrs(t, "<testfunky>", nc.Attributes(), exp)
 }
@@ -609,8 +671,11 @@ func TestFunky2(t *testing.T) {
 	attr, err := newTypedAttributeMap(nc.(*HDF5),
 		[]string{"_FillValue"},
 		map[string]interface{}{"_FillValue": compound{
-			{Name: "day", Val: "?"}, {Name: "mnth", Val: "---"}, {Name: "vect", Val: []int16{-1, -2, -3}},
-			{Name: "matr", Val: [][]float32{{-4, -5, -6}, {-7, -8, -9}}}}})
+			{Name: "day", Val: "?"},
+			{Name: "mnth", Val: "---"},
+			{Name: "vect", Val: []int16{-1, -2, -3}},
+			{Name: "matr", Val: [][]float32{{-4, -5, -6}, {-7, -8, -9}}},
+		}})
 	if err != nil {
 		t.Error("FAIL:", err)
 		return
@@ -618,20 +683,29 @@ func TestFunky2(t *testing.T) {
 	obs := keyValList{
 		{"obs", "vecmat_t", api.Variable{
 			Values: []compound{
-				{{Name: "day", Val: "S"},
+				{
+					{Name: "day", Val: "S"},
 					{Name: "mnth", Val: "jan"},
 					{Name: "vect", Val: []int16{1, 2, 3}},
-					{Name: "matr", Val: [][]float32{{4, 5, 6}, {7, 8, 9}}}},
-				{{Name: "day", Val: "M"},
+					{Name: "matr", Val: [][]float32{{4, 5, 6}, {7, 8, 9}}},
+				},
+				{
+					{Name: "day", Val: "M"},
 					{Name: "mnth", Val: "feb"},
 					{Name: "vect", Val: []int16{11, 12, 13}},
-					{Name: "matr", Val: [][]float32{{4.25, 5.25, 6.25}, {7.25, 8.25, 9.25}}}},
-				{{Name: "day", Val: "T"},
+					{Name: "matr", Val: [][]float32{{4.25, 5.25, 6.25}, {7.25, 8.25, 9.25}}},
+				},
+				{
+					{Name: "day", Val: "T"},
 					{Name: "mnth", Val: "mar"},
 					{Name: "vect", Val: []int16{21, 22, 23}},
-					{Name: "matr", Val: [][]float32{{4.5, 5.5, 6.5}, {7.5, 8.5, 9.5}}}}},
+					{Name: "matr", Val: [][]float32{{4.5, 5.5, 6.5}, {7.5, 8.5, 9.5}}},
+				},
+			},
 			Dimensions: []string{"n"},
-			Attributes: attr}}}
+			Attributes: attr,
+		}},
+	}
 	checkAll(t, nc, obs)
 }
 
@@ -648,10 +722,13 @@ func TestFunky9(t *testing.T) {
 		[]string{"a1"},
 		map[string]interface{}{
 			"a1": compound{
-				{Name: "s1",
+				{
+					Name: "s1",
 					Val: compound{
 						{Name: "x", Val: float32(1)},
-						{Name: "y", Val: float64(-2)}}},
+						{Name: "y", Val: float64(-2)},
+					},
+				},
 			},
 		})
 	if err != nil {
@@ -678,13 +755,17 @@ func TestFunky8(t *testing.T) {
 				{0, 1, 2},
 				{},
 				{},
-				{}},
+				{},
+			},
 			Dimensions: []string{"x"},
-			Attributes: nilMap}},
+			Attributes: nilMap,
+		}},
 		{"w", "float", api.Variable{
 			Values:     []float32{0, 1, 2, 9.96921e+36, 9.96921e+36},
 			Dimensions: []string{"x"},
-			Attributes: nilMap}}}
+			Attributes: nilMap,
+		}},
+	}
 
 	checkAll(t, nc, obs)
 }
@@ -711,15 +792,18 @@ func TestFunky3(t *testing.T) {
 		{"y", "int", api.Variable{
 			Values:     []int32{math.MinInt32 + 1, math.MinInt32 + 1},
 			Dimensions: []string{"x"},
-			Attributes: nilMap}},
+			Attributes: nilMap,
+		}},
 		{"Clair", "int", api.Variable{
 			Values:     clair,
 			Dimensions: []string{"x", "z"},
-			Attributes: nilMap}},
+			Attributes: nilMap,
+		}},
 		{"Jamie", "int", api.Variable{
 			Values:     int32(0),
 			Dimensions: nil,
-			Attributes: nilMap}},
+			Attributes: nilMap,
+		}},
 	}
 	checkAll(t, nc, vals)
 }
@@ -746,7 +830,8 @@ func TestFunky4(t *testing.T) {
 			"brief_no",
 			"Orders_from_SWMBO",
 			"judges_golf_score",
-			"Number_of_drinks_in_career_to_date"},
+			"Number_of_drinks_in_career_to_date",
+		},
 		map[string]interface{}{
 			"Speech_to_Jury": "Once more unto the breach, dear friends, once more;\nOr close the wall up with our English dead.\nIn peace there's nothing so becomes a man\nAs modest stillness and humility:\nBut when the blast of war blows in our ears,\nThen imitate the action of the tiger;\nStiffen the sinews, summon up the blood,\nDisguise fair nature with hard-favour'd rage;\nThen lend the eye a terrible aspect;\nLet pry through the portage of the head\nLike the brass cannon; let the brow o'erwhelm it\nAs fearfully as doth a galled rock\nO'erhang and jutty his confounded base,\nSwill'd with the wild and wasteful ocean.\nNow set the teeth and stretch the nostril wide,\nHold hard the breath and bend up every spirit\nTo his full height. On, on, you noblest English.\nWhose blood is fet from fathers of war-proof!\nFathers that, like so many Alexanders,\nHave in these parts from morn till even fought\nAnd sheathed their swords for lack of argument:\nDishonour not your mothers; now attest\nThat those whom you call'd fathers did beget you.\nBe copy now to men of grosser blood,\nAnd teach them how to war. And you, good yeoman,\nWhose limbs were made in England, show us here\nThe mettle of your pasture; let us swear\nThat you are worth your breeding; which I doubt not;\nFor there is none of you so mean and base,\nThat hath not noble lustre in your eyes.\nI see you stand like greyhounds in the slips,\nStraining upon the start. The game's afoot:\nFollow your spirit, and upon this charge\nCry 'God for Harry, England, and Saint George!'",
 
@@ -761,7 +846,8 @@ func TestFunky4(t *testing.T) {
 			"brief_no":                           []uint16{0, 128, 65535},
 			"Orders_from_SWMBO":                  []uint32{0, 128, 4294967295},
 			"judges_golf_score":                  []int64{-9223372036854775808, 128, 9223372036854775807},
-			"Number_of_drinks_in_career_to_date": []uint64{0, 128, 18446744073709551612}})
+			"Number_of_drinks_in_career_to_date": []uint64{0, 128, 18446744073709551612},
+		})
 	if err != nil {
 		t.Error("FAIL:", err)
 		return
@@ -782,11 +868,13 @@ func TestFunky5(t *testing.T) {
 
 	attr, err := newTypedAttributeMap(nc.(*HDF5),
 		[]string{
-			"a_97", "a_98", "a_99", "a_100", "a_101", "a_102", "a_103", "a_104", "a_105", "a_106"},
+			"a_97", "a_98", "a_99", "a_100", "a_101", "a_102", "a_103", "a_104", "a_105", "a_106",
+		},
 
 		map[string]interface{}{
 			"a_97": "a", "a_98": "b", "a_99": "c", "a_100": "d",
-			"a_101": "e", "a_102": "f", "a_103": "g", "a_104": "h", "a_105": "i", "a_106": "j"})
+			"a_101": "e", "a_102": "f", "a_103": "g", "a_104": "h", "a_105": "i", "a_106": "j",
+		})
 	if err != nil {
 		t.Error("FAIL:", err)
 		return
@@ -795,11 +883,13 @@ func TestFunky5(t *testing.T) {
 		{"Times", "string", api.Variable{
 			Values:     "abcdefghij",
 			Dimensions: []string{"Time"},
-			Attributes: attr}},
+			Attributes: attr,
+		}},
 		{"var2", "string", api.Variable{
 			Values:     "abcdefghij",
 			Dimensions: []string{"Time"},
-			Attributes: attr}},
+			Attributes: attr,
+		}},
 	}
 	checkAll(t, nc, exp)
 }
@@ -829,7 +919,8 @@ func TestFunky6(t *testing.T) {
 		}
 	}
 	grp2 := keyValList{
-		{"data", "sample_compound_type",
+		{
+			"data", "sample_compound_type",
 			api.Variable{
 				Values:     vals,
 				Dimensions: []string{"x", "y"},
@@ -878,7 +969,8 @@ func TestFunky7(t *testing.T) {
 					0x2a, 0x2a, 0x2a, 0x2a, 0x2a,
 					0x2a, 0x2a, 0x2a, 0x2a, 0x2a,
 				},
-			}})
+			},
+		})
 	if err != nil {
 		t.Error("FAIL:", err)
 		return
@@ -889,7 +981,7 @@ func TestFunky7(t *testing.T) {
 func TestFunky10(t *testing.T) {
 	defer setNonStandard(setNonStandard(true))
 	filename := "/home/bat/src/hdf5/tools/testfiles/tarray4.h5"
-	//filename := "/home/bat/hdf5/new.h5"
+	// filename := "/home/bat/hdf5/new.h5"
 	nc, err := Open(filename)
 	if err != nil {
 		if err != ErrLayout {
@@ -910,25 +1002,32 @@ func TestFunky10(t *testing.T) {
 					{{"i", int32(0)}, {"f", float32(0)}},
 					{{"i", int32(1)}, {"f", float32(1)}},
 					{{"i", int32(2)}, {"f", float32(2)}},
-					{{"i", int32(3)}, {"f", float32(3)}}},
+					{{"i", int32(3)}, {"f", float32(3)}},
+				},
 
 				{
 					{{"i", int32(10)}, {"f", float32(2.5)}},
 					{{"i", int32(11)}, {"f", float32(3.5)}},
 					{{"i", int32(12)}, {"f", float32(4.5)}},
-					{{"i", int32(13)}, {"f", float32(5.5)}}},
+					{{"i", int32(13)}, {"f", float32(5.5)}},
+				},
 				{
 					{{"i", int32(20)}, {"f", float32(5)}},
 					{{"i", int32(21)}, {"f", float32(6)}},
 					{{"i", int32(22)}, {"f", float32(7)}},
-					{{"i", int32(23)}, {"f", float32(8)}}},
+					{{"i", int32(23)}, {"f", float32(8)}},
+				},
 				{
 
 					{{"i", int32(30)}, {"f", float32(7.5)}},
 					{{"i", int32(31)}, {"f", float32(8.5)}},
 					{{"i", int32(32)}, {"f", float32(9.5)}},
-					{{"i", int32(33)}, {"f", float32(10.5)}}}},
+					{{"i", int32(33)}, {"f", float32(10.5)}},
+				},
+			},
 			Dimensions: []string{},
-			Attributes: attr}}}
+			Attributes: attr,
+		}},
+	}
 	checkAll(t, nc, exp)
 }

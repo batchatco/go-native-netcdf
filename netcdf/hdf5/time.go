@@ -2,20 +2,18 @@ package hdf5
 
 import (
 	"encoding/binary"
+	"io"
 
 	"github.com/batchatco/go-thrower"
 )
 
-type timeManagerType struct {
-	typeManager
-}
+type timeManagerType struct{}
 
-var timeManager = timeManagerType{}
-var _ typeManager = timeManager
+var (
+	timeManager             = timeManagerType{}
+	_           typeManager = timeManager
+)
 
-/*
- * Leave these unimplemented, they'll fail on the default nil value for the method.
- *
 func (timeManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	fail("time")
@@ -28,8 +26,7 @@ func (timeManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, orig
 	return ""
 }
 
-func (timeManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
+func (timeManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute, dimensions []uint64) interface{} {
 	fail("time")
 	return nil
 }
@@ -38,7 +35,6 @@ func (timeManagerType) FillValue(obj *object, objFillValue []byte, undefinedFill
 	fail("time")
 	return objFillValue
 }
-*/
 
 func (timeManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	// This is disabled by default. Time is an obsolete type.

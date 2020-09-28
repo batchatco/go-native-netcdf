@@ -267,7 +267,8 @@ func TestGoTypes(t *testing.T) {
 		},
 		"testsimple": {
 			"AAA": "type AAA struct {\n\ts int16\n\ti int32\n}\n",
-			"BBB": "type BBB struct {\n\tx float32\n\ty float64\n}\n"},
+			"BBB": "type BBB struct {\n\tx float32\n\ty float64\n}\n",
+		},
 		"testvlen": {
 			"vint":     "type vint []int32",
 			"Easy":     "type Easy struct {\n\tFirstEasy int32\n\tSecondEasy int32\n}\n",

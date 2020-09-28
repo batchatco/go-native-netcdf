@@ -7,12 +7,12 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
-type bitfieldManagerType struct {
-	typeManager
-}
+type bitfieldManagerType struct{}
 
-var bitfieldManager = bitfieldManagerType{}
-var _ typeManager = bitfieldManager
+var (
+	bitfieldManager             = bitfieldManagerType{}
+	_               typeManager = bitfieldManager
+)
 
 func (bitfieldManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF

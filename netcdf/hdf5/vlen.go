@@ -9,12 +9,12 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
-type vlenManagerType struct {
-	typeManager
-}
+type vlenManagerType struct{}
 
-var vlenManager = vlenManagerType{}
-var _ typeManager = vlenManager
+var (
+	vlenManager             = vlenManagerType{}
+	_           typeManager = vlenManager
+)
 
 func (vlenManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	if attr.vtType == 1 {
@@ -51,7 +51,7 @@ func (vlenManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, 
 func (vlenManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* variable-length, dtlength=", attr.length,
 		"proplen=", bf.Rem())
-	//checkVal(1, dtversion, "Only support version 1 of variable-length")
+	// checkVal(1, dtversion, "Only support version 1 of variable-length")
 	vtType := uint8(bitFields & 0b1111) // XXX: we will need other bits too for decoding
 	vtPad := uint8(bitFields>>4) & 0b1111
 	// The value of pad here may not have anything to do with reading data, just

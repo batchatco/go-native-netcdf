@@ -9,12 +9,12 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
-type compoundManagerType struct {
-	typeManager
-}
+type compoundManagerType struct{}
 
-var compoundManager = compoundManagerType{}
-var _ typeManager = compoundManager
+var (
+	compoundManager             = compoundManagerType{}
+	_               typeManager = compoundManager
+)
 
 func (compoundManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	members := make([]string, len(attr.children))
@@ -29,7 +29,6 @@ func (compoundManagerType) TypeString(h5 *HDF5, name string, attr *attribute, or
 		return namedType
 	}
 	return signature
-
 }
 
 func (compoundManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
@@ -137,13 +136,12 @@ func (compoundManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf
 		bff := df
 		if attrSize > df.Rem() {
 			logger.Info("Adding fill value reader")
-			//bff = makeFillValueReader(obj, df, attrSize)
+			// bff = makeFillValueReader(obj, df, attrSize)
 		}
 		attr.df = newResetReaderSave(bff, bff.(remReader).Rem())
 		logger.Info("rem=", df.Rem(), "nread=", bff.(remReader).Count())
 	}
 	logger.Info("Finished compound", "rem=", bf.Rem())
-
 }
 
 func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute,

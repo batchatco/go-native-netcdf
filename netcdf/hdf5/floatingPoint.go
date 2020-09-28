@@ -11,12 +11,12 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
-type floatingPointManagerType struct {
-	typeManager
-}
+type floatingPointManagerType struct{}
 
-var floatingPointManager = floatingPointManagerType{}
-var _ typeManager = floatingPointManager
+var (
+	floatingPointManager             = floatingPointManagerType{}
+	_                    typeManager = floatingPointManager
+)
 
 func (floatingPointManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	switch attr.length {

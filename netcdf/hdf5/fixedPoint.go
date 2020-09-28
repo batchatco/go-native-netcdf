@@ -11,12 +11,12 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
-type fixedPointManagerType struct {
-	typeManager
-}
+type fixedPointManagerType struct{}
 
-var fixedPointManager = fixedPointManagerType{}
-var _ typeManager = fixedPointManager
+var (
+	fixedPointManager             = fixedPointManagerType{}
+	_                 typeManager = fixedPointManager
+)
 
 func (fixedPointManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	prefix := ""

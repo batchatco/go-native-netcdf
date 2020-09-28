@@ -5,12 +5,12 @@ import (
 	"reflect"
 )
 
-type stringManagerType struct {
-	typeManager
-}
+type stringManagerType struct{}
 
-var stringManager = stringManagerType{}
-var _ typeManager = stringManager
+var (
+	stringManager             = stringManagerType{}
+	_             typeManager = stringManager
+)
 
 func (stringManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	return "string"

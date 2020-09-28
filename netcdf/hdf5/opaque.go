@@ -6,12 +6,12 @@ import (
 	"reflect"
 )
 
-type opaqueManagerType struct {
-	typeManager
-}
+type opaqueManagerType struct{}
 
-var opaqueManager = opaqueManagerType{}
-var _ typeManager = opaqueManager
+var (
+	opaqueManager             = opaqueManagerType{}
+	_             typeManager = opaqueManager
+)
 
 func (opaqueManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	signature := fmt.Sprintf("opaque(%d)", attr.length)
@@ -60,7 +60,6 @@ func (opaqueManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf r
 	if df != nil && df.Rem() >= int64(attr.length) {
 		attr.df = newResetReaderSave(df, df.Rem())
 	}
-
 }
 
 func allocOpaque(bf io.Reader, dimLengths []uint64, length uint32,

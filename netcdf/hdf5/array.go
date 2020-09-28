@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-type arrayManagerType struct {
-	typeManager
-}
+type arrayManagerType struct{}
 
-var arrayManager = arrayManagerType{}
-var _ typeManager = arrayManager
+var (
+	arrayManager             = arrayManagerType{}
+	_            typeManager = arrayManager
+)
 
 func (arrayManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	arrayAttr := attr.children[0]
@@ -26,7 +26,6 @@ func (arrayManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origN
 	namedType := h5.findSignature(signature, name, origNames, h5.printType)
 	assert(namedType == "", "arrays are not named types")
 	return signature
-
 }
 
 func (arrayManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {

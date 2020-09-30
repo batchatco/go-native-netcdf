@@ -1778,6 +1778,7 @@ func testFilters(t *testing.T, filters []string, extension string) {
 		t.Error(errorNcFilter)
 		return
 	}
+	defer os.Remove(filtName)
 	nc, err := Open(filtName)
 	if err != nil {
 		t.Error(err)

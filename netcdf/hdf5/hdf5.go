@@ -87,33 +87,6 @@ var maxDTVersion byte = 3
 // The hidden attribute which identifies what software wrote the file out.
 const ncpKey = "_NCProperties"
 
-var (
-	ErrBadMagic                = errors.New("bad magic number")
-	ErrUnsupportedFilter       = errors.New("unsupported filter found")
-	ErrUnknownCompression      = errors.New("unknown compression")
-	ErrInternal                = errors.New("internal error")
-	ErrNotFound                = errors.New("not found")
-	ErrFletcherChecksum        = errors.New("fletcher checksum failure")
-	ErrVersion                 = errors.New("hdf5 version not supported")
-	ErrLinkType                = errors.New("link type not supported")
-	ErrVirtualStorage          = errors.New("virtual storage not supported")
-	ErrTruncated               = errors.New("file is too small, may be truncated")
-	ErrOffsetSize              = errors.New("only 64-bit offsets are supported")
-	ErrDimensionality          = errors.New("invalid dimensionality")
-	ErrDataObjectHeaderVersion = errors.New("data object header version not supported")
-	ErrDataspaceVersion        = errors.New("dataspace version not supported")
-	ErrCorrupted               = errors.New("corrupted file")
-	ErrLayout                  = errors.New("data layout version not supported")
-	ErrSuperblock              = errors.New("superblock extension not supported")
-	ErrBitfield                = errors.New("bitfields not supported")
-	ErrArrays                  = errors.New("arrays not supported")
-	ErrExternal                = errors.New("external data files not supported")
-	ErrFloatingPoint           = errors.New("non-standard floating point not handled")
-	ErrFixedPoint              = errors.New("non-standard fixed-point not handled")
-	ErrReference               = errors.New("unsupported reference type")
-	ErrNonExportedField        = errors.New("can't assign to non-exported field")
-)
-
 // Various filters on data
 const (
 	filterDeflate = iota + 1 // zlib

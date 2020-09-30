@@ -696,6 +696,7 @@ func TestTypes(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -731,6 +732,7 @@ func TestGlobalAttrs(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -840,6 +842,7 @@ func TestFills(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -855,6 +858,7 @@ func TestFills2(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -870,6 +874,7 @@ func TestGroups(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -984,6 +989,7 @@ func TestByte(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1141,6 +1147,7 @@ func TestCompound(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1213,6 +1220,7 @@ func TestCompound2(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1285,6 +1293,7 @@ func TestArray(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1332,6 +1341,7 @@ func TestSimple(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1382,6 +1392,7 @@ func TestOneDim(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1408,7 +1419,7 @@ func TestUnlimited(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
-
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1447,7 +1458,7 @@ func TestVariableLength(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
-
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1562,7 +1573,7 @@ func TestVariableLength2(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
-
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1682,6 +1693,7 @@ func TestUnlimitedEmpty(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1735,6 +1747,7 @@ func TestUnlimitedOnlyBytes(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1759,6 +1772,7 @@ func testFilters(t *testing.T, filters []string, extension string) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	filtName := ncFilter(t, fileName, filters, extension)
 	if filtName == "" {
 		t.Error(errorNcFilter)
@@ -1828,11 +1842,13 @@ func TestUnlimitedOnlyShorts(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	defer os.Remove(genName)
 	defer nc.Close()
 	unlims := keyValList{
 		{"i16x1", "short", api.Variable{
@@ -1851,11 +1867,13 @@ func TestOpaque(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	defer os.Remove(genName)
 	defer nc.Close()
 	opaque := keyValList{
 		{"v", "opaque5", api.Variable{
@@ -1880,6 +1898,7 @@ func TestOpaqueCasted(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1913,6 +1932,7 @@ func TestOpaqueBadCasted(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1946,6 +1966,7 @@ func TestEnum(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -1989,6 +2010,7 @@ func TestEnumCasted(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -2080,6 +2102,7 @@ func TestNCProperties(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -2227,7 +2250,6 @@ func TestDimensions(t *testing.T) {
 		return
 	}
 	defer os.Remove(genName)
-
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)

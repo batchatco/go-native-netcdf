@@ -1,6 +1,7 @@
 package hdf5
 
 import (
+	"os"
 	"testing"
 )
 
@@ -11,6 +12,7 @@ func TestAttrTypes(t *testing.T) {
 		t.Error("Error opening", fileName, ":", errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error("Error opening", genName, ":", err)
@@ -36,6 +38,7 @@ func TestGlobalAttrTypes(t *testing.T) {
 		t.Error("Error opening", fileName, ":", errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error("Error opening", genName, ":", err)
@@ -61,6 +64,7 @@ func TestLocalAttrTypes(t *testing.T) {
 		t.Error("Error opening", fileName, ":", errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error("Error opening", genName, ":", err)
@@ -111,6 +115,7 @@ func TestVarTypes(t *testing.T) {
 		t.Error("Error opening", fileName, ":", errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error("Error opening", genName, ":", err)
@@ -205,6 +210,7 @@ func TestListTypes(t *testing.T) {
 				t.Error(errorNcGen)
 				return
 			}
+			defer os.Remove(genName)
 			nc, err := Open(genName)
 			if err != nil {
 				t.Error(err)
@@ -283,6 +289,7 @@ func TestGoTypes(t *testing.T) {
 				t.Error(errorNcGen)
 				return
 			}
+			defer os.Remove(genName)
 			nc, err := Open(genName)
 			if err != nil {
 				t.Error(err)

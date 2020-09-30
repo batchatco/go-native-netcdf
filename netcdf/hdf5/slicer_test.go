@@ -1,6 +1,7 @@
 package hdf5
 
 import (
+	"os"
 	"testing"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
@@ -12,6 +13,7 @@ func TestSlicer(t *testing.T) {
 		t.Error(errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	tidValues := [][]int8{
 		{0, 1, 2, 3, 4},
 		{5, 6, 6, 8, 9},

@@ -1,6 +1,9 @@
 package hdf5
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestGoType(t *testing.T) {
 	fileName := "testattrtypes"
@@ -9,6 +12,7 @@ func TestGoType(t *testing.T) {
 		t.Error("Error opening", fileName, ":", errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)
@@ -46,6 +50,7 @@ func TestType(t *testing.T) {
 		t.Error("Error opening", fileName, ":", errorNcGen)
 		return
 	}
+	defer os.Remove(genName)
 	nc, err := Open(genName)
 	if err != nil {
 		t.Error(err)

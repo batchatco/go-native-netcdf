@@ -16,39 +16,39 @@ var (
 	_           typeManager = vlenManager
 )
 
-func (vlenManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (vlenManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	if attr.vtType == 1 {
 		// It's a string
 		return "string"
 	}
 	vAttr := attr.children[0]
-	ty := TypeString(vAttr.class, h5, name, vAttr, origNames)
+	ty := cdlTypeString(vAttr.class, h5, name, vAttr, origNames)
 	assert(ty != "", "unable to parse vlen attr")
 	signature := fmt.Sprintf("%s(*)", ty)
-	namedType := h5.findSignature(signature, name, origNames, TypeString)
+	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (vlenManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (vlenManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	if attr.vtType == 1 {
 		// It's a string
 		return "string"
 	}
 	vAttr := attr.children[0]
-	ty := GoTypeString(vAttr.class, h5, typeName, vAttr, origNames)
+	ty := goTypeString(vAttr.class, h5, typeName, vAttr, origNames)
 	assert(ty != "", "unable to parse vlen attr")
 	signature := fmt.Sprintf("[]%s", ty)
-	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
+	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (vlenManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (vlenManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* variable-length, dtlength=", attr.length,
 		"proplen=", bf.Rem())
 	// checkVal(1, dtversion, "Only support version 1 of variable-length")
@@ -91,11 +91,11 @@ func (vlenManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf rem
 	logger.Infof("Type of this vattr: %T", attr.value)
 }
 
-func (vlenManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (vlenManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return []byte{0}
 }
 
-func (vlenManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (vlenManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	logger.Info("dimensions=", dimensions)
 	if attr.vtType == 1 {

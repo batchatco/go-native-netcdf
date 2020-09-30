@@ -700,7 +700,7 @@ func (h5 *HDF5) printDatatype(bf remReader, df remReader, objCount int64, attr *
 	attr.class = dtclass
 	attr.length = dtlength
 	assert(attr.length != 0, "attr length can't be zero")
-	Parse(dtclass, h5, attr, bitFields, bf, df)
+	parse(dtclass, h5, attr, bitFields, bf, df)
 	if df != nil && df.Rem() > 0 {
 		// It is normal for there to be extra data, not sure why yet.
 		// It does not break any unit tests, so the extra data seems unnecessary.
@@ -3025,7 +3025,7 @@ func makeFillValueReader(obj *object, bf io.Reader, length int64) io.Reader {
 		} else {
 			objFillValue = []byte{0}
 		}
-		objFillValue = DefaultFillValue(obj.objAttr.class, obj, objFillValue, undefinedFillValue)
+		objFillValue = defaultFillValue(obj.objAttr.class, obj, objFillValue, undefinedFillValue)
 	}
 	if len(objFillValue) == 0 {
 		logger.Error("zero sized fill value")
@@ -3109,7 +3109,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		}
 		dimensions = nd
 	}
-	return Alloc(attr.class, h5, bf, &attr, dimensions)
+	return alloc(attr.class, h5, bf, &attr, dimensions)
 }
 
 func (h5 *HDF5) cast(attr attribute) reflect.Type {
@@ -3118,7 +3118,7 @@ func (h5 *HDF5) cast(attr attribute) reflect.Type {
 	for name := range h5.registrations {
 		origNames[name] = true
 	}
-	ty := GoTypeString(attr.class, h5, varName, &attr, origNames)
+	ty := goTypeString(attr.class, h5, varName, &attr, origNames)
 	assert(ty != "", "did not calculate go type")
 	has := false
 	var proto interface{}
@@ -3163,7 +3163,7 @@ loop:
 				assert(has, fmt.Sprint("couldn't find ", tailType))
 				origNames := map[string]bool{}
 				origNames[tailType] = true
-				elemType = GoTypeString(obj.objAttr.class, h5, tailType, obj.objAttr, origNames)
+				elemType = goTypeString(obj.objAttr.class, h5, tailType, obj.objAttr, origNames)
 			}
 			sig := fmt.Sprintf("[]%s", elemType)
 			if sig == ty {
@@ -3186,7 +3186,7 @@ loop:
 					assert(has, fmt.Sprint("couldn't find ", tailType))
 					origNames := map[string]bool{}
 					origNames[tailType] = true
-					fType = GoTypeString(obj.objAttr.class, h5, tailType, obj.objAttr, origNames)
+					fType = goTypeString(obj.objAttr.class, h5, tailType, obj.objAttr, origNames)
 				}
 				fields = append(fields, fmt.Sprintf("\t%s %s", field.Name, fType))
 			}
@@ -3259,7 +3259,7 @@ func (h5 *HDF5) findGlobalAttrType(attrName string) string {
 			continue
 		}
 		origNames := map[string]bool{}
-		base := TypeString(attr.class, h5, attrName, attr, origNames)
+		base := cdlTypeString(attr.class, h5, attrName, attr, origNames)
 		dims := ""
 		if len(attr.dimensions) == 1 && attr.dimensions[0] == 1 {
 		} else {
@@ -3279,7 +3279,7 @@ func (h5 *HDF5) findGlobalAttrGoType(attrName string) string {
 			continue
 		}
 		origNames := map[string]bool{}
-		base := GoTypeString(attr.class, h5, attrName, attr, origNames)
+		base := goTypeString(attr.class, h5, attrName, attr, origNames)
 		dims := ""
 		if len(attr.dimensions) == 1 && attr.dimensions[0] == 1 {
 		} else {
@@ -3299,7 +3299,7 @@ func (h5 *HDF5) findType(varName string) string {
 		return ""
 	}
 	origNames := map[string]bool{varName: true}
-	return TypeString(obj.objAttr.class, h5, varName, obj.objAttr, origNames)
+	return cdlTypeString(obj.objAttr.class, h5, varName, obj.objAttr, origNames)
 }
 
 func (h5 *HDF5) getTypeObj(typeName string) (*object, bool) {
@@ -3327,7 +3327,7 @@ func (h5 *HDF5) GetType(typeName string) (string, bool) {
 		return "", false
 	}
 	origNames := map[string]bool{typeName: true}
-	sig := TypeString(obj.objAttr.class, h5, typeName, obj.objAttr, origNames)
+	sig := cdlTypeString(obj.objAttr.class, h5, typeName, obj.objAttr, origNames)
 	return sig, true
 }
 
@@ -3351,7 +3351,7 @@ func (h5 *HDF5) GetGoType(typeName string) (string, bool) {
 		return "", false
 	}
 	origNames := map[string]bool{typeName: true}
-	sig := GoTypeString(obj.objAttr.class, h5, typeName, obj.objAttr, origNames)
+	sig := goTypeString(obj.objAttr.class, h5, typeName, obj.objAttr, origNames)
 	return fmt.Sprintf("type %s %s", typeName, sig), true
 }
 
@@ -3737,9 +3737,9 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 	dims := h5.getDimensions(found)
 	attrs := h5.getAttributes(found.attrlist)
 	origNames := map[string]bool{varName: true}
-	ty := TypeString(found.objAttr.class, h5, varName, found.objAttr, origNames)
+	ty := cdlTypeString(found.objAttr.class, h5, varName, found.objAttr, origNames)
 	origNames = map[string]bool{varName: true}
-	goTy := GoTypeString(found.objAttr.class, h5, varName, found.objAttr, origNames)
+	goTy := goTypeString(found.objAttr.class, h5, varName, found.objAttr, origNames)
 	return internal.NewSlicer(getSlice, d, dims, attrs, ty, goTy), nil
 }
 

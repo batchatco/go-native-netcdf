@@ -13,9 +13,9 @@ var (
 	_            typeManager = arrayManager
 )
 
-func (arrayManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (arrayManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	arrayAttr := attr.children[0]
-	ty := TypeString(arrayAttr.class, h5, name, arrayAttr, origNames)
+	ty := cdlTypeString(arrayAttr.class, h5, name, arrayAttr, origNames)
 	assert(ty != "", "unable to parse array attr")
 	dStr := make([]string, len(arrayAttr.dimensions))
 	for i, d := range arrayAttr.dimensions {
@@ -23,14 +23,14 @@ func (arrayManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origN
 	}
 	dims := strings.Join(dStr, ",")
 	signature := fmt.Sprintf("%s(%s)", ty, dims)
-	namedType := h5.findSignature(signature, name, origNames, TypeString)
+	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
 	assert(namedType == "", "arrays are not named types")
 	return signature
 }
 
-func (arrayManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (arrayManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	arrayAttr := attr.children[0]
-	ty := GoTypeString(arrayAttr.class, h5, typeName, arrayAttr, origNames)
+	ty := goTypeString(arrayAttr.class, h5, typeName, arrayAttr, origNames)
 	assert(ty != "", "unable to parse array attr")
 	dStr := make([]string, len(arrayAttr.dimensions))
 	for i, d := range arrayAttr.dimensions {
@@ -38,12 +38,12 @@ func (arrayManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute,
 	}
 	dims := strings.Join(dStr, "")
 	signature := fmt.Sprintf("%s%s", dims, ty)
-	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
+	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
 	assert(namedType == "", "arrays are not named types")
 	return signature
 }
 
-func (arrayManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (arrayManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	logger.Info("orig dimensions=", attr.dimensions)
 	logger.Info("Array length=", attr.length)
@@ -60,11 +60,11 @@ func (arrayManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return h5.getDataAttr(cbf, *arrayAttr)
 }
 
-func (arrayManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (arrayManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 
-func (arrayManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (arrayManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("Array")
 	dimensionality := read8(bf)
 	logger.Info("dimensionality", dimensionality)

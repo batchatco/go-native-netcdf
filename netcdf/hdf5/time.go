@@ -14,29 +14,29 @@ var (
 	_           typeManager = timeManager
 )
 
-func (timeManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (timeManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	fail("time")
 	return ""
 }
 
-func (timeManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (timeManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	fail("time")
 	return ""
 }
 
-func (timeManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute, dimensions []uint64) interface{} {
+func (timeManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute, dimensions []uint64) interface{} {
 	fail("time")
 	return nil
 }
 
-func (timeManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (timeManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	fail("time")
 	return objFillValue
 }
 
-func (timeManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (timeManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	// This is disabled by default. Time is an obsolete type.
 	if parseTime {
 		logger.Info("time, len(data)=", df.Rem())

@@ -14,27 +14,27 @@ var (
 	_               typeManager = bitfieldManager
 )
 
-func (bitfieldManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (bitfieldManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	return "uchar" // same as uint8
 }
 
-func (bitfieldManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (bitfieldManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	return "uint8" // bitfield same as uint8
 }
 
-func (bitfieldManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (bitfieldManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	values := allocInt8s(bf, dimensions, false, nil)
 	return values
 }
 
-func (bitfieldManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (bitfieldManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 
-func (bitfieldManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (bitfieldManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	endian := hasFlag8(uint8(bitFields), 0)
 	switch endian {
 	case false:

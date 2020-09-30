@@ -18,7 +18,7 @@ var (
 	_                    typeManager = floatingPointManager
 )
 
-func (floatingPointManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (floatingPointManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	switch attr.length {
 	case 4:
 		return "float"
@@ -29,7 +29,7 @@ func (floatingPointManagerType) TypeString(h5 *HDF5, name string, attr *attribut
 	}
 }
 
-func (floatingPointManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (floatingPointManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	switch attr.length {
 	case 4:
 		return "float32"
@@ -40,7 +40,7 @@ func (floatingPointManagerType) GoTypeString(h5 *HDF5, name string, attr *attrib
 	}
 }
 
-func (floatingPointManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (floatingPointManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	var values interface{}
 	switch attr.length {
@@ -55,7 +55,7 @@ func (floatingPointManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return values // already converted
 }
 
-func (floatingPointManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (floatingPointManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	switch obj.objAttr.length {
 	case 4:
 		var fv float32
@@ -83,7 +83,7 @@ func (floatingPointManagerType) DefaultFillValue(obj *object, objFillValue []byt
 	return objFillValue
 }
 
-func (floatingPointManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (floatingPointManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	assertError(attr.dtversion == 1, ErrFloatingPoint, "Only support version 1 of float")
 	logger.Info("* floating-point")
 	endian := ((bitFields >> 5) & 0b10) | (bitFields & 0b1)

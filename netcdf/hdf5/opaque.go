@@ -13,35 +13,35 @@ var (
 	_             typeManager = opaqueManager
 )
 
-func (opaqueManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (opaqueManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	signature := fmt.Sprintf("opaque(%d)", attr.length)
-	namedType := h5.findSignature(signature, name, origNames, TypeString)
+	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (opaqueManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (opaqueManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	signature := fmt.Sprintf("[%d]uint8", attr.length) // TODO
-	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
+	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (opaqueManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (opaqueManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	cast := h5.cast(*attr)
 	return allocOpaque(bf, dimensions, attr.length, cast)
 }
 
-func (opaqueManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (opaqueManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 
-func (opaqueManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (opaqueManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	if bf.Rem() == 0 {
 		logger.Info("No properties for opaque")
 		return

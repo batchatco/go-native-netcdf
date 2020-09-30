@@ -16,48 +16,48 @@ var (
 	_               typeManager = compoundManager
 )
 
-func (compoundManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (compoundManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	members := make([]string, len(attr.children))
 	for i, cattr := range attr.children {
-		ty := TypeString(cattr.class, h5, name, cattr, origNames)
+		ty := cdlTypeString(cattr.class, h5, name, cattr, origNames)
 		members[i] = fmt.Sprintf("\t%s %s;\n", ty, cattr.name)
 	}
 	interior := strings.Join(members, "")
 	signature := fmt.Sprintf("compound {\n%s}", interior)
-	namedType := h5.findSignature(signature, name, origNames, TypeString)
+	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (compoundManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (compoundManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	members := make([]string, len(attr.children))
 	for i, cattr := range attr.children {
-		ty := GoTypeString(cattr.class, h5, typeName, cattr, origNames)
+		ty := goTypeString(cattr.class, h5, typeName, cattr, origNames)
 		members[i] = fmt.Sprintf("\t%s %s", cattr.name, ty)
 	}
 	interior := strings.Join(members, "\n")
 	signature := fmt.Sprintf("struct {\n%s\n}\n", interior)
-	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
+	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (compoundManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (compoundManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	cast := h5.cast(*attr)
 	values := h5.allocCompounds(bf, dimensions, *attr, cast)
 	return values
 }
 
-func (compoundManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (compoundManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 
-func (compoundManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (compoundManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* compound")
 	logger.Info("attr.dtversion", attr.dtversion)
 	assert(attr.dtversion >= 1 && attr.dtversion <= maxDTVersion,

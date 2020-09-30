@@ -15,11 +15,11 @@ var (
 	_           typeManager = enumManager
 )
 
-func (enumManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (enumManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	assert(len(attr.children) == 1, "enum should have one child")
 	enumAttr := attr.children[0]
 	assert(len(enumAttr.children) == 0, "no recursion")
-	ty := TypeString(enumAttr.class, h5, name, enumAttr, origNames)
+	ty := cdlTypeString(enumAttr.class, h5, name, enumAttr, origNames)
 	assert(ty != "", "unable to parse enum attr")
 	list := make([]string, len(enumAttr.enumNames))
 	for i, name := range enumAttr.enumNames {
@@ -27,18 +27,18 @@ func (enumManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNa
 	}
 	interior := strings.Join(list, ",\n")
 	signature := fmt.Sprintf("%s enum {\n%s\n}", ty, interior)
-	namedType := h5.findSignature(signature, name, origNames, TypeString)
+	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (enumManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (enumManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
 	assert(len(attr.children) == 1, "enum should have one child")
 	enumAttr := attr.children[0]
 	assert(len(enumAttr.children) == 0, "no recursion")
-	ty := GoTypeString(enumAttr.class, h5, typeName, enumAttr, origNames)
+	ty := goTypeString(enumAttr.class, h5, typeName, enumAttr, origNames)
 	assert(ty != "", "unable to parse enum attr")
 	list := make([]string, len(enumAttr.enumNames))
 	for i, enumName := range enumAttr.enumNames {
@@ -50,14 +50,14 @@ func (enumManagerType) GoTypeString(h5 *HDF5, typeName string, attr *attribute, 
 	}
 	interior := strings.Join(list, "\n")
 	signature := fmt.Sprintf("%s\nconst (\n%s\n)\n", ty, interior)
-	namedType := h5.findSignature(signature, typeName, origNames, GoTypeString)
+	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (enumManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (enumManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	var values interface{}
 	enumAttr := attr.children[0]
@@ -99,11 +99,11 @@ func (enumManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return enumerated{values}
 }
 
-func (enumManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (enumManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 
-func (enumManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (enumManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("blen begin", bf.Count())
 	var enumAttr attribute
 	h5.printDatatype(bf, nil, 0, &enumAttr)

@@ -16,26 +16,26 @@ var (
 	_                typeManager = referenceManager
 )
 
-func (referenceManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (referenceManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	return "uint64" // reference same as uint64
 }
 
-func (referenceManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (referenceManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	return "uint64" // reference same as uint64
 }
 
-func (referenceManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (referenceManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	return h5.allocReferences(bf, dimensions) // already converted
 }
 
-func (referenceManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (referenceManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 
-func (referenceManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (referenceManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* reference")
 	checkVal(1, attr.dtversion, "Only support version 1 of reference")
 	rType := bitFields & 0b1111

@@ -12,26 +12,26 @@ var (
 	_             typeManager = stringManager
 )
 
-func (stringManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (stringManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	return "string"
 }
 
-func (stringManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (stringManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	return "string"
 }
 
-func (stringManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (stringManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	logger.Info("regular string", len(dimensions), "dtlen=", attr.length)
 	return allocRegularStrings(bf, dimensions, attr.length) // already converted
 }
 
-func (stringManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (stringManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	// return all zeros to get zero lengths
 	return []byte{0}
 }
 
-func (stringManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (stringManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	checkVal(1, attr.dtversion, "Only support version 1 of string")
 	logger.Info("string")
 	padding := bitFields & 0b1111

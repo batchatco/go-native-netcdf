@@ -18,7 +18,7 @@ var (
 	_                 typeManager = fixedPointManager
 )
 
-func (fixedPointManagerType) TypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (fixedPointManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	prefix := ""
 	if !attr.signed {
 		prefix = "u"
@@ -37,7 +37,7 @@ func (fixedPointManagerType) TypeString(h5 *HDF5, name string, attr *attribute, 
 	}
 }
 
-func (fixedPointManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (fixedPointManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
 	prefix := ""
 	if !attr.signed {
 		prefix = "u"
@@ -56,7 +56,7 @@ func (fixedPointManagerType) GoTypeString(h5 *HDF5, name string, attr *attribute
 	}
 }
 
-func (fixedPointManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (fixedPointManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	var values interface{}
 	switch attr.length {
@@ -74,7 +74,7 @@ func (fixedPointManagerType) Alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return values // already converted
 }
 
-func (fixedPointManagerType) DefaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (fixedPointManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	switch obj.objAttr.length {
 	case 1:
 		if undefinedFillValue {
@@ -109,7 +109,7 @@ func (fixedPointManagerType) DefaultFillValue(obj *object, objFillValue []byte, 
 	return objFillValue
 }
 
-func (fixedPointManagerType) Parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (fixedPointManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* fixed-point")
 	// Same structure for all versions, no need to check
 	byteOrder := bitFields & 0b1

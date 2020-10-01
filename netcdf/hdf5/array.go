@@ -13,9 +13,9 @@ var (
 	_            typeManager = arrayManager
 )
 
-func (arrayManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (arrayManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	arrayAttr := attr.children[0]
-	ty := cdlTypeString(arrayAttr.class, h5, name, arrayAttr, origNames)
+	ty := cdlTypeString(arrayAttr.class, sh, name, arrayAttr, origNames)
 	assert(ty != "", "unable to parse array attr")
 	dStr := make([]string, len(arrayAttr.dimensions))
 	for i, d := range arrayAttr.dimensions {
@@ -23,14 +23,14 @@ func (arrayManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, or
 	}
 	dims := strings.Join(dStr, ",")
 	signature := fmt.Sprintf("%s(%s)", ty, dims)
-	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
+	namedType := sh.findSignature(signature, name, origNames, cdlTypeString)
 	assert(namedType == "", "arrays are not named types")
 	return signature
 }
 
-func (arrayManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (arrayManagerType) goTypeString(sh sigHelper, typeName string, attr *attribute, origNames map[string]bool) string {
 	arrayAttr := attr.children[0]
-	ty := goTypeString(arrayAttr.class, h5, typeName, arrayAttr, origNames)
+	ty := goTypeString(arrayAttr.class, sh, typeName, arrayAttr, origNames)
 	assert(ty != "", "unable to parse array attr")
 	dStr := make([]string, len(arrayAttr.dimensions))
 	for i, d := range arrayAttr.dimensions {
@@ -38,7 +38,7 @@ func (arrayManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute,
 	}
 	dims := strings.Join(dStr, "")
 	signature := fmt.Sprintf("%s%s", dims, ty)
-	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
+	namedType := sh.findSignature(signature, typeName, origNames, goTypeString)
 	assert(namedType == "", "arrays are not named types")
 	return signature
 }

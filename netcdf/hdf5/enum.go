@@ -15,11 +15,11 @@ var (
 	_           typeManager = enumManager
 )
 
-func (enumManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (enumManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	assert(len(attr.children) == 1, "enum should have one child")
 	enumAttr := attr.children[0]
 	assert(len(enumAttr.children) == 0, "no recursion")
-	ty := cdlTypeString(enumAttr.class, h5, name, enumAttr, origNames)
+	ty := cdlTypeString(enumAttr.class, sh, name, enumAttr, origNames)
 	assert(ty != "", "unable to parse enum attr")
 	list := make([]string, len(enumAttr.enumNames))
 	for i, name := range enumAttr.enumNames {
@@ -27,18 +27,18 @@ func (enumManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, ori
 	}
 	interior := strings.Join(list, ",\n")
 	signature := fmt.Sprintf("%s enum {\n%s\n}", ty, interior)
-	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
+	namedType := sh.findSignature(signature, name, origNames, cdlTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (enumManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (enumManagerType) goTypeString(sh sigHelper, typeName string, attr *attribute, origNames map[string]bool) string {
 	assert(len(attr.children) == 1, "enum should have one child")
 	enumAttr := attr.children[0]
 	assert(len(enumAttr.children) == 0, "no recursion")
-	ty := goTypeString(enumAttr.class, h5, typeName, enumAttr, origNames)
+	ty := goTypeString(enumAttr.class, sh, typeName, enumAttr, origNames)
 	assert(ty != "", "unable to parse enum attr")
 	list := make([]string, len(enumAttr.enumNames))
 	for i, enumName := range enumAttr.enumNames {
@@ -50,7 +50,7 @@ func (enumManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, 
 	}
 	interior := strings.Join(list, "\n")
 	signature := fmt.Sprintf("%s\nconst (\n%s\n)\n", ty, interior)
-	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
+	namedType := sh.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
 	}

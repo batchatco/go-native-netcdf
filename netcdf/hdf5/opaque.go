@@ -13,18 +13,18 @@ var (
 	_             typeManager = opaqueManager
 )
 
-func (opaqueManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (opaqueManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	signature := fmt.Sprintf("opaque(%d)", attr.length)
-	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
+	namedType := sh.findSignature(signature, name, origNames, cdlTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (opaqueManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (opaqueManagerType) goTypeString(sh sigHelper, typeName string, attr *attribute, origNames map[string]bool) string {
 	signature := fmt.Sprintf("[%d]uint8", attr.length) // TODO
-	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
+	namedType := sh.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
 	}

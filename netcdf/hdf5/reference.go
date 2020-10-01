@@ -16,12 +16,12 @@ var (
 	_                typeManager = referenceManager
 )
 
-func (referenceManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (referenceManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	return "uint64" // reference same as uint64
 }
 
-func (referenceManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (referenceManagerType) goTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	return "uint64" // reference same as uint64
 }

@@ -14,13 +14,13 @@ var (
 	_           typeManager = timeManager
 )
 
-func (timeManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (timeManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	fail("time")
 	return ""
 }
 
-func (timeManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (timeManagerType) goTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	// Not NetCDF
 	fail("time")
 	return ""

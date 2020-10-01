@@ -16,32 +16,32 @@ var (
 	_           typeManager = vlenManager
 )
 
-func (vlenManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (vlenManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	if attr.vtType == 1 {
 		// It's a string
 		return "string"
 	}
 	vAttr := attr.children[0]
-	ty := cdlTypeString(vAttr.class, h5, name, vAttr, origNames)
+	ty := cdlTypeString(vAttr.class, sh, name, vAttr, origNames)
 	assert(ty != "", "unable to parse vlen attr")
 	signature := fmt.Sprintf("%s(*)", ty)
-	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
+	namedType := sh.findSignature(signature, name, origNames, cdlTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (vlenManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (vlenManagerType) goTypeString(sh sigHelper, typeName string, attr *attribute, origNames map[string]bool) string {
 	if attr.vtType == 1 {
 		// It's a string
 		return "string"
 	}
 	vAttr := attr.children[0]
-	ty := goTypeString(vAttr.class, h5, typeName, vAttr, origNames)
+	ty := goTypeString(vAttr.class, sh, typeName, vAttr, origNames)
 	assert(ty != "", "unable to parse vlen attr")
 	signature := fmt.Sprintf("[]%s", ty)
-	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
+	namedType := sh.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
 	}

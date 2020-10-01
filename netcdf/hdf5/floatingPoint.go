@@ -18,7 +18,7 @@ var (
 	_                    typeManager = floatingPointManager
 )
 
-func (floatingPointManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (floatingPointManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	switch attr.length {
 	case 4:
 		return "float"
@@ -29,7 +29,7 @@ func (floatingPointManagerType) cdlTypeString(h5 *HDF5, name string, attr *attri
 	}
 }
 
-func (floatingPointManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (floatingPointManagerType) goTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	switch attr.length {
 	case 4:
 		return "float32"

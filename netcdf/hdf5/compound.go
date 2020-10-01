@@ -16,30 +16,30 @@ var (
 	_               typeManager = compoundManager
 )
 
-func (compoundManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (compoundManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	members := make([]string, len(attr.children))
 	for i, cattr := range attr.children {
-		ty := cdlTypeString(cattr.class, h5, name, cattr, origNames)
+		ty := cdlTypeString(cattr.class, sh, name, cattr, origNames)
 		members[i] = fmt.Sprintf("\t%s %s;\n", ty, cattr.name)
 	}
 	interior := strings.Join(members, "")
 	signature := fmt.Sprintf("compound {\n%s}", interior)
-	namedType := h5.findSignature(signature, name, origNames, cdlTypeString)
+	namedType := sh.findSignature(signature, name, origNames, cdlTypeString)
 	if namedType != "" {
 		return namedType
 	}
 	return signature
 }
 
-func (compoundManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, origNames map[string]bool) string {
+func (compoundManagerType) goTypeString(sh sigHelper, typeName string, attr *attribute, origNames map[string]bool) string {
 	members := make([]string, len(attr.children))
 	for i, cattr := range attr.children {
-		ty := goTypeString(cattr.class, h5, typeName, cattr, origNames)
+		ty := goTypeString(cattr.class, sh, typeName, cattr, origNames)
 		members[i] = fmt.Sprintf("\t%s %s", cattr.name, ty)
 	}
 	interior := strings.Join(members, "\n")
 	signature := fmt.Sprintf("struct {\n%s\n}\n", interior)
-	namedType := h5.findSignature(signature, typeName, origNames, goTypeString)
+	namedType := sh.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
 	}

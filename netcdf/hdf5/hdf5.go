@@ -3459,8 +3459,7 @@ func (h5 *HDF5) GetDimension(name string) (uint64, bool) {
 	return 0, false
 }
 
-func (h5 *HDF5) findSignature(signature string, name string, origNames map[string]bool,
-	printer func(class uint8, h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string) string {
+func (h5 *HDF5) findSignature(signature string, name string, origNames map[string]bool, printer printerType) string {
 	if h5.groupObject == nil {
 		return ""
 	}

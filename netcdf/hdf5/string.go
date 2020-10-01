@@ -12,11 +12,11 @@ var (
 	_             typeManager = stringManager
 )
 
-func (stringManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (stringManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	return "string"
 }
 
-func (stringManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (stringManagerType) goTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	return "string"
 }
 

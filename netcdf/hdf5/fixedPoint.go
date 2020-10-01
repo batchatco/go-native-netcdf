@@ -18,7 +18,7 @@ var (
 	_                 typeManager = fixedPointManager
 )
 
-func (fixedPointManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (fixedPointManagerType) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	prefix := ""
 	if !attr.signed {
 		prefix = "u"
@@ -37,7 +37,7 @@ func (fixedPointManagerType) cdlTypeString(h5 *HDF5, name string, attr *attribut
 	}
 }
 
-func (fixedPointManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, origNames map[string]bool) string {
+func (fixedPointManagerType) goTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	prefix := ""
 	if !attr.signed {
 		prefix = "u"

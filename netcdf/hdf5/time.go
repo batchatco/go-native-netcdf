@@ -26,7 +26,7 @@ func (timeManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, orig
 	return ""
 }
 
-func (timeManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute, dimensions []uint64) interface{} {
+func (timeManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute, dimensions []uint64) interface{} {
 	fail("time")
 	return nil
 }
@@ -36,7 +36,7 @@ func (timeManagerType) defaultFillValue(obj *object, objFillValue []byte, undefi
 	return objFillValue
 }
 
-func (timeManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (timeManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	// This is disabled by default. Time is an obsolete type.
 	if parseTime {
 		logger.Info("time, len(data)=", df.Rem())

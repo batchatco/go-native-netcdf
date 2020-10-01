@@ -57,11 +57,11 @@ func (enumManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, 
 	return signature
 }
 
-func (enumManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (enumManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	var values interface{}
 	enumAttr := attr.children[0]
-	cast := h5.cast(*enumAttr)
+	cast := c.cast(*enumAttr)
 	switch enumAttr.class {
 	case typeFixedPoint:
 		switch enumAttr.length {
@@ -103,10 +103,10 @@ func (enumManagerType) defaultFillValue(obj *object, objFillValue []byte, undefi
 	return objFillValue
 }
 
-func (enumManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (enumManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("blen begin", bf.Count())
 	var enumAttr attribute
-	h5.printDatatype(bf, nil, 0, &enumAttr)
+	printDatatype(hr, c, bf, nil, 0, &enumAttr)
 	logger.Info("blen now", bf.Count())
 	numberOfMembers := bitFields & 0b11111111
 	logger.Info("number of members=", numberOfMembers)
@@ -141,7 +141,7 @@ func (enumManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf rem
 	values := make([]interface{}, numberOfMembers)
 	enumAttr.enumValues = values
 	for i := uint32(0); i < numberOfMembers; i++ {
-		values[i] = h5.getDataAttr(bf, enumAttr)
+		values[i] = getDataAttr(hr, c, bf, enumAttr)
 		switch values[i].(type) {
 		case uint64, int64:
 		case uint32, int32:

@@ -666,7 +666,7 @@ func (h5 *HDF5) readAttributeDirect(obj *object, addr uint64, offset uint64, len
 	h5.readAttribute(obj, bf, creationOrder)
 }
 
-func (h5 *HDF5) printDatatype(bf remReader, df remReader, objCount int64, attr *attribute) {
+func printDatatype(hr heapReader, c caster, bf remReader, df remReader, objCount int64, attr *attribute) {
 	assert(bf.Rem() >= 8, "short data")
 	b0 := read8(bf)
 	b1 := read8(bf)
@@ -700,7 +700,7 @@ func (h5 *HDF5) printDatatype(bf remReader, df remReader, objCount int64, attr *
 	attr.class = dtclass
 	attr.length = dtlength
 	assert(attr.length != 0, "attr length can't be zero")
-	parse(dtclass, h5, attr, bitFields, bf, df)
+	parse(dtclass, hr, c, attr, bitFields, bf, df)
 	if df != nil && df.Rem() > 0 {
 		// It is normal for there to be extra data, not sure why yet.
 		// It does not break any unit tests, so the extra data seems unnecessary.
@@ -790,7 +790,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 	logger.Info("sizeRem=", bf.Rem())
 	if !sharedType {
 		pf := newResetReaderFromBytes(dtb)
-		h5.printDatatype(pf, bf, count, attr)
+		printDatatype(h5, h5, pf, bf, count, attr)
 	} else {
 		checkVal(datatypeSize, 10, "datatype size must be 10 for shared")
 		bff := newResetReaderFromBytes(dtb)
@@ -2190,7 +2190,7 @@ func (h5 *HDF5) readDatatype(obj *object, bf io.Reader) *attribute {
 	logger.Info("print datatype with properties from chunk")
 	var objAttr attribute
 	pf := newResetReader(bf, bf.(remReader).Rem())
-	h5.printDatatype(pf, nil, 0, &objAttr)
+	printDatatype(h5, h5, pf, nil, 0, &objAttr)
 	return &objAttr
 }
 
@@ -3091,10 +3091,10 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 	} else {
 		bff = newResetReader(bf, sz)
 	}
-	return h5.getDataAttr(bff, *attr)
+	return getDataAttr(h5, h5, bff, *attr)
 }
 
-func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
+func getDataAttr(hr heapReader, c caster, bf io.Reader, attr attribute) interface{} {
 	for i, v := range attr.dimensions {
 		logger.Info("dimension", i, "=", v)
 	}
@@ -3109,7 +3109,7 @@ func (h5 *HDF5) getDataAttr(bf io.Reader, attr attribute) interface{} {
 		}
 		dimensions = nd
 	}
-	return alloc(attr.class, h5, bf, &attr, dimensions)
+	return alloc(attr.class, hr, c, bf, &attr, dimensions)
 }
 
 func (h5 *HDF5) cast(attr attribute) reflect.Type {
@@ -3517,7 +3517,7 @@ func (h5 *HDF5) parseAttr(obj *object, a *attribute) {
 		case "DIMENSION_LIST", "NAME", "REFERENCE_LIST", "CLASS":
 			h5.registrations = nil
 		}
-		a.value = h5.getDataAttr(a.df, *a)
+		a.value = getDataAttr(h5, h5, a.df, *a)
 		a.df = nil
 		h5.registrations = save
 	}
@@ -3539,7 +3539,7 @@ func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
 					sz := calcAttrSize(val)
 					val.df = makeFillValueReader(fakeObj, nil, sz)
 				}
-				val.value = h5.getDataAttr(val.df, *val)
+				val.value = getDataAttr(h5, h5, val.df, *val)
 			}
 			value := undoScalarAttribute(val.value)
 			filtered[val.name] = value

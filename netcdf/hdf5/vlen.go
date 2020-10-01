@@ -48,7 +48,7 @@ func (vlenManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute, 
 	return signature
 }
 
-func (vlenManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (vlenManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* variable-length, dtlength=", attr.length,
 		"proplen=", bf.Rem())
 	// checkVal(1, dtversion, "Only support version 1 of variable-length")
@@ -73,7 +73,7 @@ func (vlenManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf rem
 		fail("unknown variable-length type")
 	}
 	var variableAttr attribute
-	h5.printDatatype(bf, nil, 0, &variableAttr)
+	printDatatype(hr, c, bf, nil, 0, &variableAttr)
 	logger.Info("variable class", variableAttr.class, "vtType", vtType)
 	attr.children = append(attr.children, &variableAttr)
 	attr.vtType = vtType
@@ -95,19 +95,19 @@ func (vlenManagerType) defaultFillValue(obj *object, objFillValue []byte, undefi
 	return []byte{0}
 }
 
-func (vlenManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (vlenManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	logger.Info("dimensions=", dimensions)
 	if attr.vtType == 1 {
 		// It's a string
 		// TODO: use the padding and character set information
 		logger.Info("variable-length string", len(dimensions))
-		return h5.allocStrings(bf, dimensions) // already converted
+		return allocStrings(hr, bf, dimensions) // already converted
 	}
 	logger.Info("variable-length type", typeNames[int(attr.children[0].class)])
 	logger.Info("dimensions=", dimensions, "rem=", bf.(remReader).Rem())
-	cast := h5.cast(*attr)
-	values := h5.allocVariable(bf, dimensions, *attr.children[0], cast)
+	cast := c.cast(*attr)
+	values := allocVariable(hr, c, bf, dimensions, *attr.children[0], cast)
 	logger.Infof("vl kind %T", values)
 	if cast != nil {
 		return values
@@ -115,7 +115,7 @@ func (vlenManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	return convert(values)
 }
 
-func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {
+func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) interface{} {
 	logger.Info("allocStrings", dimLengths)
 	if len(dimLengths) == 0 {
 		// alloc one scalar
@@ -135,7 +135,7 @@ func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {
 		if length == 0 {
 			return ""
 		}
-		bff, sz := h5.readGlobalHeap(addr, index)
+		bff, sz := hr.readGlobalHeap(addr, index)
 		s := make([]byte, sz)
 		read(bff, s)
 		logger.Info("string=", string(s))
@@ -161,7 +161,7 @@ func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {
 				values[i] = ""
 				continue
 			}
-			bff, sz := h5.readGlobalHeap(addr, index)
+			bff, sz := hr.readGlobalHeap(addr, index)
 			s := make([]byte, sz)
 			read(bff, s)
 			values[i] = getString(s) // TODO: should be s[:length]
@@ -171,12 +171,12 @@ func (h5 *HDF5) allocStrings(bf io.Reader, dimLengths []uint64) interface{} {
 	ty := reflect.TypeOf("")
 	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
-		vals.Index(int(i)).Set(reflect.ValueOf(h5.allocStrings(bf, dimLengths[1:])))
+		vals.Index(int(i)).Set(reflect.ValueOf(allocStrings(hr, bf, dimLengths[1:])))
 	}
 	return vals.Interface()
 }
 
-func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute,
+func allocVariable(hr heapReader, c caster, bf io.Reader, dimLengths []uint64, attr attribute,
 	cast reflect.Type) interface{} {
 	logger.Info("allocVariable", dimLengths, "count=", bf.(remReader).Count(),
 		"rem=", bf.(remReader).Rem())
@@ -201,10 +201,10 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute,
 			s = make([]byte, attr.length)
 			bff = newResetReaderFromBytes(s)
 		} else {
-			bff, _ = h5.readGlobalHeap(addr, index)
+			bff, _ = hr.readGlobalHeap(addr, index)
 		}
 		var t reflect.Type
-		val0 = h5.getDataAttr(bff, attr)
+		val0 = getDataAttr(hr, c, bff, attr)
 		if cast != nil {
 			t = cast.Elem()
 		} else {
@@ -217,7 +217,7 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute,
 		if length > 0 {
 			sl.Index(0).Set(reflect.ValueOf(val0))
 			for i := 1; i < int(length); i++ {
-				val := h5.getDataAttr(bff, attr)
+				val := getDataAttr(hr, c, bff, attr)
 				sl.Index(i).Set(reflect.ValueOf(val))
 			}
 		}
@@ -229,7 +229,7 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute,
 		vals := make([]interface{}, thisDim)
 		for i := uint64(0); i < thisDim; i++ {
 			logger.Info("Alloc inner", i, "of", thisDim)
-			vals[i] = h5.allocVariable(bf, dimLengths[1:], attr, cast)
+			vals[i] = allocVariable(hr, c, bf, dimLengths[1:], attr, cast)
 		}
 		assert(vals[0] != nil, "we never return nil")
 		t := reflect.ValueOf(vals[0]).Type()
@@ -245,7 +245,7 @@ func (h5 *HDF5) allocVariable(bf io.Reader, dimLengths []uint64, attr attribute,
 	vals := make([]interface{}, thisDim)
 	for i := uint64(0); i < thisDim; i++ {
 		logger.Info("Alloc outer", i, "of", thisDim)
-		vals[i] = h5.allocVariable(bf, dimLengths[1:], attr, cast)
+		vals[i] = allocVariable(hr, c, bf, dimLengths[1:], attr, cast)
 	}
 	t := reflect.ValueOf(vals[0]).Type()
 	vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))

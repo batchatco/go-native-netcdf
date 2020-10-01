@@ -24,7 +24,7 @@ func (bitfieldManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribu
 	return "uint8" // bitfield same as uint8
 }
 
-func (bitfieldManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (bitfieldManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	values := allocInt8s(bf, dimensions, false, nil)
 	return values
@@ -34,7 +34,7 @@ func (bitfieldManagerType) defaultFillValue(obj *object, objFillValue []byte, un
 	return objFillValue
 }
 
-func (bitfieldManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (bitfieldManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	endian := hasFlag8(uint8(bitFields), 0)
 	switch endian {
 	case false:

@@ -43,7 +43,7 @@ func (arrayManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute,
 	return signature
 }
 
-func (arrayManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (arrayManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	logger.Info("orig dimensions=", attr.dimensions)
 	logger.Info("Array length=", attr.length)
@@ -57,14 +57,14 @@ func (arrayManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
 	cbf := bf.(remReader)
 	logger.Info(cbf.Count(), "child length", arrayAttr.length)
 	logger.Info(cbf.Count(), "array", "class", arrayAttr.class)
-	return h5.getDataAttr(cbf, *arrayAttr)
+	return getDataAttr(hr, c, cbf, *arrayAttr)
 }
 
 func (arrayManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
 	return objFillValue
 }
 
-func (arrayManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (arrayManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("Array")
 	dimensionality := read8(bf)
 	logger.Info("dimensionality", dimensionality)
@@ -85,7 +85,7 @@ func (arrayManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf re
 		}
 	}
 	var arrayAttr attribute
-	h5.printDatatype(bf, nil, 0, &arrayAttr)
+	printDatatype(hr, c, bf, nil, 0, &arrayAttr)
 	arrayAttr.dimensions = dimensions
 	attr.children = append(attr.children, &arrayAttr)
 	if df != nil && df.Rem() > 0 {

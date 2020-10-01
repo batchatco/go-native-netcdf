@@ -20,7 +20,7 @@ func (stringManagerType) goTypeString(h5 *HDF5, name string, attr *attribute, or
 	return "string"
 }
 
-func (stringManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (stringManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	logger.Info("regular string", len(dimensions), "dtlen=", attr.length)
 	return allocRegularStrings(bf, dimensions, attr.length) // already converted
@@ -31,7 +31,7 @@ func (stringManagerType) defaultFillValue(obj *object, objFillValue []byte, unde
 	return []byte{0}
 }
 
-func (stringManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (stringManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	checkVal(1, attr.dtversion, "Only support version 1 of string")
 	logger.Info("string")
 	padding := bitFields & 0b1111

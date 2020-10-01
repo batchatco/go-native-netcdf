@@ -46,10 +46,10 @@ func (compoundManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribu
 	return signature
 }
 
-func (compoundManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (compoundManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
-	cast := h5.cast(*attr)
-	values := h5.allocCompounds(bf, dimensions, *attr, cast)
+	cast := c.cast(*attr)
+	values := allocCompounds(hr, c, bf, dimensions, *attr, cast)
 	return values
 }
 
@@ -57,7 +57,7 @@ func (compoundManagerType) defaultFillValue(obj *object, objFillValue []byte, un
 	return objFillValue
 }
 
-func (compoundManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (compoundManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* compound")
 	logger.Info("attr.dtversion", attr.dtversion)
 	assert(attr.dtversion >= 1 && attr.dtversion <= maxDTVersion,
@@ -123,7 +123,7 @@ func (compoundManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf
 		}
 
 		logger.Infof("%d compound before: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
-		h5.printDatatype(bf, nil, 0, &compoundAttribute)
+		printDatatype(hr, c, bf, nil, 0, &compoundAttribute)
 		logger.Infof("%d compound after: len(prop) = %d len(data) = %d", i, bf.Rem(), rem)
 		logger.Infof("%d compound dtlength", compoundAttribute.length)
 		attr.children = append(attr.children, &compoundAttribute)
@@ -144,7 +144,7 @@ func (compoundManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf
 	logger.Info("Finished compound", "rem=", bf.Rem())
 }
 
-func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute,
+func allocCompounds(hr heapReader, cstr caster, bf io.Reader, dimLengths []uint64, attr attribute,
 	cast reflect.Type) interface{} {
 	length := int64(attr.length)
 	class := typeNames[attr.class]
@@ -174,7 +174,7 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 				skip(cbf, int64(skipLen))
 			}
 			ccbf := newResetReader(cbf, int64(clen))
-			varray[i].Val = h5.getDataAttr(ccbf, *c)
+			varray[i].Val = getDataAttr(hr, cstr, ccbf, *c)
 			varray[i].Name = c.name
 		}
 		if cbf.Count() < length {
@@ -211,7 +211,7 @@ func (h5 *HDF5) allocCompounds(bf io.Reader, dimLengths []uint64, attr attribute
 		if !vals2.Index(int(i)).CanSet() {
 			thrower.Throw(ErrNonExportedField)
 		}
-		vals2.Index(int(i)).Set(reflect.ValueOf(h5.allocCompounds(bf, dimLengths[1:], attr, cast)))
+		vals2.Index(int(i)).Set(reflect.ValueOf(allocCompounds(hr, cstr, bf, dimLengths[1:], attr, cast)))
 	}
 	return vals2.Interface()
 }

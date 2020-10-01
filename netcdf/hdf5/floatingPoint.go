@@ -40,7 +40,7 @@ func (floatingPointManagerType) goTypeString(h5 *HDF5, name string, attr *attrib
 	}
 }
 
-func (floatingPointManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (floatingPointManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	var values interface{}
 	switch attr.length {
@@ -83,7 +83,7 @@ func (floatingPointManagerType) defaultFillValue(obj *object, objFillValue []byt
 	return objFillValue
 }
 
-func (floatingPointManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (floatingPointManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	assertError(attr.dtversion == 1, ErrFloatingPoint, "Only support version 1 of float")
 	logger.Info("* floating-point")
 	endian := ((bitFields >> 5) & 0b10) | (bitFields & 0b1)

@@ -56,7 +56,7 @@ func (fixedPointManagerType) goTypeString(h5 *HDF5, name string, attr *attribute
 	}
 }
 
-func (fixedPointManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (fixedPointManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
 	var values interface{}
 	switch attr.length {
@@ -109,7 +109,7 @@ func (fixedPointManagerType) defaultFillValue(obj *object, objFillValue []byte, 
 	return objFillValue
 }
 
-func (fixedPointManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (fixedPointManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* fixed-point")
 	// Same structure for all versions, no need to check
 	byteOrder := bitFields & 0b1

@@ -31,9 +31,9 @@ func (opaqueManagerType) goTypeString(h5 *HDF5, typeName string, attr *attribute
 	return signature
 }
 
-func (opaqueManagerType) alloc(h5 *HDF5, bf io.Reader, attr *attribute,
+func (opaqueManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
 	dimensions []uint64) interface{} {
-	cast := h5.cast(*attr)
+	cast := c.cast(*attr)
 	return allocOpaque(bf, dimensions, attr.length, cast)
 }
 
@@ -41,7 +41,7 @@ func (opaqueManagerType) defaultFillValue(obj *object, objFillValue []byte, unde
 	return objFillValue
 }
 
-func (opaqueManagerType) parse(h5 *HDF5, attr *attribute, bitFields uint32, bf remReader, df remReader) {
+func (opaqueManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	if bf.Rem() == 0 {
 		logger.Info("No properties for opaque")
 		return

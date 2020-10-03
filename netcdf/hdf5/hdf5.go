@@ -198,12 +198,6 @@ const (
 	classVirtual
 )
 
-// for padBytesCheck()
-const (
-	dontRound = false // the number is the number of pad bytes to check for.
-	round     = true  // the number is the byte-boundary to check up to (1, 3 or 7).
-)
-
 type attribute struct {
 	name          string
 	value         interface{}
@@ -303,11 +297,6 @@ type object struct {
 	attrListIsSorted bool
 }
 
-var (
-	logFunc   = logger.Fatal // logging function for padBytesCheck()
-	maybeFail = fail         // fail function, can be disabled for testing
-)
-
 // Only the pointer is used here.  We don't actually use the value.
 // It's just a way to detect that something wasn't defined.
 var fillValueUndefinedConstant = []byte{0xff}
@@ -318,21 +307,6 @@ var logger = internal.NewLogger()
 type log struct{}
 
 var _ = log{} // to silence staticcheck warning
-
-func setNonStandard(non bool) bool {
-	old := allowNonStandard
-	allowNonStandard = non
-	if allowNonStandard {
-		logFunc = logger.Info
-		maybeFail = func(msg string) {
-			logger.Warn(msg)
-		}
-	} else {
-		logFunc = logger.Fatal
-		maybeFail = fail
-	}
-	return old
-}
 
 // SetLogLevel sets the logging level to the given level, and returns
 // the old level. This is for internal debugging use. The log messages
@@ -649,14 +623,6 @@ func readNullTerminatedName(bf io.Reader, padding int) string {
 	return string(name)
 }
 
-func padBytes(bf io.Reader, pad32 int) {
-	padBytesCheck(bf, pad32, round, logFunc)
-}
-
-func checkZeroes(bf io.Reader, len int) {
-	padBytesCheck(bf, len, dontRound, logFunc)
-}
-
 // Assumes it is an attribute
 func (h5 *HDF5) readAttributeDirect(obj *object, addr uint64, offset uint64, length uint16,
 	creationOrder uint64) {
@@ -664,49 +630,6 @@ func (h5 *HDF5) readAttributeDirect(obj *object, addr uint64, offset uint64, len
 	logger.Info("read Attributes at:", addr+offset)
 	bf := h5.newSeek(addr+uint64(offset), int64(length))
 	h5.readAttribute(obj, bf, creationOrder)
-}
-
-func printDatatype(hr heapReader, c caster, bf remReader, df remReader, objCount int64, attr *attribute) {
-	assert(bf.Rem() >= 8, "short data")
-	b0 := read8(bf)
-	b1 := read8(bf)
-	b2 := read8(bf)
-	b3 := read8(bf)
-	bitFields := uint32(b1) | (uint32(b2) << 8) | (uint32(b3) << 16)
-	dtversion := (b0 >> 4) & 0b1111
-	dtclass := b0 & 0b1111
-	dtlength := read32(bf)
-	logger.Infof("* length=%d dtlength=%d dtversion=%d class=%s flags=%s",
-		bf.Rem(), dtlength,
-		dtversion, typeNames[dtclass], binaryToString(uint64(bitFields)))
-	switch dtversion {
-	case dtversionStandard:
-		logger.Info("Standard datatype")
-	case dtversionArray:
-		logger.Info("Array-encoded datatype")
-	case dtversionPacked:
-		logger.Info("VAX and/or packed datatype")
-	case dtversionV4:
-		if maxDTVersion == dtversionV4 {
-			// allowed
-			logger.Info("Undocumented datatype version 4")
-			break
-		}
-		fallthrough
-	default:
-		fail(fmt.Sprint("Unknown datatype version: ", dtversion))
-	}
-	attr.dtversion = dtversion
-	attr.class = dtclass
-	attr.length = dtlength
-	assert(attr.length != 0, "attr length can't be zero")
-	parse(dtclass, hr, c, attr, bitFields, bf, df)
-	if df != nil && df.Rem() > 0 {
-		// It is normal for there to be extra data, not sure why yet.
-		// It does not break any unit tests, so the extra data seems unnecessary.
-		logger.Info("did not read all data", df.Rem(), typeNames[dtclass])
-		skip(df, df.Rem())
-	}
 }
 
 func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) {
@@ -2803,37 +2726,6 @@ func makeStringSlices(dimLengths []uint64) reflect.Value {
 		sliceType = reflect.SliceOf(sliceType)
 	}
 	return reflect.MakeSlice(sliceType, int(dimLengths[0]), int(dimLengths[0]))
-}
-
-// check: whether or not to fail if padded bytes are not zeroed.  They
-// are supposed to be zero, but software exists out there that does not
-// zero them for opaque types.
-func padBytesCheck(obf io.Reader, pad32 int, round bool,
-	logFunc func(v ...interface{})) bool {
-	cbf := obf.(remReader)
-	success := true
-	var extra int
-	if round {
-		pad64 := int64(pad32)
-		rounded := (cbf.Count() + pad64) & ^pad64
-		extra = int(rounded) - int(cbf.Count())
-	} else {
-		extra = pad32
-	}
-	if extra > 0 {
-		logger.Info(cbf.Count(), "prepad", extra, "bytes")
-		b := make([]byte, extra)
-		read(cbf, b)
-		for i := 0; i < int(extra); i++ {
-			if b[i] != 0 {
-				success = false
-			}
-		}
-		if !success {
-			logFunc(fmt.Sprintf("Reserved not zero len=%d 0x%x", extra, b))
-		}
-	}
-	return success
 }
 
 func readAll(bf io.Reader, b []byte) (uint64, error) {

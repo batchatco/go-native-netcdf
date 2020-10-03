@@ -76,3 +76,46 @@ func cdlTypeString(class uint8, sh sigHelper, name string, attr *attribute, orig
 func goTypeString(class uint8, sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
 	return getDispatch(class).goTypeString(sh, name, attr, origNames)
 }
+
+func printDatatype(hr heapReader, c caster, bf remReader, df remReader, objCount int64, attr *attribute) {
+	assert(bf.Rem() >= 8, "short data")
+	b0 := read8(bf)
+	b1 := read8(bf)
+	b2 := read8(bf)
+	b3 := read8(bf)
+	bitFields := uint32(b1) | (uint32(b2) << 8) | (uint32(b3) << 16)
+	dtversion := (b0 >> 4) & 0b1111
+	dtclass := b0 & 0b1111
+	dtlength := read32(bf)
+	logger.Infof("* length=%d dtlength=%d dtversion=%d class=%s flags=%s",
+		bf.Rem(), dtlength,
+		dtversion, typeNames[dtclass], binaryToString(uint64(bitFields)))
+	switch dtversion {
+	case dtversionStandard:
+		logger.Info("Standard datatype")
+	case dtversionArray:
+		logger.Info("Array-encoded datatype")
+	case dtversionPacked:
+		logger.Info("VAX and/or packed datatype")
+	case dtversionV4:
+		if maxDTVersion == dtversionV4 {
+			// allowed
+			logger.Info("Undocumented datatype version 4")
+			break
+		}
+		fallthrough
+	default:
+		fail(fmt.Sprint("Unknown datatype version: ", dtversion))
+	}
+	attr.dtversion = dtversion
+	attr.class = dtclass
+	attr.length = dtlength
+	assert(attr.length != 0, "attr length can't be zero")
+	parse(dtclass, hr, c, attr, bitFields, bf, df)
+	if df != nil && df.Rem() > 0 {
+		// It is normal for there to be extra data, not sure why yet.
+		// It does not break any unit tests, so the extra data seems unnecessary.
+		logger.Info("did not read all data", df.Rem(), typeNames[dtclass])
+		skip(df, df.Rem())
+	}
+}

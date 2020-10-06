@@ -11,6 +11,12 @@ import (
 
 type compoundManagerType struct{}
 
+type compoundField struct {
+	Name string
+	Val  interface{}
+}
+type compound []compoundField
+
 var (
 	compoundManager             = compoundManagerType{}
 	_               typeManager = compoundManager

@@ -10,6 +10,10 @@ import (
 
 type enumManagerType struct{}
 
+type enumerated struct {
+	values interface{}
+}
+
 var (
 	enumManager             = enumManagerType{}
 	_           typeManager = enumManager

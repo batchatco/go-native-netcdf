@@ -222,18 +222,6 @@ type attribute struct {
 	noDf          bool
 }
 
-type compoundField struct {
-	Name string
-	Val  interface{}
-}
-type compound []compoundField
-
-type enumerated struct {
-	values interface{}
-}
-
-type opaque []byte
-
 type dataBlock struct {
 	offset     uint64 // offset of data
 	length     uint64 // size in bytes of data

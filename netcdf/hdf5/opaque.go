@@ -8,6 +8,8 @@ import (
 
 type opaqueManagerType struct{}
 
+type opaque []byte
+
 var (
 	opaqueManager             = opaqueManagerType{}
 	_             typeManager = opaqueManager

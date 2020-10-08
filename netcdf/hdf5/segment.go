@@ -32,13 +32,7 @@ func (s *segments) Swap(i, j int) {
 }
 
 func (s *segments) Less(i, j int) bool {
-	if s.segs[i].offset < s.segs[j].offset {
-		return true
-	}
-	if s.segs[i].offset > s.segs[j].offset {
-		return false
-	}
-	return true
+	return s.segs[i].offset <= s.segs[j].offset
 }
 
 // other methods

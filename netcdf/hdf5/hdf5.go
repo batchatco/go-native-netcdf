@@ -2837,15 +2837,6 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			length: dsLength - (skipBegin + skipEnd),
 			r:      bf,
 		}
-		if int64(thisSeg.offset+thisSeg.length) > h5.fileSize {
-			if int64(thisSeg.offset) >= h5.fileSize {
-				thisSeg.r = makeFillValueReader(obj, nil, int64(thisSeg.length))
-			} else {
-				length := h5.fileSize - int64(thisSeg.offset)
-				rr := newResetReader(thisSeg.r, length)
-				thisSeg.r = makeFillValueReader(obj, rr, int64(thisSeg.length))
-			}
-		}
 		segments.append(thisSeg)
 		offset += dsLength
 	}

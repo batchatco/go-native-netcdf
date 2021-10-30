@@ -55,9 +55,9 @@ package main
 
 import (
     "fmt"
-
     "github.com/batchatco/go-native-netcdf/netcdf"
 )
+
 func main() {
     // Open the file
     nc, err := netcdf.Open("data.nc")
@@ -92,9 +92,9 @@ package main
 
 import (
     "fmt"
-
     "github.com/batchatco/go-native-netcdf/netcdf"
 )
+
 func main() {
     // Open the file
     ncf, err := netcdf.Open("data.nc")

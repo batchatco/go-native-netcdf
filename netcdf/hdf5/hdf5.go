@@ -332,12 +332,6 @@ func read(r io.Reader, data interface{}) {
 	thrower.ThrowIfError(err)
 }
 
-func skip(r io.Reader, length int64) {
-	data := make([]byte, length)
-	err := binary.Read(r, binary.LittleEndian, data)
-	thrower.ThrowIfError(err)
-}
-
 func read8(r io.Reader) byte {
 	var data byte
 	err := binary.Read(r, binary.LittleEndian, &data)
@@ -2737,7 +2731,7 @@ func readAll(bf io.Reader, b []byte) (uint64, error) {
 }
 
 func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
-	shuffleFound bool, shuffleParam uint32, fletcher32Found bool) io.Reader {
+	shuffleFound bool, shuffleParam uint32, fletcher32Found bool) remReader {
 	nBlocks := len(obj.dataBlocks)
 	size := uint64(calcAttrSize(obj.objAttr))
 	if size == 0 {
@@ -2798,9 +2792,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		if fletcher32Found {
 			logger.Info("Found fletcher32", val.length)
 			bf = newFletcher32Reader(bf, val.length)
-			if firstOffset > 0 {
-				skip(bf, int64(firstOffset))
-			}
+			canSeek = false
 		}
 		if zlibFound {
 			logger.Info("trying zlib")
@@ -2809,27 +2801,22 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			}
 			zbf, err := zlib.NewReader(bf)
 			if err != nil {
-				logger.Error(ErrUnknownCompression)
-				return nil
+				failError(ErrUnknownCompression, fmt.Sprintf("unknown compression: %v", err))
 			}
 			bf = newResetReader(zbf, int64(dsLength))
-			if firstOffset > 0 {
-				skip(bf, int64(firstOffset))
-			}
+			canSeek = false
 		}
 		if shuffleFound {
 			logger.Info("using shuffle", dsLength)
 			bf = newUnshuffleReader(bf, dsLength, shuffleParam)
-			if firstOffset > 0 {
-				skip(bf, int64(firstOffset))
-			}
+			canSeek = false
 		}
 		if skipBegin > 0 {
 			thisSize := int64(dsLength - (skipBegin + skipEnd))
 			if canSeek {
 				bf = h5.newSeek(valOffset+skipBegin, thisSize)
 			} else {
-				skip(bf, int64(firstOffset))
+				skip(bf, int64(skipBegin))
 			}
 		}
 		thisSeg := &segment{
@@ -2863,7 +2850,24 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	}
 	assertError(off <= lastOffset, ErrCorrupted,
 		fmt.Sprintf("this only happens in corrupted files (2) %d %d", off, lastOffset))
-	r := newResetReader(io.MultiReader(readers...), int64(size))
+	return newResetReader(io.MultiReader(readers...), int64(size))
+}
+
+func (h5 *HDF5) newLayoutRecordReader(obj *object, zlibFound bool, zlibParam uint32,
+	shuffleFound bool, shuffleParam uint32, fletcher32Found bool) io.Reader {
+	r := h5.newRecordReader(obj, zlibFound, zlibParam, shuffleFound,
+		shuffleParam, fletcher32Found)
+
+	ok := true
+	for i := 1; i < len(obj.objAttr.layout)-1; i++ {
+		if obj.objAttr.layout[i] != 1 {
+			ok = false
+			break
+		}
+	}
+	if len(obj.objAttr.layout) > 1 || !ok {
+		return newLayoutReader(r, obj)
+	}
 	return r
 }
 
@@ -2876,7 +2880,7 @@ func calcAttrSize(attr *attribute) int64 {
 	return size
 }
 
-func makeFillValueReader(obj *object, bf io.Reader, length int64) io.Reader {
+func makeFillValueReader(obj *object, bf io.Reader, length int64) remReader {
 	undefinedFillValue := false
 	objFillValue := obj.fillValue
 	if obj.fillValue == nil {
@@ -2936,9 +2940,9 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 	// TODO if !zlibFound && !shuffleFound && !fletcher32Found && isSlice {
 	// we can seek first to save time.  Otherwise, it is slow inefficent reading to get to the
 	// place we want (or some complicated algorithm).
-	bf := h5.newRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
 	attr := obj.objAttr
 	sz := calcAttrSize(attr)
+	bf := h5.newLayoutRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
 	logger.Info("about to getdataattr rem=", bf.(remReader).Rem(), "size=", sz)
 	if sz > bf.(remReader).Rem() {
 		length := sz - bf.(remReader).Rem()

@@ -12,6 +12,12 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
+func skip(r io.Reader, length int64) {
+	data := make([]byte, length)
+	err := binary.Read(r, binary.LittleEndian, data)
+	thrower.ThrowIfError(err)
+}
+
 // remReader remembers the count (used) and remaining bytes
 type remReader interface {
 	io.Reader
@@ -78,6 +84,10 @@ func newFletcher32Reader(r io.Reader, size uint64) remReader {
 
 func (fl *fletcher) Rem() int64 {
 	return int64((fl.size - 4) - fl.count)
+}
+
+func (fl *fletcher) Size() int64 {
+	return int64(fl.size)
 }
 
 func (fl *fletcher) Count() int64 {
@@ -348,4 +358,138 @@ func (r *unshuffleReader) Read(p []byte) (int, error) {
 		return int(thisLen), io.EOF
 	}
 	return int(thisLen), err
+}
+
+type layoutReader struct {
+	r             remReader
+	obj           *object
+	buf           []byte
+	size          int64
+	count         uint64 // number bytes read from buffer
+	total         uint64 // total bytes buffered
+	lastChunkRows uint64
+}
+
+func (lr *layoutReader) fillrow(curOffset uint64) (nrows uint64) {
+	dtLength := uint64(lr.obj.objAttr.length)
+	lastDimIndex := len(lr.obj.objAttr.dimensions) - 1
+	lineLen := lr.obj.objAttr.dimensions[lastDimIndex]
+	lastLayoutIndex := len(lr.obj.objAttr.layout) - 1
+	chunkLen := lr.obj.objAttr.layout[lastLayoutIndex]
+
+	chunkSize := uint64(1)
+	for _, v := range lr.obj.objAttr.layout {
+		chunkSize *= v
+	}
+	chunksPerLine := (lineLen + chunkLen - 1) / chunkLen
+	chunkRows := chunkSize / chunkLen
+	if lr.buf == nil {
+		sliceSize := /*chunkRows * */ chunksPerLine * chunkSize * dtLength
+		extra := (chunksPerLine * chunkLen) - lineLen
+		logger.Info("dimensions", lr.obj.objAttr.dimensions, "layout", lr.obj.objAttr.layout)
+		sliceSize -= extra
+		lr.buf = make([]byte, sliceSize)
+	}
+outer:
+	for col := uint64(0); col < chunksPerLine; col++ {
+		for row := uint64(0); row < chunkRows; row++ {
+			// for each of the rows, read a chunkLen
+			thisLen := chunkLen
+			if col == (chunksPerLine - 1) {
+				// last column could be runt
+				thisLen = lineLen - (chunkLen * col)
+			}
+			thisOffset := row*chunksPerLine*chunkLen + col*chunkLen
+
+			thisLen *= dtLength
+			thisOffset *= dtLength
+			for thisLen > 0 {
+				readBuf := lr.buf[thisOffset : thisOffset+thisLen]
+				n, err := lr.r.Read(readBuf)
+				if n == 0 {
+					if err == io.EOF {
+						logger.Info("fillrow EOF", "row", row, "col", col,
+							"chunkRows", chunkRows, "chunksPerLine", chunksPerLine, "total", lr.total)
+						return row
+					}
+					thrower.ThrowIfError(err)
+				}
+				lr.total += uint64(n)
+				if uint64(n) < thisLen {
+					logger.Info("short read", lr.total, "size in file", lr.size, "len", n, "thisLen", thisLen)
+				}
+				thisOffset += uint64(n)
+				thisLen -= uint64(n)
+			}
+			if lr.total == uint64(lr.size) {
+				break outer
+			}
+		}
+	}
+	logger.Info("fillrow full", "chunkRows", chunkRows, "chunksPerLine", chunksPerLine)
+	return chunkRows
+}
+
+func (lr *layoutReader) Read(b []byte) (int, error) {
+	// Offset in units
+	dtLength := uint64(lr.obj.objAttr.length)
+	curOffset := lr.count / dtLength
+	lastDimIndex := len(lr.obj.objAttr.dimensions) - 1
+	lineLen := lr.obj.objAttr.dimensions[lastDimIndex]
+	assert(lineLen != 0, "linelen can't be zero")
+	lastLayoutIndex := len(lr.obj.objAttr.layout) - 1
+	chunkLen := lr.obj.objAttr.layout[lastLayoutIndex]
+
+	chunkSize := uint64(1)
+	for _, v := range lr.obj.objAttr.layout {
+		chunkSize *= v
+	}
+	chunkRows := chunkSize / chunkLen
+	if lr.lastChunkRows > 0 {
+		chunkRows = lr.lastChunkRows
+	}
+	if curOffset%(chunkRows*lineLen) == 0 {
+		// TODO: we don't have to fill a whole row necessarily.
+		thisChunkRows := lr.fillrow(curOffset)
+		if thisChunkRows == 0 {
+			logger.Info("nil buf EOF")
+			lr.buf = nil
+			return 0, io.EOF
+		}
+		if thisChunkRows == chunkRows {
+			logger.Info("full chunk", "rows", chunkRows)
+		} else {
+			logger.Info("partial chunk", thisChunkRows, "full", chunkRows)
+			lr.lastChunkRows = thisChunkRows
+		}
+		chunkRows = thisChunkRows
+	}
+	thisRow := (curOffset / lineLen) % chunkRows
+	thisLen := uint64(len(b))
+	offset := (thisRow*chunkLen + curOffset%lineLen) * dtLength
+	rem := uint64(len(lr.buf)) - offset
+	if rem < thisLen {
+		thisLen = rem
+	}
+	copy(b, lr.buf[offset:offset+thisLen])
+	lr.count += thisLen
+	curOffset = lr.count / dtLength
+	if curOffset%(chunkRows*lineLen) == 0 {
+		logger.Info("nil buf -- last col")
+		lr.buf = nil
+	}
+	logger.Info("layout reader read %d, rem %d", thisLen, lr.Rem())
+	return int(thisLen), nil
+}
+
+func (lr *layoutReader) Rem() int64 {
+	return lr.size - int64(lr.count)
+}
+
+func (lr *layoutReader) Count() int64 {
+	return int64(lr.count)
+}
+
+func newLayoutReader(r remReader, obj *object) io.Reader {
+	return &layoutReader{r, obj, nil, r.Rem(), 0, 0, 0}
 }

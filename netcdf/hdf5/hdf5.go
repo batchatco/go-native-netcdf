@@ -2781,7 +2781,8 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		var bf io.Reader
 		canSeek := false
 		if val.rawData != nil {
-			bf = newResetReaderFromBytes(val.rawData[skipBegin : dsLength+skipBegin])
+			thisSize := int64(dsLength - skipEnd)
+			bf = newResetReaderFromBytes(val.rawData[:thisSize])
 		} else {
 			logger.Infof("offset=0x%x length=%d offset+length=0x%x filesize=0x%x",
 				valOffset, val.length,
@@ -2812,8 +2813,8 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			canSeek = false
 		}
 		if skipBegin > 0 {
-			thisSize := int64(dsLength - (skipBegin + skipEnd))
 			if canSeek {
+				thisSize := int64(dsLength - (skipBegin + skipEnd))
 				bf = h5.newSeek(valOffset+skipBegin, thisSize)
 			} else {
 				skip(bf, int64(skipBegin))

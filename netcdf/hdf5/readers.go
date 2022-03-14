@@ -466,7 +466,7 @@ func (lr *layoutReader) Read(b []byte) (int, error) {
 	}
 	thisRow := (curOffset / lineLen) % chunkRows
 	thisLen := uint64(len(b))
-	offset := (thisRow*chunkLen + curOffset%lineLen) * dtLength
+	offset := (thisRow*lineLen + curOffset%lineLen) * dtLength
 	rem := uint64(len(lr.buf)) - offset
 	if rem < thisLen {
 		thisLen = rem
@@ -478,7 +478,7 @@ func (lr *layoutReader) Read(b []byte) (int, error) {
 		logger.Info("nil buf -- last col")
 		lr.buf = nil
 	}
-	logger.Info("layout reader read %d, rem %d", thisLen, lr.Rem())
+	logger.Infof("layout reader read %d, rem %d", thisLen, lr.Rem())
 	return int(thisLen), nil
 }
 

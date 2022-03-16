@@ -2747,6 +2747,11 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			firstOffset = uint64(obj.objAttr.firstDim) * dimSize
 			lastOffset = uint64(obj.objAttr.lastDim) * dimSize
 			size = lastOffset - firstOffset
+			if needsLayoutReader(obj.objAttr) {
+				// The above calculation could be wrong due to layout chunks.
+				// The calculation is not simple and is a TODO.
+				logger.Info("var slices with chunked layout not fully implemented")
+			}
 		}
 	}
 	if nBlocks == 0 {
@@ -2854,31 +2859,26 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	return newResetReader(io.MultiReader(readers...), int64(size))
 }
 
-func (h5 *HDF5) newLayoutRecordReader(obj *object, zlibFound bool, zlibParam uint32,
-	shuffleFound bool, shuffleParam uint32, fletcher32Found bool) io.Reader {
+func (h5 *HDF5) newMaybeLayoutRecordReader(obj *object, zlibFound bool, zlibParam uint32, shuffleFound bool, shuffleParam uint32, fletcher32Found bool) io.Reader {
 	r := h5.newRecordReader(obj, zlibFound, zlibParam, shuffleFound,
 		shuffleParam, fletcher32Found)
-
-	ok := true
-	for i := 1; i < len(obj.objAttr.layout)-1; i++ {
-		if obj.objAttr.layout[i] != 1 {
-			ok = false
-			break
-		}
-	}
-	if len(obj.objAttr.layout) > 1 || !ok {
+	if needsLayoutReader(obj.objAttr) {
 		return newLayoutReader(r, obj)
 	}
 	return r
 }
 
-// Not including any slice changes
-func calcAttrSize(attr *attribute) int64 {
-	size := int64(attr.length)
-	for _, d := range attr.dimensions {
-		size *= int64(d)
+func needsLayoutReader(attr *attribute) bool {
+	if len(attr.layout) <= 1 {
+		return false
 	}
-	return size
+	for i := 0; i < len(attr.layout)-1; i++ {
+		if attr.layout[i] != 1 {
+			logger.Info("needs layout reader", attr.layout)
+			return true
+		}
+	}
+	return false
 }
 
 func makeFillValueReader(obj *object, bf io.Reader, length int64) remReader {
@@ -2942,13 +2942,13 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 	// we can seek first to save time.  Otherwise, it is slow inefficent reading to get to the
 	// place we want (or some complicated algorithm).
 	attr := obj.objAttr
-	sz := calcAttrSize(attr)
-	bf := h5.newLayoutRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
+	sz := calcAttrSize(obj.objAttr)
+	bf := h5.newMaybeLayoutRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
 	logger.Info("about to getdataattr rem=", bf.(remReader).Rem(), "size=", sz)
-	if sz > bf.(remReader).Rem() {
-		length := sz - bf.(remReader).Rem()
+	if int64(sz) > bf.(remReader).Rem() {
+		length := int64(sz) - bf.(remReader).Rem()
 		logger.Info("Add fill value reader", length)
-		bf = makeFillValueReader(obj, bf, sz)
+		bf = makeFillValueReader(obj, bf, int64(sz))
 	}
 	var bff io.Reader
 	if attr.isSlice {
@@ -2960,12 +2960,17 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 		case attr.dimensions[0] == 0:
 			chunkSize = 0
 		default:
-			chunkSize = sz / int64(attr.dimensions[0])
+			chunkSize = int64(sz) / int64(attr.dimensions[0])
+			if needsLayoutReader(attr) {
+				// The above calculation could be wrong due to layout chunks.
+				// The calculation is not simple and is a TODO.
+				logger.Info("var slices with chunked layout not fully implemented")
+			}
 		}
 		sliceSize := chunkSize * (attr.lastDim - attr.firstDim)
 		bff = newResetReader(bf, sliceSize)
 	} else {
-		bff = newResetReader(bf, sz)
+		bff = newResetReader(bf, int64(sz))
 	}
 	return getDataAttr(h5, h5, bff, *attr)
 }
@@ -3383,7 +3388,7 @@ func (h5 *HDF5) findSignature(signature string, name string, origNames map[strin
 
 func (h5 *HDF5) parseAttr(obj *object, a *attribute) {
 	if a.df != nil {
-		a.df = makeFillValueReader(obj, a.df, calcAttrSize(a))
+		a.df = makeFillValueReader(obj, a.df, int64(calcAttrSize(a)))
 		logger.Infof("Reparsing attribute %s %s %p", a.name, typeNames[a.class], a)
 		assert(!a.shared, "shared attr unexpected here")
 		// very hacky
@@ -3412,7 +3417,7 @@ func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
 					logger.Info("Need fill value reader", val.name)
 					fakeObj := newObject()
 					sz := calcAttrSize(val)
-					val.df = makeFillValueReader(fakeObj, nil, sz)
+					val.df = makeFillValueReader(fakeObj, nil, int64(sz))
 				}
 				val.value = getDataAttr(h5, h5, val.df, *val)
 			}

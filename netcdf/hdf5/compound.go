@@ -140,7 +140,7 @@ func (compoundManagerType) parse(hr heapReader, c caster, attr *attribute, bitFi
 		logger.Info("compound alloced", df.Count(), df.Rem()+df.Count(),
 			"attrSize=", attrSize)
 		bff := df
-		if attrSize > df.Rem() {
+		if int64(attrSize) > df.Rem() {
 			logger.Info("Adding fill value reader")
 			// bff = makeFillValueReader(obj, df, attrSize)
 		}

@@ -608,6 +608,64 @@ func TestOneDimSlow(t *testing.T) {
 	commonOneDim(t, slow)
 }
 
+func TestMultiDim(t *testing.T) {
+	// Set up
+	fileName := "testdata/testmultidim" // base filename without extension
+	genName := ncGen(t, fileName)
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	t.Log("TEST:", genName)
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+
+	vrVal, err := nc.GetVariable("val")
+	if err != nil {
+		t.Error("nc.GetVariable('val') err=", err)
+		return
+	}
+	if vrVal == (nil) {
+		t.Errorf("variable val not found")
+		return
+	}
+	val, hasVal := vrVal.Values.([][][][]uint16)
+	if !hasVal {
+		t.Error("variable val conversion to [][][][]uint16 failed")
+		return
+	}
+	expected := [][][][]uint16{
+		{
+			{
+				{0, 1, 2, 3},
+				{4, 5, 6, 7},
+				{8, 9, 10, 11},
+			}, {
+				{12, 13, 14, 15},
+				{16, 17, 18, 19},
+				{20, 21, 22, 23},
+			},
+		}, {
+			{
+				{100, 101, 102, 103},
+				{104, 105, 106, 107},
+				{108, 109, 110, 111},
+			}, {
+				{112, 113, 114, 115},
+				{116, 117, 118, 119},
+				{120, 121, 122, 123},
+			},
+		},
+	}
+	if !reflect.DeepEqual(val, expected) {
+		t.Error("val did not match expected")
+	}
+}
+
 func TestUnlimited(t *testing.T) {
 	fileName := "testdata/testunlimited" // base filename without extension
 	genName := ncGen(t, fileName)

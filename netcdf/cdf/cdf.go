@@ -1101,13 +1101,16 @@ func (cdf *CDF) convert(data interface{}, dimLengths []uint64, vType uint32) int
 		}
 		return returnSlice
 	}
-
 	ivalue := cdf.convert(data, dimLengths[1:], vType)
 	t := reflect.TypeOf(ivalue)
 	val := reflect.MakeSlice(reflect.SliceOf(t), length, length)
 	val.Index(0).Set(reflect.ValueOf(ivalue))
+	totalLength := uint64(1)
+	for i := 1; i < len(dimLengths); i++ {
+		totalLength *= dimLengths[i]
+	}
 	for i := 1; i < length; i++ {
-		nextSlice := v.Slice(i*int(dimLengths[1]), v.Len()).Interface()
+		nextSlice := v.Slice(i*int(totalLength), v.Len()).Interface()
 		data = nextSlice
 		ivalue = cdf.convert(data, dimLengths[1:], vType)
 		val.Index(i).Set(reflect.ValueOf(ivalue))

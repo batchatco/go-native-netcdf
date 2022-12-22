@@ -1559,7 +1559,10 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 		logger.Info("key, childaddr", key, childAddr)
 		keyAddrs = append(keyAddrs, keyAddr{key, childAddr})
 	}
-	lastKey := read64(bf)
+	// Get lastkey by last keyAddrs
+	//lastKey := read64(bf)
+	lastKey := keyAddrs[len(keyAddrs)-1].key
+
 	sort.SliceStable(keyAddrs, func(i, j int) bool {
 		return keyAddrs[i].key < keyAddrs[j].key
 	})
@@ -1580,7 +1583,7 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 	prevAddr = invalidAddress
 	for _, v := range keyAddrs {
 		if prevAddr != invalidAddress {
-			if lastKey > prevKey {
+			if lastKey >= prevKey {
 				h5.readSymbolTableLeaf(parent, prevAddr, (v.key - prevKey), heapAddr)
 			}
 		}
@@ -1588,7 +1591,7 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 		prevAddr = v.addr
 	}
 	if prevAddr != invalidAddress {
-		if lastKey > prevKey {
+		if lastKey >= prevKey {
 			h5.readSymbolTableLeaf(parent, prevAddr, (lastKey - prevKey), heapAddr)
 		}
 	}

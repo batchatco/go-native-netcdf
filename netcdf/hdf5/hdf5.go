@@ -1580,7 +1580,7 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 	prevAddr = invalidAddress
 	for _, v := range keyAddrs {
 		if prevAddr != invalidAddress {
-			if lastKey > prevKey {
+			if v.key > prevKey {
 				h5.readSymbolTableLeaf(parent, prevAddr, (v.key - prevKey), heapAddr)
 			}
 		}

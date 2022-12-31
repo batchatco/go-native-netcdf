@@ -1462,7 +1462,7 @@ func (h5 *HDF5) readLocalHeap(addr uint64, offset uint64) string {
 	return readNullTerminatedName(bff, 0)
 }
 
-func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, heapAddr uint64) {
+func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, heapAddr uint64) {
 	bf := h5.newSeek(addr, 8)
 	checkMagic(bf, 4, "SNOD")
 	version := read8(bf)
@@ -1472,7 +1472,7 @@ func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, size uint64, he
 	numSymbols := read16(bf)
 
 	thisSize := int64(numSymbols) * 40
-	logger.Info("number of symbols", numSymbols, "size=", size, "thisSize=", thisSize)
+	logger.Info("number of symbols", numSymbols, "thisSize=", thisSize)
 	bf = h5.newSeek(addr+uint64(bf.Count()), thisSize)
 	for i := 0; i < int(numSymbols); i++ {
 		logger.Info("Start: count=", bf.Count(), "rem=", bf.Rem())
@@ -1556,41 +1556,13 @@ func (h5 *HDF5) readSymbolTable(parent *object, addr uint64, heapAddr uint64) {
 	for i := uint16(0); i < entriesUsed; i++ {
 		key := read64(bf)
 		childAddr := read64(bf)
-		logger.Info("key, childaddr", key, childAddr)
+		logger.Infof("%d: key=%d addr=0x%x", i, key, addr)
 		keyAddrs = append(keyAddrs, keyAddr{key, childAddr})
 	}
 	lastKey := read64(bf)
-	sort.SliceStable(keyAddrs, func(i, j int) bool {
-		return keyAddrs[i].key < keyAddrs[j].key
-	})
-	var prevKey uint64
-	prevAddr := invalidAddress
-	for i, v := range keyAddrs {
-		if prevAddr != invalidAddress {
-			logger.Infof("%d: key=%d prevKey=%d size=%d addr=0x%x", i,
-				v.key, prevKey, v.key-prevKey, prevAddr)
-		}
-		prevKey = v.key
-		prevAddr = v.addr
-	}
-	if prevAddr != invalidAddress {
-		logger.Infof("last: key=%d prevKey=%d size=%d addr=0x%x",
-			lastKey, prevKey, lastKey-prevKey, prevAddr)
-	}
-	prevAddr = invalidAddress
+	logger.Infof("last key=%d", lastKey)
 	for _, v := range keyAddrs {
-		if prevAddr != invalidAddress {
-			if v.key > prevKey {
-				h5.readSymbolTableLeaf(parent, prevAddr, (v.key - prevKey), heapAddr)
-			}
-		}
-		prevKey = v.key
-		prevAddr = v.addr
-	}
-	if prevAddr != invalidAddress {
-		if lastKey > prevKey {
-			h5.readSymbolTableLeaf(parent, prevAddr, (lastKey - prevKey), heapAddr)
-		}
+		h5.readSymbolTableLeaf(parent, v.addr, heapAddr)
 	}
 }
 

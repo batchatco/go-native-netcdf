@@ -59,7 +59,7 @@ func TestLayout(t *testing.T) {
 		t.Error("get chunked var -- wrong type")
 		return
 	}
-	fmt.Printf("[row,col] src,dst\n")
+	t.Log("[row,col] src,dst\n")
 	for i := 0; i < len(vals); i++ {
 		for j := 0; j < len(vals[i]); j++ {
 			if vals[i][j] != gvals[i][j] {

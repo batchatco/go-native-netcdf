@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+
+	"github.com/batchatco/go-thrower"
 )
 
 // Each type implements this interface.
@@ -105,7 +107,8 @@ func printDatatype(hr heapReader, c caster, bf remReader, df remReader, objCount
 		}
 		fallthrough
 	default:
-		fail(fmt.Sprint("Unknown datatype version: ", dtversion))
+		logger.Error(fmt.Sprint("Unknown datatype version: ", dtversion))
+		thrower.Throw(ErrUnsupportedDataTypeVersion)
 	}
 	attr.dtversion = dtversion
 	attr.class = dtclass

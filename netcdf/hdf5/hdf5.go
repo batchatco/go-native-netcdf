@@ -2751,8 +2751,6 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			skipEnd = offset + dsLength - lastOffset
 		}
 
-		assert(val.filterMask == 0,
-			fmt.Sprintf("filter mask = 0x%x", val.filterMask))
 		logger.Infof("block %d is 0x%x, len %d (%d, %d), mask 0x%x size %d",
 			i, val.offset, val.length, val.dsOffset, val.dsLength, val.filterMask, size)
 		var bf io.Reader
@@ -2766,6 +2764,20 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 				valOffset+val.length, h5.fileSize)
 			bf = h5.newSeek(valOffset, int64(val.length))
 			canSeek = true
+		}
+		for idx, f := range obj.filters {
+			if (1<<idx)&val.filterMask != 0 {
+				switch f.kind {
+				case filterDeflate:
+					zlibFound = false
+				case filterShuffle:
+					shuffleFound = false
+				case filterFletcher32:
+					fletcher32Found = false
+				default:
+					fail(fmt.Sprintf("can't mask unknown filter %v", f))
+				}
+			}
 		}
 		if fletcher32Found {
 			logger.Info("Found fletcher32", val.length)

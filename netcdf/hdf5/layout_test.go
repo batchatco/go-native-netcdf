@@ -18,11 +18,11 @@ func TestLayout(t *testing.T) {
 	defer os.Remove(genName)
 	chunkedName := "testdata/" + fileNameNoExt + "_chunk.nc"
 	cmdString := []string{"-l", "a:CHUNK=7x6", genName, chunkedName}
-	cmd := exec.Command("h5repack", cmdString...)
+	cmd := exec.Command(h5RepackBinary, cmdString...)
 	err := cmd.Run()
 	if err != nil {
 		s := strings.Join(cmdString, " ")
-		t.Error("h5repack", s, ":", err)
+		t.Error(h5RepackBinary, s, ":", err)
 		return
 	}
 	defer os.Remove(chunkedName)

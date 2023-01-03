@@ -73,4 +73,12 @@ var (
 	// ErrNonExportedField is returned when a value cannot be assigned to user-supplied
 	// struct because it has non-exported fields.
 	ErrNonExportedField = errors.New("can't assign to non-exported field")
+
+	// ErrUnsupportedDataTypeVersion is returned when a unsupported datatype version
+	// is encountered. Only versions 1-3 are supported.
+	ErrUnsupportedDataTypeVersion = errors.New("unsupported data type version")
+
+	// ErrUnsupportedReferenceVersion is returned a reference version other than 1
+	// is encountered.
+	ErrUnsupportedReferenceVersion = errors.New("unsupported reference version")
 )

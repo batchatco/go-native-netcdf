@@ -23,6 +23,12 @@ const (
 	doAttrs     = true
 )
 
+const (
+	ncGenBinary    = "ncgen"
+	h5DumpBinary   = "h5dump"
+	h5RepackBinary = "h5repack"
+)
+
 type keyVal struct {
 	name     string
 	baseType string // not including dimensions
@@ -609,10 +615,10 @@ func ncGen(t *testing.T, fileNameNoExt string) string {
 	if genIsNewer(genName, srcName) {
 		return genName
 	}
-	cmd := exec.Command("ncgen", "-b", "-k", "hdf5", "-o", genName, "testdata/"+fileNameNoExt+".cdl")
+	cmd := exec.Command(ncGenBinary, "-b", "-k", "hdf5", "-o", genName, "testdata/"+fileNameNoExt+".cdl")
 	err := cmd.Run()
 	if err != nil {
-		t.Log("ncgen", "-b", "-k", "hdf5", "-o", genName, "testdata/"+fileNameNoExt+".cdl")
+		t.Log(ncGenBinary, "-b", "-k", "hdf5", "-o", genName, "testdata/"+fileNameNoExt+".cdl")
 		t.Log(err)
 		return ""
 	}
@@ -627,7 +633,7 @@ func ncGen(t *testing.T, fileNameNoExt string) string {
 
 func validate(t *testing.T, fname string, filters []string) {
 	cmdString := []string{"-H", "-p", fname}
-	cmd := exec.Command("h5dump", cmdString...)
+	cmd := exec.Command(h5DumpBinary, cmdString...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Error(err)
@@ -637,7 +643,7 @@ func validate(t *testing.T, fname string, filters []string) {
 	defer cmd.Wait()
 	if err != nil {
 		s := strings.Join(cmdString, " ")
-		t.Error("h5dump", s, ":", err)
+		t.Error(h5DumpBinary, s, ":", err)
 		return
 	}
 	out, err := ioutil.ReadAll(stdout)
@@ -679,11 +685,11 @@ func ncFilter(t *testing.T, fileNameNoExt string, filters []string,
 		cmdString = append(cmdString, "-f", filters[i])
 	}
 	cmdString = append(cmdString, srcName, genName)
-	cmd := exec.Command("h5repack", cmdString...)
+	cmd := exec.Command(h5RepackBinary, cmdString...)
 	err := cmd.Run()
 	if err != nil {
 		s := strings.Join(cmdString, " ")
-		t.Error("h5repack", s, ":", err)
+		t.Error(h5RepackBinary, s, ":", err)
 		return ""
 	}
 	validate(t, genName, filters)

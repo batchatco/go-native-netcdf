@@ -37,7 +37,7 @@ func (referenceManagerType) defaultFillValue(obj *object, objFillValue []byte, u
 
 func (referenceManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, bf remReader, df remReader) {
 	logger.Info("* reference")
-	checkVal(1, attr.dtversion, "Only support version 1 of reference")
+	assertError(attr.dtversion == 1, ErrUnsupportedReferenceVersion, "Only support version 1 of reference")
 	rType := bitFields & 0b1111
 	switch rType {
 	case 0:

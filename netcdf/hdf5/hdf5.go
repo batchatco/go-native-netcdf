@@ -3507,7 +3507,13 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 			for k, v := range a.value.([]compound) {
 				vals2 := v
 				v0 := vals2[0].Val.(uint64)
-				v1 := vals2[1].Val.(int32)
+				v1, has := vals2[1].Val.(int32)
+				if !has {
+					// Recent versions of netcdf tools generate unsigned for the dimension.
+					logger.Infof("Unsigned reference dimension in %v", h5.fname)
+					uv1 := vals2[1].Val.(uint32)
+					v1 = int32(uv1)
+				}
 				logger.Infof("single ref %d 0x%x %d %s", k, v0, v1, ob.name)
 			}
 		}

@@ -3283,7 +3283,7 @@ func (h5 *HDF5) ListDimensions() []string {
 				hasCoordinates = true
 			}
 		}
-		if hasClass && !hasCoordinates && !hasName {
+		if hasClass && (hasName || !hasCoordinates) {
 			ret = append(ret, obj.name)
 		}
 	}
@@ -3315,7 +3315,7 @@ func (h5 *HDF5) GetDimension(name string) (uint64, bool) {
 				hasCoordinates = true
 			}
 		}
-		if hasClass && !hasCoordinates && !hasName {
+		if hasClass && (hasName || !hasCoordinates) {
 			if obj.name == name {
 				return obj.objAttr.dimensions[0], true
 			}

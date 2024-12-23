@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -2275,5 +2276,25 @@ func TestDimensions(t *testing.T) {
 	}
 	if d1 != 0 || d2 != 1 {
 		t.Error("Dimension values are wrong", d1, d2)
+	}
+}
+
+func TestListDimensions(t *testing.T) {
+	genName := ncGen(t, "testdimensions")
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	defer os.Remove(genName)
+	nc, err := Open(genName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+	dims := nc.ListDimensions()
+	expected := []string{"valid_time", "pressure_level", "latitude", "longitude"}
+	if !slices.Equal(dims, expected) {
+		t.Errorf("ListDimension(%q): Got %v, want %v\n", genName, dims, expected)
 	}
 }

@@ -1,7 +1,7 @@
 package hdf5
 
 import (
-	"io/ioutil"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -647,7 +647,7 @@ func validate(t *testing.T, fname string, filters []string) {
 		t.Error(h5DumpBinary, s, ":", err)
 		return
 	}
-	out, err := ioutil.ReadAll(stdout)
+	out, err := io.ReadAll(stdout)
 	if err != nil {
 		t.Error("ReadAll", err)
 		return

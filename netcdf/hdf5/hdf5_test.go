@@ -811,6 +811,14 @@ func TestGlobalAttrs(t *testing.T) {
 			t.Error("type not found for", a)
 		}
 	}
+
+	// test global attributes of subgroups...
+	snc, _ := nc.GetGroup("subgroup")
+	got = snc.Attributes()
+	_, has := got.Get("groupattr")
+	if !has {
+		t.Error("Could not find subgroup attribute")
+	}
 }
 
 func checkAllAttrs(t *testing.T, name string, got api.AttributeMap, exp api.AttributeMap) {

@@ -3074,9 +3074,9 @@ loop:
 // Attributes returns the global attributes for this group.
 func (h5 *HDF5) Attributes() api.AttributeMap {
 	// entry point, panic can bubble up
-	assert(h5.rootObject != nil, "nil root object")
-	h5.sortAttrList(h5.rootObject)
-	return h5.getAttributes(h5.rootObject.attrlist)
+	assert(h5.groupObject != nil, "nil root object")
+	h5.sortAttrList(h5.groupObject)
+	return h5.getAttributes(h5.groupObject.attrlist)
 }
 
 func (h5 *HDF5) hasAddr(addr uint64) bool {

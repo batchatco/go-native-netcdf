@@ -44,4 +44,8 @@ variables:
   int64 :i64 = 9;
 
   uint64 :ui64 = 10;
+data:
+  group: subgroup {
+    :groupattr = "foo";
+  }
 }

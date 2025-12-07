@@ -413,7 +413,7 @@ func calcDataSize(attr *attribute) uint64 {
 	return dataSize
 }
 
-func (lr *layoutReader) fillrow(curOffset uint64) (nrows uint64) {
+func (lr *layoutReader) fillrow() (nrows uint64) {
 	dtLength := uint64(lr.obj.objAttr.length)
 	lastDimIndex := len(lr.obj.objAttr.dimensions) - 1
 	lineLen := lr.obj.objAttr.dimensions[lastDimIndex]
@@ -509,7 +509,7 @@ func (lr *layoutReader) Read(b []byte) (int, error) {
 	}
 	if curOffset%(chunkRows*lineLen) == 0 {
 		// TODO: we don't have to fill a whole row necessarily.
-		thisChunkRows := lr.fillrow(curOffset)
+		thisChunkRows := lr.fillrow()
 		if thisChunkRows == 0 {
 			logger.Info("nil buf EOF")
 			lr.buf = nil

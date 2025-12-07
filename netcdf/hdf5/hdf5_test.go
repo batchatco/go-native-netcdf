@@ -38,7 +38,7 @@ type keyVal struct {
 
 type keyValList []keyVal
 
-var nilMap, _ = newTypedAttributeMap(nil, []string{}, map[string]interface{}{})
+var nilMap, _ = newTypedAttributeMap(nil, []string{}, map[string]any{})
 
 var values = keyValList{
 	{"str", "string", api.Variable{
@@ -567,33 +567,9 @@ func setReferences(val bool) (prev bool) {
 	return prev
 }
 
-// Set parseSbextension and return the old value
-func setSBExtension(val bool) (prev bool) {
-	prev, parseSBExtension = parseSBExtension, val
-	return prev
-}
-
-// Set superblockV3 and return the old value
-func setSuperblockV3(val bool) (prev bool) {
-	prev, superblockV3 = superblockV3, val
-	// Parsing V3 superblocks will cause us to run into the undocumanted
-	// V4 datatype.
-	maxDTVersion = dtversionPacked
-	if superblockV3 {
-		maxDTVersion = dtversionV4
-	}
-	return prev
-}
-
-// Set parseHeapDirectBlock and return the old value
-func setParseHeapDirectBlock(val bool) (prev bool) {
-	parseHeapDirectBlock, prev = val, parseHeapDirectBlock
-	return prev
-}
-
-func makeFill(fill interface{}) api.AttributeMap {
+func makeFill(fill any) api.AttributeMap {
 	ret, _ := newTypedAttributeMap(nil, []string{"_FillValue"},
-		map[string]interface{}{"_FillValue": fill})
+		map[string]any{"_FillValue": fill})
 	return ret
 }
 
@@ -751,7 +727,7 @@ func TestGlobalAttrs(t *testing.T) {
 			"c", "str", "f32", "f64", "i8", "ui8", "i16", "ui16", "i32", "ui32", "i64", "ui64",
 			"col", "all",
 		},
-		map[string]interface{}{
+		map[string]any{
 			"c":    "c",
 			"str":  "hello",
 			"f32":  float32(1),
@@ -780,7 +756,7 @@ func TestGlobalAttrs(t *testing.T) {
 	got := nc.Attributes()
 	checkAllAttrs(t, "<global>", got, exp)
 
-	gTypes := map[string]interface{}{
+	gTypes := map[string]any{
 		"c":    "string",
 		"str":  "string",
 		"f32":  "float",
@@ -1482,7 +1458,7 @@ func TestVariableLength(t *testing.T) {
 	defer nc.Close()
 
 	trickyAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky"},
-		map[string]interface{}{
+		map[string]any{
 			"Tricky": compound{
 				{Name: "trickyInt", Val: int32(1)},
 				{Name: "trickVlen", Val: [][]compoundField{
@@ -1512,7 +1488,7 @@ func TestVariableLength(t *testing.T) {
 	}
 
 	vintAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Vint"},
-		map[string]interface{}{
+		map[string]any{
 			"Vint": [][]int32{
 				{}, // zero
 				{1},
@@ -1556,7 +1532,7 @@ func TestVariableLength(t *testing.T) {
 	}
 	checkAllNoAttr(t, nc, vars)
 	expAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky", "Vint"},
-		map[string]interface{}{
+		map[string]any{
 			"Tricky": tricky,
 			"Vint":   vint,
 		})
@@ -1573,7 +1549,7 @@ func TestVariableLength(t *testing.T) {
 		vint, _ := got.Get("Vint")
 		got, _ = util.NewOrderedMap(
 			[]string{"Tricky", "Vint"},
-			map[string]interface{}{
+			map[string]any{
 				"Tricky": tricky,
 				"Vint":   vint,
 			})
@@ -1616,7 +1592,7 @@ func TestVariableLength2(t *testing.T) {
 	h5.register("EasyVlen", ev)
 	h5.register("Tricky_t", tt)
 	trickyAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky"},
-		map[string]interface{}{
+		map[string]any{
 			"Tricky": Trickyt{
 				int32(1),
 				EasyVlen{
@@ -1632,7 +1608,7 @@ func TestVariableLength2(t *testing.T) {
 	}
 
 	vintAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Vint"},
-		map[string]interface{}{
+		map[string]any{
 			"Vint": []vint{
 				{}, // zero
 				{1},
@@ -1676,7 +1652,7 @@ func TestVariableLength2(t *testing.T) {
 	}
 	checkAllNoAttr(t, nc, vars)
 	expAttrs, err := newTypedAttributeMap(nc.(*HDF5), []string{"Tricky", "Vint"},
-		map[string]interface{}{
+		map[string]any{
 			"Tricky": tricky,
 			"Vint":   vnt,
 		})
@@ -1693,7 +1669,7 @@ func TestVariableLength2(t *testing.T) {
 		vnt, _ := got.Get("Vint")
 		got, _ = util.NewOrderedMap(
 			[]string{"Tricky", "Vint"},
-			map[string]interface{}{
+			map[string]any{
 				"Tricky": tricky,
 				"Vint":   vnt,
 			})
@@ -2100,7 +2076,7 @@ func TestBitfield(t *testing.T) {
 
 	attrs, err := newTypedAttributeMap(nc.(*HDF5),
 		[]string{"bitfield"},
-		map[string]interface{}{
+		map[string]any{
 			"bitfield": []byte{0, 1, 2, 3, 4, 5, 6, 7},
 		})
 	if err != nil {

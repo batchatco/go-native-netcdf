@@ -144,8 +144,8 @@ func (compoundManagerType) parse(hr heapReader, c caster, attr *attribute, bitFi
 			logger.Info("Adding fill value reader")
 			// bff = makeFillValueReader(obj, df, attrSize)
 		}
-		attr.df = newResetReaderSave(bff, bff.(remReader).Rem())
-		logger.Info("rem=", df.Rem(), "nread=", bff.(remReader).Count())
+		attr.df = newResetReaderSave(bff, bff.Rem())
+		logger.Info("rem=", df.Rem(), "nread=", bff.Count())
 	}
 	logger.Info("Finished compound", "rem=", bf.Rem())
 }

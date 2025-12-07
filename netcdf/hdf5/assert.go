@@ -20,21 +20,6 @@ var (
 	maybeFail = fail         // fail function, can be disabled for testing
 )
 
-// Non-standard things don't always pad the bytes correctly, so we
-// want to be more forgiving in those cases.
-func setNonStandard(non bool) bool {
-	old := allowNonStandard
-	allowNonStandard = non
-	if allowNonStandard {
-		logFunc = logger.Info
-		maybeFail = warn
-	} else {
-		logFunc = logger.Fatal
-		maybeFail = fail
-	}
-	return old
-}
-
 // Panics if condition isn't met
 func assert(condition bool, msg string) {
 	if condition {

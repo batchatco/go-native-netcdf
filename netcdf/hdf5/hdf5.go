@@ -276,6 +276,10 @@ type object struct {
 	name             string
 	attrlist         []*attribute
 	dataBlocks       []dataBlock
+	btreeAddr        uint64
+	chunkSize        uint64
+	numberOfElements uint64
+	dimensionality   uint8
 	filters          []filter
 	objAttr          *attribute
 	fillValue        []byte // takes precedence over old fill value
@@ -1076,105 +1080,99 @@ func (h5 *HDF5) readBTreeLeaf(parent *object, bta uint64, numRec uint64, recordS
 	h5.checkChecksum(bta, nbytes)
 }
 
+func calculateFlatOffsetFromKeys(offsets []uint64, dimensions []uint64, dtSize uint64) uint64 {
+	dso := uint64(0)
+	sizes := dtSize
+	rank := len(dimensions)
+	if len(offsets) < rank {
+		rank = len(offsets)
+	}
+	for d := rank - 1; d >= 0; d-- {
+		dso += offsets[d] * sizes
+		sizes *= dimensions[d]
+	}
+	return dso
+}
+
 func (h5 *HDF5) readBTreeNode(parent *object, bta uint64, dtSize uint64,
-	numberOfElements uint64, dimensionality uint8) {
-	offset := h5.readBTreeNodeAny(parent, bta, true /*isTop*/, dtSize, numberOfElements, 0,
-		dimensionality)
-	logger.Info("DS offset", offset)
+	numberOfElements uint64, dimensionality uint8, firstOffset, lastOffset uint64) {
+	h5.readBTreeNodeAny(parent, bta, true /*isTop*/, dtSize, numberOfElements,
+		dimensionality, firstOffset, lastOffset)
 }
 
 func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
-	dtSize uint64, numberOfElements uint64, dsOffset uint64, dimensionality uint8) uint64 {
+	dtSize uint64, numberOfElements uint64, dimensionality uint8,
+	firstOffset, lastOffset uint64) {
 	bf := h5.newSeek(bta, 24) // adjust later
 	checkMagic(bf, 4, "TREE")
-	logger.Infof("readBTreeNode addr 0x%x dtSize %d\n", bta, dtSize)
 	nodeType := read8(bf)
 	checkVal(1, nodeType, "raw data only")
 	nodeLevel := read8(bf)
 	entriesUsed := read16(bf)
 	leftAddress := read64(bf)
 	rightAddress := read64(bf)
-	logger.Infof("dim=%d nodeSize=%v type=%v level=%v entries=%v left=0x%x right=0x%x",
-		dimensionality,
-		dtSize,
-		nodeType, nodeLevel, entriesUsed, leftAddress, rightAddress)
 	if leftAddress != invalidAddress || rightAddress != invalidAddress {
 		assert(!isTop, "Siblings unexpected")
-	}
-	if nodeLevel > 0 {
-		logger.Infof("Start level %d", nodeLevel)
 	}
 	dimDataSize := 0
 	if dimensionality > 0 {
 		dimDataSize = 8 * int(dimensionality-1)
 	}
+
+	type btreeEntry struct {
+		sizeChunk  uint32
+		filterMask uint32
+		offsets    []uint64
+		addr       uint64
+		flatOffset uint64
+	}
+
+	entries := make([]btreeEntry, entriesUsed+1)
 	bf = h5.newSeek(bta+uint64(bf.Count()),
 		int64((int(entriesUsed)*(24+dimDataSize))+16+dimDataSize))
-	for i := uint16(0); i < entriesUsed; i++ {
-		sizeChunk := read32(bf)
-		filterMask := read32(bf)
-		if nodeLevel == 0 {
-			logger.Infof("[%d] sizeChunk=%d filterMask=0x%x", i, sizeChunk, filterMask)
-		}
-		offsets := make([]uint64, dimensionality-1)
-		for d := uint8(0); d < dimensionality-1; d++ {
-			offset := read64(bf)
-			offsets[d] = offset
-			if nodeLevel == 0 {
-				logger.Infof("[%d] dim offset %d/%d: 0x%08x (%d)", i, d, dimensionality, offset,
-					offset)
-			}
-		}
-		offset := read64(bf)
-		if nodeLevel == 0 {
-			logger.Infof("[%d] dim offset final/%d: 0x%08x (%d)", i, dimensionality, offset,
-				offset)
-		}
-		checkVal(0, offset, "last offset must be zero")
-		addr := read64(bf)
 
-		if nodeLevel == 0 {
-			logger.Infof("[%d] addr: 0x%x, %d", i, addr, sizeChunk)
+	for i := uint16(0); i <= entriesUsed; i++ {
+		entries[i].sizeChunk = read32(bf)
+		entries[i].filterMask = read32(bf)
+		entries[i].offsets = make([]uint64, dimensionality-1)
+		for d := uint8(0); d < dimensionality-1; d++ {
+			entries[i].offsets[d] = read64(bf)
 		}
-		if nodeLevel > 0 {
-			logger.Infof("read middle: 0x%x, %d", addr, nodeLevel)
-			dsOffset = h5.readBTreeNodeAny(parent, addr, false /*not top*/, dtSize,
-				numberOfElements, dsOffset, dimensionality)
+		read64(bf) // last offset must be zero
+		if i < entriesUsed {
+			entries[i].addr = read64(bf)
+		}
+		if parent.objAttr.dimensions != nil {
+			entries[i].flatOffset = calculateFlatOffsetFromKeys(entries[i].offsets,
+				parent.objAttr.dimensions, dtSize)
+		}
+	}
+
+	for i := uint16(0); i < entriesUsed; i++ {
+		low := entries[i].flatOffset
+		high := entries[i+1].flatOffset
+		if nodeLevel == 0 {
+			high = low + numberOfElements*dtSize
+		}
+
+		// Prune if the requested range [firstOffset, lastOffset) does not overlap
+		// with the range covered by this entry [low, high).
+		if low >= lastOffset || (high > 0 && high <= firstOffset) {
 			continue
 		}
-		dso := uint64(0)
-		sizes := uint64(dtSize)
-		if parent.objAttr.dimensions != nil {
-			for d := int(dimensionality) - 2; d >= 0; d-- {
-				dso += offsets[d] * sizes
-				logger.Info("d=", d, "dim=", dimensionality, "parent dim=", parent.objAttr.dimensions)
-				sizes *= parent.objAttr.dimensions[d]
-			}
+
+		if nodeLevel > 0 {
+			h5.readBTreeNodeAny(parent, entries[i].addr, false /*not top*/, dtSize,
+				numberOfElements, dimensionality, firstOffset, lastOffset)
+			continue
 		}
-		pending := dataBlock{addr, uint64(sizeChunk), 0, 0, filterMask, nil, nil}
-		pending.dsOffset = dso
+
+		pending := dataBlock{entries[i].addr, uint64(entries[i].sizeChunk), 0, 0, entries[i].filterMask, nil, nil}
+		pending.dsOffset = low
 		pending.dsLength = numberOfElements * dtSize
-		pending.offsets = offsets
-		logger.Info("dsoffset", dso, "dslength", pending.dsLength, "dtsize", dtSize)
+		pending.offsets = entries[i].offsets
 		parent.dataBlocks = append(parent.dataBlocks, pending)
-		dsOffset += pending.dsLength
 	}
-	if nodeLevel > 0 {
-		logger.Infof("Done level %d", nodeLevel)
-		return dsOffset
-	}
-	finalSizeChunk := read32(bf)
-	filterMask := read32(bf)
-	logger.Infof("[final] sizeChunk=%d filterMask=0x%x", finalSizeChunk, filterMask)
-	for d := uint8(0); d < dimensionality-1; d++ {
-		offset := read64(bf)
-		logger.Infof("[final] dim offset %d/%d: 0x%08x (%d)", d, dimensionality, offset,
-			offset)
-	}
-	offset := read64(bf)
-	logger.Infof("[final] dim offset final/%d: 0x%08x (%d)", dimensionality, offset,
-		offset)
-	return dsOffset
 }
 
 func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
@@ -1910,7 +1908,10 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 			logger.Infof("layout data element size=%d, number of elements=%d", size,
 				numberOfElements)
 			if address != invalidAddress {
-				h5.readBTreeNode(parent, address, uint64(size), numberOfElements, dimensionality)
+				parent.btreeAddr = address
+				parent.chunkSize = uint64(size)
+				parent.numberOfElements = numberOfElements
+				parent.dimensionality = dimensionality
 			} else {
 				logger.Info("layout specified invalid address")
 			}
@@ -2720,6 +2721,10 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			lastOffset = uint64(obj.objAttr.lastDim) * dimSize
 			size = lastOffset - firstOffset
 		}
+	}
+	if nBlocks == 0 && obj.btreeAddr != 0 {
+		h5.readBTreeNode(obj, obj.btreeAddr, obj.chunkSize, obj.numberOfElements, obj.dimensionality, firstOffset, lastOffset)
+		nBlocks = len(obj.dataBlocks)
 	}
 	if nBlocks == 0 {
 		logger.Info("No blocks, filling only", size, obj.objAttr.dimensions)

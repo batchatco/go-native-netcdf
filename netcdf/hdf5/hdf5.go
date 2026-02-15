@@ -2713,17 +2713,12 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	firstOffset := uint64(0)
 	lastOffset := uint64(size)
 	segments := newSegments()
-	if obj.objAttr.isSlice {
+	if obj.objAttr.isSlice && !needsLayoutReader(obj.objAttr) {
 		if len(obj.objAttr.dimensions) > 0 && obj.objAttr.dimensions[0] > 0 {
 			dimSize := size / obj.objAttr.dimensions[0]
 			firstOffset = uint64(obj.objAttr.firstDim) * dimSize
 			lastOffset = uint64(obj.objAttr.lastDim) * dimSize
 			size = lastOffset - firstOffset
-			if needsLayoutReader(obj.objAttr) {
-				// The above calculation could be wrong due to layout chunks.
-				// The calculation is not simple and is a TODO.
-				logger.Info("var slices with chunked layout not fully implemented")
-			}
 		}
 	}
 	if nBlocks == 0 {
@@ -2737,8 +2732,14 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		skipEnd := uint64(0)
 		valOffset := val.offset
 
+		if len(obj.objAttr.layout) > 0 {
+			offset = calculateFlatOffset(val.offsets, obj.objAttr.dimensions, obj.objAttr.layout, uint64(obj.objAttr.length))
+		}
+
 		if offset+dsLength <= firstOffset {
-			offset += dsLength
+			if len(obj.objAttr.layout) == 0 {
+				offset += dsLength
+			}
 			continue
 		}
 		if offset >= lastOffset {
@@ -2815,26 +2816,32 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			r:      bf,
 		}
 		segments.append(thisSeg)
-		offset += dsLength
+		if len(obj.objAttr.layout) == 0 {
+			offset += dsLength
+		}
 	}
 	segments.sort()
 	readers := make([]io.Reader, 0)
 	off := firstOffset
-	remOffset := invalidAddress
 	logger.Info("firstoffset=", firstOffset, "lastOffset=", lastOffset)
-	for i := 0; i < segments.Len(); i++ {
+	for i := range segments.Len() {
 		seg := segments.get(i)
 		r := seg.r
+		if seg.offset > off {
+			// Hole
+			holeSize := seg.offset - off
+			readers = append(readers, makeFillValueReader(obj, nil, int64(holeSize)))
+			off = seg.offset
+		}
 		assert(seg.offset <= off, "discontiguous data")
 		logger.Infof("Reader at offset 0x%x length %d", seg.offset, seg.length)
 		readers = append(readers, newResetReader(r, int64(seg.length)))
 		off += seg.length
-		remOffset = seg.offset + seg.length
 	}
-	if size > offset && remOffset != invalidAddress {
-		extra := size - offset
+	if size > off {
+		extra := size - off
 		logger.Infof("Fill value reader at end offset 0x%x length %d",
-			remOffset-extra, extra)
+			off, extra)
 		readers = append(readers, makeFillValueReader(obj, nil, int64(extra)))
 		off += extra
 	}
@@ -2853,12 +2860,16 @@ func (h5 *HDF5) newMaybeLayoutRecordReader(obj *object, zlibFound bool, zlibPara
 }
 
 func needsLayoutReader(attr *attribute) bool {
-	if len(attr.layout) <= 1 {
+	if len(attr.layout) == 0 {
 		return false
 	}
-	for i := 0; i < len(attr.layout)-1; i++ {
+	for i := range attr.dimensions {
+		if attr.dimensions[i]%attr.layout[i] != 0 {
+			return true
+		}
+	}
+	for i := range len(attr.layout) - 1 {
 		if attr.layout[i] != 1 {
-			logger.Info("needs layout reader", attr.layout)
 			return true
 		}
 	}

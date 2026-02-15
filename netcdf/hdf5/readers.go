@@ -361,13 +361,12 @@ func (r *unshuffleReader) Read(p []byte) (int, error) {
 }
 
 type layoutReader struct {
-	r             remReader
-	obj           *object
-	buf           []byte
-	size          int64
-	count         uint64 // number bytes read from buffer
-	total         uint64 // total bytes buffered
-	lastChunkRows uint64
+	r           remReader
+	obj         *object
+	buf         []byte
+	size        int64
+	count       uint64 // number bytes produced
+	stripeIndex int
 }
 
 // calcChunkSize calculates the size of a chunk
@@ -384,24 +383,16 @@ func calcChunkSize(attr *attribute) uint64 {
 // If it is chunked, it may be larger than the data size.
 func calcAttrSize(attr *attribute) uint64 {
 	dtLength := uint64(attr.length)
-	lastLayoutIndex := len(attr.layout) - 1
-	if lastLayoutIndex == -1 {
+	if len(attr.layout) == 0 {
 		return calcDataSize(attr) * dtLength // not chunked
 	}
-	lastDimIndex := len(attr.dimensions) - 1
-	lineLen := attr.dimensions[lastDimIndex]
-	if lineLen == 0 {
-		logger.Info("zero sized dimension")
-		return 0
+	totalChunks := uint64(1)
+	for i := range attr.dimensions {
+		gi := (attr.dimensions[i] + attr.layout[i] - 1) / attr.layout[i]
+		totalChunks *= gi
 	}
-	chunkLen := attr.layout[lastLayoutIndex]
 	chunkSize := calcChunkSize(attr)
-	chunksPerLine := (lineLen + chunkLen - 1) / chunkLen
-	chunkRows := chunkSize / chunkLen
-	dataSize := calcDataSize(attr)
-	chunksPerColumn := ((dataSize / lineLen) + chunkRows - 1) / chunkRows
-	totSize := chunksPerLine * chunksPerColumn * chunkSize
-	return totSize * dtLength
+	return totalChunks * chunkSize * dtLength
 }
 
 // calcDataSize computes the size of the data, not counting chunks.
@@ -413,132 +404,154 @@ func calcDataSize(attr *attribute) uint64 {
 	return dataSize
 }
 
-func (lr *layoutReader) fillrow(curOffset uint64) (nrows uint64) {
-	dtLength := uint64(lr.obj.objAttr.length)
-	lastDimIndex := len(lr.obj.objAttr.dimensions) - 1
-	lineLen := lr.obj.objAttr.dimensions[lastDimIndex]
-	lastLayoutIndex := len(lr.obj.objAttr.layout) - 1
-	chunkLen := lr.obj.objAttr.layout[lastLayoutIndex]
-
-	chunkSize := calcChunkSize(lr.obj.objAttr)
-	chunksPerLine := (lineLen + chunkLen - 1) / chunkLen
-	chunkRows := chunkSize / chunkLen
-	dataSize := calcDataSize(lr.obj.objAttr)
-	dataRows := dataSize / lineLen
-	chunksPerColumn := ((dataSize / lineLen) + chunkRows - 1) / chunkRows
-	totSize := chunksPerLine * chunksPerColumn
-	if lr.buf == nil {
-		sliceSize := chunksPerLine * chunkSize * dtLength
-		extra := (chunksPerLine * chunkLen) - lineLen
-		sliceSize -= extra
-		lr.buf = make([]byte, sliceSize)
+func calculateFlatOffset(offsets []uint64, dims []uint64, layout []uint64, dtLength uint64) uint64 {
+	rank := len(dims)
+	flatChunkIndex := uint64(0)
+	for i := 0; i < rank; i++ {
+		gi := offsets[i] / layout[i]
+		gridStride := uint64(1)
+		for k := i + 1; k < rank; k++ {
+			gridStride *= (dims[k] + layout[k] - 1) / layout[k]
+		}
+		flatChunkIndex += gi * gridStride
 	}
-	readBuf := make([]byte, chunkLen*dtLength)
-	usedRows := (lr.total / lineLen) / dtLength
-outer:
-	for col := uint64(0); col < chunksPerLine; col++ {
-		for row := uint64(0); row < chunkRows; row++ {
-			// for each of the rows, read a chunkLen
-			thisLen := chunkLen
-			usedLen := chunkLen
-			if col == (chunksPerLine - 1) {
-				// last column could be runt
-				usedLen = lineLen - (chunkLen * col)
-			}
-			thisOffset := row*lineLen + col*chunkLen
-			if usedRows+row >= dataRows {
-				usedLen = 0
-			}
-			thisLen *= dtLength
-			usedLen *= dtLength
-			thisOffset *= dtLength
-			for thisLen > 0 {
-				// Read one chunk
-				n, err := lr.r.Read(readBuf[:thisLen])
-				if n == 0 {
-					if err == io.EOF {
-						return row
-					}
-					thrower.ThrowIfError(err)
-				}
-				// Only copy usedlen
-				if usedLen > 0 {
-					if uint64(n) > usedLen {
-						copy(lr.buf[thisOffset:thisOffset+usedLen], readBuf[:usedLen])
-					} else {
-						copy(lr.buf[thisOffset:thisOffset+uint64(n)], readBuf[:n])
-					}
-				}
-				if uint64(n) < thisLen {
-					logger.Info("short read", lr.total, "size in file", lr.size, "len", n, "thisLen", thisLen)
-				}
-				thisOffset += uint64(n)
-				thisLen -= uint64(n)
-				if usedLen >= uint64(n) {
-					usedLen -= uint64(n)
-					lr.total += uint64(n)
-				} else {
-					lr.total += usedLen
-					usedLen = 0
-				}
-			}
-			if lr.total == totSize {
-				logger.Infof("size match")
-				break outer
-			}
+
+	chunkSize := uint64(1)
+	for _, v := range layout {
+		chunkSize *= v
+	}
+
+	return flatChunkIndex * chunkSize * dtLength
+}
+
+func (lr *layoutReader) fillrow() error {
+	attr := lr.obj.objAttr
+	dims := attr.dimensions
+	layout := attr.layout
+	dtLength := uint64(attr.length)
+	rank := len(dims)
+
+	// Grid dimensions
+	g := make([]int, rank)
+	totalStripes := 1
+	for i := 0; i < rank; i++ {
+		g[i] = int((dims[i] + layout[i] - 1) / layout[i])
+		if i < rank-1 {
+			totalStripes *= g[i]
 		}
 	}
-	logger.Info("fillrow full", "chunkRows", chunkRows, "chunksPerLine", chunksPerLine)
-	return chunkRows
+
+	if lr.stripeIndex >= totalStripes {
+		return io.EOF
+	}
+
+	// Current stripe grid coordinates
+	stripeCoords := make([]int, rank-1)
+	tempIndex := lr.stripeIndex
+	for i := rank - 2; i >= 0; i-- {
+		stripeCoords[i] = tempIndex % g[i]
+		tempIndex /= g[i]
+	}
+
+	// Calculate number of valid rows in this stripe
+	// A "row" here is the last dimension.
+	numRowsInStripe := 1
+	validCounts := make([]int, rank-1)
+	for i := 0; i < rank-1; i++ {
+		start := uint64(stripeCoords[i]) * layout[i]
+		end := start + layout[i]
+		if end > dims[i] {
+			end = dims[i]
+		}
+		validCounts[i] = int(end - start)
+		numRowsInStripe *= validCounts[i]
+	}
+
+	// Stripe buffer size
+	lineLen := dims[rank-1]
+	lr.buf = make([]byte, uint64(numRowsInStripe)*lineLen*dtLength)
+
+	// Read one stripe of chunks
+	numChunksInStripe := g[rank-1]
+	chunkSize := calcChunkSize(attr)
+	readBuf := make([]byte, chunkSize*dtLength)
+
+	for gc := 0; gc < numChunksInStripe; gc++ {
+		// Read one chunk
+		_, err := io.ReadFull(lr.r, readBuf)
+		if err != nil {
+			return err
+		}
+
+		// Interleave this chunk's rows into lr.buf
+		numRowsInChunk := 1
+		for i := 0; i < rank-1; i++ {
+			numRowsInChunk *= int(layout[i])
+		}
+
+		chunkLineLen := layout[rank-1]
+		delta := make([]int, rank-1)
+
+		for rc := 0; rc < numRowsInChunk; rc++ {
+			// Decode rc into local relative coordinates
+			tempRC := rc
+			for i := rank - 2; i >= 0; i-- {
+				delta[i] = tempRC % int(layout[i])
+				tempRC /= int(layout[i])
+			}
+
+			// Check if this row is valid in the dataset
+			isValid := true
+			for i := 0; i < rank-1; i++ {
+				if uint64(stripeCoords[i])*layout[i]+uint64(delta[i]) >= dims[i] {
+					isValid = false
+					break
+				}
+			}
+
+			if !isValid {
+				continue
+			}
+
+			destRowIndex := 0
+			stride := 1
+			for i := rank - 2; i >= 0; i-- {
+				destRowIndex += delta[i] * stride
+				stride *= validCounts[i]
+			}
+
+			srcOffset := uint64(rc) * chunkLineLen * dtLength
+			destColOffset := uint64(gc) * layout[rank-1]
+			if destColOffset >= lineLen {
+				continue
+			}
+
+			destOffset := (uint64(destRowIndex)*lineLen + destColOffset) * dtLength
+			copyLen := chunkLineLen
+			if destColOffset+copyLen > lineLen {
+				copyLen = lineLen - destColOffset
+			}
+
+			copy(lr.buf[destOffset:destOffset+copyLen*dtLength], readBuf[srcOffset:srcOffset+copyLen*dtLength])
+		}
+	}
+
+	lr.stripeIndex++
+	return nil
 }
 
 func (lr *layoutReader) Read(b []byte) (int, error) {
-	// Offset in units
-	dtLength := uint64(lr.obj.objAttr.length)
-	curOffset := lr.count / dtLength
-	lastDimIndex := len(lr.obj.objAttr.dimensions) - 1
-	lineLen := lr.obj.objAttr.dimensions[lastDimIndex]
-	assert(lineLen != 0, "linelen can't be zero")
-	lastLayoutIndex := len(lr.obj.objAttr.layout) - 1
-	chunkLen := lr.obj.objAttr.layout[lastLayoutIndex]
+	if len(lr.buf) == 0 {
+		err := lr.fillrow()
+		if err != nil {
+			return 0, err
+		}
+	}
 
-	chunkSize := calcChunkSize(lr.obj.objAttr)
-	chunkRows := chunkSize / chunkLen
-	if lr.lastChunkRows > 0 {
-		chunkRows = lr.lastChunkRows
-	}
-	if curOffset%(chunkRows*lineLen) == 0 {
-		// TODO: we don't have to fill a whole row necessarily.
-		thisChunkRows := lr.fillrow(curOffset)
-		if thisChunkRows == 0 {
-			logger.Info("nil buf EOF")
-			lr.buf = nil
-			return 0, io.EOF
-		}
-		if thisChunkRows == chunkRows {
-			logger.Info("full chunk", "rows", chunkRows)
-		} else {
-			logger.Info("partial chunk", thisChunkRows, "full", chunkRows)
-			lr.lastChunkRows = thisChunkRows
-		}
-		chunkRows = thisChunkRows
-	}
-	thisRow := (curOffset / lineLen) % chunkRows
-	thisLen := uint64(len(b))
-	offset := (thisRow*lineLen + curOffset%lineLen) * dtLength
-	rem := uint64(len(lr.buf)) - offset
-	if rem < thisLen {
-		thisLen = rem
-	}
-	copy(b, lr.buf[offset:offset+thisLen])
-	lr.count += thisLen
-	curOffset = lr.count / dtLength
-	if curOffset%(chunkRows*lineLen) == 0 {
-		logger.Info("nil buf -- last col")
-		lr.buf = nil
-	}
-	logger.Infof("layout reader read %d, rem %d", thisLen, lr.Rem())
-	return int(thisLen), nil
+	n := copy(b, lr.buf)
+	lr.buf = lr.buf[n:]
+	lr.count += uint64(n)
+	return n, nil
 }
 
 func (lr *layoutReader) Rem() int64 {
@@ -550,5 +563,6 @@ func (lr *layoutReader) Count() int64 {
 }
 
 func newLayoutReader(r remReader, obj *object) io.Reader {
-	return &layoutReader{r, obj, nil, r.Rem(), 0, 0, 0}
+	size := calcDataSize(obj.objAttr) * uint64(obj.objAttr.length)
+	return &layoutReader{r, obj, nil, int64(size), 0, 0}
 }

@@ -56,11 +56,9 @@ func (bitfieldManagerType) parse(hr heapReader, c caster, attr *attribute, bitFi
 	}
 	logger.Info("bitfield rem: ", df.Rem())
 	if !allowBitfields {
-		if df != nil {
-			b := make([]byte, df.Rem())
-			read(df, b)
-			logger.Infof("bitfield value: %#x", b)
-		}
+		b := make([]byte, df.Rem())
+		read(df, b)
+		logger.Infof("bitfield value: %#x", b)
 		logger.Infof("Bitfields ignored")
 		thrower.Throw(ErrBitfield)
 	}

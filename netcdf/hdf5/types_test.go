@@ -342,10 +342,6 @@ func TestBitfieldType(t *testing.T) {
 	}
 	defer nc.Close()
 	a := nc.Attributes()
-	if err != nil {
-		t.Error(err)
-		return
-	}
 	attrName := "bitfield"
 	_, has := a.Get(attrName)
 	if !has {

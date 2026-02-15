@@ -1809,13 +1809,15 @@ func TestGzip(t *testing.T) {
 }
 
 func TestCombinedFilters(t *testing.T) {
-	// FLET, if present, must always be last.
-	// If GZIP is present, SHUF may appear only before it.
+	// Usually, FLET is last, but it can appear anywhere.
+	// If GZIP is present, SHUF usually appears before it.
 	testFilters(t, []string{"SHUF", "FLET"}, "-sf")
 	testFilters(t, []string{"SHUF", "GZIP=5"}, "-sg5")
 	testFilters(t, []string{"GZIP=5", "FLET"}, "-g5f")
-	// This should be okay
 	testFilters(t, []string{"SHUF", "GZIP=5", "FLET"}, "-sg5f")
+
+	// Test Fletcher32 in a non-standard position (Issue 16)
+	testFilters(t, []string{"FLET", "SHUF", "GZIP=5"}, "-fsg5")
 }
 
 func TestBadMagic(t *testing.T) {

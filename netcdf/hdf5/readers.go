@@ -110,7 +110,7 @@ func (fl *fletcher) Read(b []byte) (int, error) {
 	for i := 0; i < n; i++ {
 		var val uint16
 		switch {
-		case fl.count%2 == 1:
+		case (fl.count+uint64(i))%2 == 1:
 			// Previous read left us with an odd count.
 			// Recover the partial read and compute val.
 			val = (uint16(fl.partial) << 8) | uint16(b[i])
@@ -126,7 +126,7 @@ func (fl *fletcher) Read(b []byte) (int, error) {
 	}
 	fl.count += uint64(n)
 	if fl.count == fl.size-4 {
-		if fl.size%2 == 1 {
+		if (fl.size-4)%2 == 1 {
 			// Retrieve partial and complete sum as if next byte were zero.
 			val := uint16(fl.partial) << 8
 			addToSums(val)
@@ -134,10 +134,9 @@ func (fl *fletcher) Read(b []byte) (int, error) {
 		calcedSum := (uint32(fl.sum2) << 16) | uint32(fl.sum1)
 		if !fl.readChecksum {
 			binary.Read(fl.r, binary.LittleEndian, &fl.checksum)
+			fl.readChecksum = true
 		}
 		if calcedSum != fl.checksum {
-			logger.Infof("checksum failure: sum=%#x file sum=%#x\n", calcedSum,
-				fl.checksum)
 			thrower.Throw(ErrFletcherChecksum)
 		}
 	}

@@ -2726,7 +2726,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		return makeFillValueReader(obj, nil, int64(size))
 	}
 	offset := uint64(0)
-	for i, val := range obj.dataBlocks {
+	for _, val := range obj.dataBlocks {
 		dsLength := val.dsLength
 		skipBegin := uint64(0)
 		skipEnd := uint64(0)
@@ -2752,8 +2752,6 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			skipEnd = offset + dsLength - lastOffset
 		}
 
-		logger.Infof("block %d is 0x%x, len %d (%d, %d), mask 0x%x size %d",
-			i, val.offset, val.length, val.dsOffset, val.dsLength, val.filterMask, size)
 		var bf io.Reader
 		canSeek := false
 		if val.rawData != nil {
@@ -2766,41 +2764,50 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			bf = h5.newSeek(valOffset, int64(val.length))
 			canSeek = true
 		}
-		for idx, f := range obj.filters {
-			if (1<<idx)&val.filterMask != 0 {
-				switch f.kind {
-				case filterDeflate:
-					zlibFound = false
-				case filterShuffle:
-					shuffleFound = false
-				case filterFletcher32:
-					fletcher32Found = false
-				default:
-					fail(fmt.Sprintf("can't mask unknown filter %v", f))
+
+		// Filters must be applied in the reverse order of their definition.
+		// We pre-calculate the expected data size at each stage of the pipeline
+		// to ensure filters like Fletcher32 and Shuffle receive the correct input/output sizes.
+		targetSize := make([]uint64, len(obj.filters))
+		curr := dsLength
+		for j := 0; j < len(obj.filters); j++ {
+			targetSize[j] = curr
+			if (1<<uint(j))&val.filterMask == 0 {
+				if obj.filters[j].kind == filterFletcher32 {
+					curr += 4
 				}
 			}
 		}
-		if fletcher32Found {
-			logger.Info("Found fletcher32", val.length)
-			bf = newFletcher32Reader(bf, val.length)
-			canSeek = false
-		}
-		if zlibFound {
-			logger.Info("trying zlib")
-			if zlibParam != 0 {
-				logger.Info("zlib param", zlibParam)
+
+		inputSize := val.length
+		for j := len(obj.filters) - 1; j >= 0; j-- {
+			f := obj.filters[j]
+			if (1<<uint(j))&val.filterMask != 0 {
+				continue
 			}
-			zbf, err := zlib.NewReader(bf)
-			if err != nil {
-				failError(ErrUnknownCompression, fmt.Sprintf("unknown compression: %v", err))
+			switch f.kind {
+			case filterFletcher32:
+				bf = newFletcher32Reader(bf, inputSize)
+				inputSize -= 4
+			case filterDeflate:
+				zbf, err := zlib.NewReader(bf)
+				if err != nil {
+					failError(ErrUnknownCompression, fmt.Sprintf("unknown compression: %v", err))
+				}
+				// If there are more filters, we don't know the size yet.
+				// But shuffle usually needs it.
+				bf = newResetReader(zbf, int64(targetSize[j]))
+				inputSize = targetSize[j]
+				canSeek = false
+			case filterShuffle:
+				shuffleParam := uint32(0)
+				if f.cdv != nil && len(f.cdv) > 0 {
+					shuffleParam = f.cdv[0]
+				}
+				bf = newUnshuffleReader(bf, targetSize[j], shuffleParam)
+				inputSize = targetSize[j]
+				canSeek = false
 			}
-			bf = newResetReader(zbf, int64(dsLength))
-			canSeek = false
-		}
-		if shuffleFound {
-			logger.Info("using shuffle", dsLength)
-			bf = newUnshuffleReader(bf, dsLength, shuffleParam)
-			canSeek = false
 		}
 		if skipBegin > 0 {
 			if canSeek {

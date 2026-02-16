@@ -2,9 +2,9 @@ package hdf5
 
 import (
 	"bytes"
-	"encoding/binary"
 	"reflect"
 
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
 )
 
@@ -32,8 +32,7 @@ func buildDataspaceMessage(dimensions []uint64) []byte {
 			thrower.ThrowIfError(err)
 		}
 		for _, d := range dimensions {
-			err = binary.Write(buf, binary.LittleEndian, d)
-			thrower.ThrowIfError(err)
+			util.MustWriteLE(buf, d)
 		}
 	}
 	return buf.Bytes()
@@ -56,12 +55,11 @@ func buildFixedPointDatatype(size int, signed bool) []byte {
 	err = buf.WriteByte(0) // b3
 	thrower.ThrowIfError(err)
 
-	err = binary.Write(buf, binary.LittleEndian, uint32(size))
-	thrower.ThrowIfError(err)
-	err = binary.Write(buf, binary.LittleEndian, uint16(0)) // bit offset
-	thrower.ThrowIfError(err)
-	err = binary.Write(buf, binary.LittleEndian, uint16(size*8)) // precision
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, uint32(size))
+
+	util.MustWriteLE(buf, uint16(0)) // bit offset
+
+	util.MustWriteLE(buf, uint16(size*8)) // precision
 
 	return buf.Bytes()
 }
@@ -85,39 +83,56 @@ func buildFloatingPointDatatype(size int) []byte {
 	err = buf.WriteByte(b3)
 	thrower.ThrowIfError(err)
 
-	err = binary.Write(buf, binary.LittleEndian, uint32(size))
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, uint32(size))
 
 	if size == 4 {
-		err = binary.Write(buf, binary.LittleEndian, uint16(0)) // bit offset
-		thrower.ThrowIfError(err)
-		err = binary.Write(buf, binary.LittleEndian, uint16(32)) // precision
-		thrower.ThrowIfError(err)
+
+		util.MustWriteLE(buf, uint16(0)) // bit offset
+
+		util.MustWriteLE(buf, uint16(32)) // precision
+
 		err = buf.WriteByte(23) // exponent location
+
 		thrower.ThrowIfError(err)
+
 		err = buf.WriteByte(8) // exponent size
+
 		thrower.ThrowIfError(err)
+
 		err = buf.WriteByte(0) // mantissa location
+
 		thrower.ThrowIfError(err)
+
 		err = buf.WriteByte(23) // mantissa size
+
 		thrower.ThrowIfError(err)
-		err = binary.Write(buf, binary.LittleEndian, uint32(127)) // bias
-		thrower.ThrowIfError(err)
+
+		util.MustWriteLE(buf, uint32(127)) // bias
+
 	} else {
-		err = binary.Write(buf, binary.LittleEndian, uint16(0)) // bit offset
-		thrower.ThrowIfError(err)
-		err = binary.Write(buf, binary.LittleEndian, uint16(64)) // precision
-		thrower.ThrowIfError(err)
+
+		util.MustWriteLE(buf, uint16(0)) // bit offset
+
+		util.MustWriteLE(buf, uint16(64)) // precision
+
 		err = buf.WriteByte(52) // exponent location
+
 		thrower.ThrowIfError(err)
+
 		err = buf.WriteByte(11) // exponent size
+
 		thrower.ThrowIfError(err)
+
 		err = buf.WriteByte(0) // mantissa location
+
 		thrower.ThrowIfError(err)
+
 		err = buf.WriteByte(52) // mantissa size
+
 		thrower.ThrowIfError(err)
-		err = binary.Write(buf, binary.LittleEndian, uint32(1023)) // bias
-		thrower.ThrowIfError(err)
+
+		util.MustWriteLE(buf, uint32(1023)) // bias
+
 	}
 
 	return buf.Bytes()
@@ -133,8 +148,7 @@ func buildStringDatatype(size int) []byte {
 	thrower.ThrowIfError(err)
 	err = buf.WriteByte(0x00)
 	thrower.ThrowIfError(err)
-	err = binary.Write(buf, binary.LittleEndian, uint32(size))
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, uint32(size))
 	return buf.Bytes()
 }
 
@@ -146,18 +160,14 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 	thrower.ThrowIfError(err)
 
 	nameBytes := append([]byte(name), 0)
-	err = binary.Write(buf, binary.LittleEndian, uint16(len(nameBytes)))
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, uint16(len(nameBytes)))
 
 	dtMsg := hw.buildDatatypeMessage(val)
-	err = binary.Write(buf, binary.LittleEndian, uint16(len(dtMsg)))
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, uint16(len(dtMsg)))
 
 	dims := hw.getDimensions(val)
 	dsMsg := buildDataspaceMessage(dims)
-	err = binary.Write(buf, binary.LittleEndian, uint16(len(dsMsg)))
-	thrower.ThrowIfError(err)
-
+	util.MustWriteLE(buf, uint16(len(dsMsg)))
 	writePadded := func(b []byte) {
 		_, err = buf.Write(b)
 		thrower.ThrowIfError(err)
@@ -209,17 +219,13 @@ func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.
 			// VLen string
 			str := rv.String()
 			idx := hw.heap.indices[str]
-			err := binary.Write(buf, binary.LittleEndian, uint32(len(str)))
-			thrower.ThrowIfError(err)
-			err = binary.Write(buf, binary.LittleEndian, hw.heap.addr)
-			thrower.ThrowIfError(err)
-			err = binary.Write(buf, binary.LittleEndian, idx)
-			thrower.ThrowIfError(err)
+			util.MustWriteLE(buf, uint32(len(str)))
+			util.MustWriteLE(buf, hw.heap.addr)
+			util.MustWriteLE(buf, idx)
 		}
 		return
 	}
-	err := binary.Write(buf, binary.LittleEndian, rv.Interface())
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, rv.Interface())
 }
 
 func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
@@ -274,8 +280,7 @@ func (hw *HDF5Writer) buildVLenStringDatatype() []byte {
 	thrower.ThrowIfError(err)
 	err = buf.WriteByte(0x00)
 	thrower.ThrowIfError(err)
-	err = binary.Write(buf, binary.LittleEndian, uint32(16)) // seq length
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, uint32(16)) // seq length
 
 	baseType := buildStringDatatype(1)
 	_, err = buf.Write(baseType)

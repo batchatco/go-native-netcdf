@@ -180,8 +180,7 @@ func (hw *HDF5Writer) writeSuperblockV2() {
 	_, err = hw.buf.Write(temp)
 	thrower.ThrowIfError(err)
 
-	err = binary.Write(hw.buf, binary.LittleEndian, uint32(0)) // Checksum
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(hw.buf, uint32(0)) // Checksum
 }
 
 func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize uint64) {
@@ -215,22 +214,18 @@ func (hw *HDF5Writer) buildLinkMessage(name string, addr uint64) h5Message {
 	thrower.ThrowIfError(err)
 	_, err = buf.Write([]byte(name))
 	thrower.ThrowIfError(err)
-	err = binary.Write(buf, binary.LittleEndian, addr)
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, addr)
 
 	return h5Message{mType: 6, data: buf.Bytes()}
 }
-
 func (hw *HDF5Writer) buildLayoutMessageV2(addr uint64, size uint64) []byte {
 	buf := new(bytes.Buffer)
 	err := buf.WriteByte(3) // version 3
 	thrower.ThrowIfError(err)
 	err = buf.WriteByte(1) // contiguous
 	thrower.ThrowIfError(err)
-	err = binary.Write(buf, binary.LittleEndian, addr)
-	thrower.ThrowIfError(err)
-	err = binary.Write(buf, binary.LittleEndian, size)
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(buf, addr)
+	util.MustWriteLE(buf, size)
 	return buf.Bytes()
 }
 
@@ -247,8 +242,7 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 	for _, m := range messages {
 		err = msgBuf.WriteByte(byte(m.mType))
 		thrower.ThrowIfError(err)
-		err = binary.Write(msgBuf, binary.LittleEndian, uint16(len(m.data)))
-		thrower.ThrowIfError(err)
+		util.MustWriteLE(msgBuf, uint16(len(m.data)))
 		err = msgBuf.WriteByte(m.flags)
 		thrower.ThrowIfError(err)
 		_, err = msgBuf.Write(m.data)
@@ -261,19 +255,16 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 		thrower.ThrowIfError(err)
 	}
 
-	err = binary.Write(ohBuf, binary.LittleEndian, uint32(msgBuf.Len()))
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(ohBuf, uint32(msgBuf.Len()))
 	_, err = ohBuf.Write(msgBuf.Bytes())
 	thrower.ThrowIfError(err)
 
 	ohChecksum := checksum(ohBuf.Bytes())
-	err = binary.Write(ohBuf, binary.LittleEndian, ohChecksum)
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(ohBuf, ohChecksum)
 
 	_, err = hw.buf.Write(ohBuf.Bytes())
 	thrower.ThrowIfError(err)
 }
-
 func (hw *HDF5Writer) writeData(val any) {
 	rv := reflect.ValueOf(val)
 	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
@@ -314,17 +305,13 @@ func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 			// VLen string
 			str := rv.String()
 			idx := hw.heap.indices[str]
-			err := binary.Write(hw.buf, binary.LittleEndian, uint32(len(str)))
-			thrower.ThrowIfError(err)
-			err = binary.Write(hw.buf, binary.LittleEndian, hw.heap.addr)
-			thrower.ThrowIfError(err)
-			err = binary.Write(hw.buf, binary.LittleEndian, idx)
-			thrower.ThrowIfError(err)
+			util.MustWriteLE(hw.buf, uint32(len(str)))
+			util.MustWriteLE(hw.buf, hw.heap.addr)
+			util.MustWriteLE(hw.buf, idx)
 		}
 		return
 	}
-	err := binary.Write(hw.buf, binary.LittleEndian, rv.Interface())
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(hw.buf, rv.Interface())
 }
 
 func (hw *HDF5Writer) shouldUseVLen(rv reflect.Value) bool {
@@ -403,18 +390,13 @@ func (hw *HDF5Writer) writeGlobalHeap() {
 	thrower.ThrowIfError(err)
 
 	sizeAddr := hw.buf.Len()
-	err = binary.Write(hw.buf, binary.LittleEndian, uint64(0)) // placeholder for size
-	thrower.ThrowIfError(err)
+	util.MustWriteLE(hw.buf, uint64(0)) // placeholder for size
 
 	for i, obj := range gh.objects {
-		err = binary.Write(hw.buf, binary.LittleEndian, uint16(i+1)) // index
-		thrower.ThrowIfError(err)
-		err = binary.Write(hw.buf, binary.LittleEndian, uint16(0)) // ref count
-		thrower.ThrowIfError(err)
-		err = binary.Write(hw.buf, binary.LittleEndian, uint32(0)) // reserved
-		thrower.ThrowIfError(err)
-		err = binary.Write(hw.buf, binary.LittleEndian, uint64(len(obj)))
-		thrower.ThrowIfError(err)
+		util.MustWriteLE(hw.buf, uint16(i+1)) // index
+		util.MustWriteLE(hw.buf, uint16(0))   // ref count
+		util.MustWriteLE(hw.buf, uint32(0))   // reserved
+		util.MustWriteLE(hw.buf, uint64(len(obj)))
 		_, err = hw.buf.Write(obj)
 		thrower.ThrowIfError(err)
 		// Pad object to 8 bytes

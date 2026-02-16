@@ -1152,36 +1152,31 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 
 func makeFillValueShort(s int16) []byte {
 	var buf bytes.Buffer
-	err := binary.Write(&buf, binary.BigEndian, &s)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(&buf, &s)
 	return buf.Bytes()
 }
 
 func makeFillValueInt(i int32) []byte {
 	var buf bytes.Buffer
-	err := binary.Write(&buf, binary.BigEndian, &i)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(&buf, &i)
 	return buf.Bytes()
 }
 
 func makeFillValueInt64(i64 int64) []byte {
 	var buf bytes.Buffer
-	err := binary.Write(&buf, binary.BigEndian, &i64)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(&buf, &i64)
 	return buf.Bytes()
 }
 
 func makeFillValueFloat(f float32) []byte {
 	var buf bytes.Buffer
-	err := binary.Write(&buf, binary.BigEndian, &f)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(&buf, &f)
 	return buf.Bytes()
 }
 
 func makeFillValueDouble(d float64) []byte {
 	var buf bytes.Buffer
-	err := binary.Write(&buf, binary.BigEndian, &d)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(&buf, &d)
 	return buf.Bytes()
 }
 

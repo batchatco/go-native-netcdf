@@ -8,6 +8,7 @@ import (
 	"math"
 	"reflect"
 
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
 )
 
@@ -63,8 +64,7 @@ func (floatingPointManagerType) defaultFillValue(obj *object, objFillValue []byt
 			fv = float32(math.NaN())
 		}
 		var buf bytes.Buffer
-		err := binary.Write(&buf, obj.objAttr.endian, &fv)
-		thrower.ThrowIfError(err)
+		util.MustWrite(&buf, obj.objAttr.endian, &fv)
 		objFillValue = buf.Bytes()
 		logger.Info("fill value encoded", objFillValue)
 	case 8:
@@ -73,8 +73,7 @@ func (floatingPointManagerType) defaultFillValue(obj *object, objFillValue []byt
 			fv = math.NaN()
 		}
 		var buf bytes.Buffer
-		err := binary.Write(&buf, obj.objAttr.endian, &fv)
-		thrower.ThrowIfError(err)
+		util.MustWrite(&buf, obj.objAttr.endian, &fv)
 		objFillValue = buf.Bytes()
 		logger.Info("fill value encoded", objFillValue)
 	default:

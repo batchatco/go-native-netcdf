@@ -5,7 +5,6 @@ package cdf
 // TODO: api for dimensions in case of unlimited and zero length
 import (
 	"bufio"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -854,34 +853,28 @@ func (cw *CDFWriter) Close() (err error) {
 }
 
 func writeAny(w io.Writer, any any) {
-	err := binary.Write(w, binary.BigEndian, any)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(w, any)
 }
 
 func writeBytes(w io.Writer, bytes []byte) {
-	err := binary.Write(w, binary.BigEndian, bytes)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(w, bytes)
 }
 
 func write8(w io.Writer, i int8) {
 	data := byte(i)
-	err := binary.Write(w, binary.BigEndian, &data)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(w, &data)
 }
 
 func write16(w io.Writer, i int16) {
-	err := binary.Write(w, binary.BigEndian, &i)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(w, &i)
 }
 
 func write32(w io.Writer, i int32) {
-	err := binary.Write(w, binary.BigEndian, &i)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(w, &i)
 }
 
 func write64(w io.Writer, i int64) {
-	err := binary.Write(w, binary.BigEndian, &i)
-	thrower.ThrowIfError(err)
+	util.MustWriteBE(w, &i)
 }
 
 func (cw *CDFWriter) writeName(name string) {

@@ -8,6 +8,7 @@ import (
 	"math"
 	"reflect"
 
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
 )
 
@@ -85,24 +86,21 @@ func (fixedPointManagerType) defaultFillValue(obj *object, objFillValue []byte, 
 		if undefinedFillValue {
 			fv := int16(math.MinInt16 + 1)
 			var bb bytes.Buffer
-			err := binary.Write(&bb, obj.objAttr.endian, fv)
-			thrower.ThrowIfError(err)
+			util.MustWrite(&bb, obj.objAttr.endian, fv)
 			objFillValue = bb.Bytes()
 		}
 	case 4:
 		if undefinedFillValue {
 			fv := int32(math.MinInt32 + 1)
 			var bb bytes.Buffer
-			err := binary.Write(&bb, obj.objAttr.endian, fv)
-			thrower.ThrowIfError(err)
+			util.MustWrite(&bb, obj.objAttr.endian, fv)
 			objFillValue = bb.Bytes()
 		}
 	case 8:
 		if undefinedFillValue {
 			fv := int64(math.MinInt64 + 1)
 			var bb bytes.Buffer
-			err := binary.Write(&bb, obj.objAttr.endian, fv)
-			thrower.ThrowIfError(err)
+			util.MustWrite(&bb, obj.objAttr.endian, fv)
 			objFillValue = bb.Bytes()
 		}
 	}

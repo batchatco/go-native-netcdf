@@ -23,6 +23,7 @@ import (
 
 	"github.com/batchatco/go-native-netcdf/internal"
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
 )
 
@@ -332,35 +333,28 @@ func (h5 *HDF5) newSeek(addr uint64, size int64) remReader {
 }
 
 func read(r io.Reader, data any) {
-	err := binary.Read(r, binary.LittleEndian, data)
-	thrower.ThrowIfError(err)
+	util.MustReadLE(r, data)
 }
 
 func read8(r io.Reader) byte {
-	var data byte
-	err := binary.Read(r, binary.LittleEndian, &data)
-	thrower.ThrowIfError(err)
-	return data
+	return util.MustRead8(r)
 }
 
 func read16(r io.Reader) uint16 {
 	var data uint16
-	err := binary.Read(r, binary.LittleEndian, &data)
-	thrower.ThrowIfError(err)
+	util.MustReadLE(r, &data)
 	return data
 }
 
 func read32(r io.Reader) uint32 {
 	var data uint32
-	err := binary.Read(r, binary.LittleEndian, &data)
-	thrower.ThrowIfError(err)
+	util.MustReadLE(r, &data)
 	return data
 }
 
 func read64(r io.Reader) uint64 {
 	var data uint64
-	err := binary.Read(r, binary.LittleEndian, &data)
-	thrower.ThrowIfError(err)
+	util.MustReadLE(r, &data)
 	return data
 }
 

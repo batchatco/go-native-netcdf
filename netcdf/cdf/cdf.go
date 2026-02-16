@@ -180,36 +180,31 @@ func assert(condition bool, message string, err error) {
 // Read up to nBytes
 func readBytes(r io.Reader, nBytes uint64) []byte {
 	b := make([]byte, nBytes)
-	err := binary.Read(r, binary.BigEndian, b)
-	thrower.ThrowIfError(err)
+	util.MustReadBE(r, b)
 	return b
 }
 
 func read8(r io.Reader) byte {
 	var data byte
-	err := binary.Read(r, binary.BigEndian, &data)
-	thrower.ThrowIfError(err)
+	util.MustReadBE(r, &data)
 	return data
 }
 
 func read16(r io.Reader) uint16 {
 	var data uint16
-	err := binary.Read(r, binary.BigEndian, &data)
-	thrower.ThrowIfError(err)
+	util.MustReadBE(r, &data)
 	return data
 }
 
 func read32(r io.Reader) uint32 {
 	var data uint32
-	err := binary.Read(r, binary.BigEndian, &data)
-	thrower.ThrowIfError(err)
+	util.MustReadBE(r, &data)
 	return data
 }
 
 func read64(r io.Reader) uint64 {
 	var data uint64
-	err := binary.Read(r, binary.BigEndian, &data)
-	thrower.ThrowIfError(err)
+	util.MustReadBE(r, &data)
 	return data
 }
 
@@ -240,44 +235,38 @@ func (cdf *CDF) getAttr(bf io.Reader) (string, any) {
 	case typeByte:
 		// byte becomes int8 in go-speak
 		b := make([]int8, nvars)
-		err := binary.Read(bf, binary.BigEndian, b)
-		thrower.ThrowIfError(err)
+		util.MustReadBE(bf, b)
 		values = b
 		nread += nvars
 
 	case typeChar:
 		// char array becomes string in go-speak
 		b := make([]byte, nvars)
-		err := binary.Read(bf, binary.BigEndian, b)
-		thrower.ThrowIfError(err)
+		util.MustReadBE(bf, b)
 		values = string(b)
 		nread += nvars
 
 	case typeShort:
 		sv := make([]int16, nvars)
-		err := binary.Read(bf, binary.BigEndian, sv)
-		thrower.ThrowIfError(err)
+		util.MustReadBE(bf, sv)
 		values = sv
 		nread += 2 * nvars
 
 	case typeInt:
 		i32v := make([]int32, nvars)
-		err := binary.Read(bf, binary.BigEndian, i32v)
-		thrower.ThrowIfError(err)
+		util.MustReadBE(bf, i32v)
 		values = i32v
 		nread += 4 * nvars
 
 	case typeFloat:
 		fv := make([]float32, nvars)
-		err := binary.Read(bf, binary.BigEndian, fv)
-		thrower.ThrowIfError(err)
+		util.MustReadBE(bf, fv)
 		values = fv
 		nread += 4 * nvars
 
 	case typeDouble:
 		dv := make([]float64, nvars)
-		err := binary.Read(bf, binary.BigEndian, dv)
-		thrower.ThrowIfError(err)
+		util.MustReadBE(bf, dv)
 		values = dv
 		nread += 8 * nvars
 

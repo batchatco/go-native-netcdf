@@ -1,12 +1,11 @@
 package hdf5
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 	"reflect"
 
-	"github.com/batchatco/go-thrower"
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 )
 
 type vlenManagerType struct{}
@@ -123,13 +122,9 @@ func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) any {
 		var addr uint64
 		var index uint32
 
-		var err error
-		err = binary.Read(bf, binary.LittleEndian, &length)
-		thrower.ThrowIfError(err)
-		err = binary.Read(bf, binary.LittleEndian, &addr)
-		thrower.ThrowIfError(err)
-		err = binary.Read(bf, binary.LittleEndian, &index)
-		thrower.ThrowIfError(err)
+		util.MustReadLE(bf, &length)
+		util.MustReadLE(bf, &addr)
+		util.MustReadLE(bf, &index)
 		logger.Infof("String length %d (0x%x), addr 0x%x, index %d (0x%x)",
 			length, length, addr, index, index)
 		if length == 0 {
@@ -149,12 +144,9 @@ func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) any {
 			var addr uint64
 			var index uint32
 
-			err := binary.Read(bf, binary.LittleEndian, &length)
-			thrower.ThrowIfError(err)
-			err = binary.Read(bf, binary.LittleEndian, &addr)
-			thrower.ThrowIfError(err)
-			err = binary.Read(bf, binary.LittleEndian, &index)
-			thrower.ThrowIfError(err)
+			util.MustReadLE(bf, &length)
+			util.MustReadLE(bf, &addr)
+			util.MustReadLE(bf, &index)
 			logger.Infof("String length %d (0x%x), addr 0x%x, index %d (0x%x)",
 				length, length, addr, index, index)
 			if length == 0 {
@@ -184,12 +176,9 @@ func allocVariable(hr heapReader, c caster, bf io.Reader, dimLengths []uint64, a
 		var length uint32
 		var addr uint64
 		var index uint32
-		err := binary.Read(bf, binary.LittleEndian, &length)
-		thrower.ThrowIfError(err)
-		err = binary.Read(bf, binary.LittleEndian, &addr)
-		thrower.ThrowIfError(err)
-		err = binary.Read(bf, binary.LittleEndian, &index)
-		thrower.ThrowIfError(err)
+		util.MustReadLE(bf, &length)
+		util.MustReadLE(bf, &addr)
+		util.MustReadLE(bf, &index)
 		logger.Infof("length %d(0x%x) addr 0x%x index %d(0x%x)\n",
 			length, length, addr, index, index)
 		var val0 any

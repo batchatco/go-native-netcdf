@@ -5,10 +5,10 @@ package hdf5
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"io"
 	"sync"
 
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
 )
 
@@ -132,8 +132,7 @@ func (fl *fletcher) Read(b []byte) (int, error) {
 		}
 		calcedSum := (uint32(fl.sum2) << 16) | uint32(fl.sum1)
 		if !fl.readChecksum {
-			err := binary.Read(fl.r, binary.LittleEndian, &fl.checksum)
-			thrower.ThrowIfError(err)
+			util.MustReadLE(fl.r, &fl.checksum)
 			fl.readChecksum = true
 		}
 		if calcedSum != fl.checksum {

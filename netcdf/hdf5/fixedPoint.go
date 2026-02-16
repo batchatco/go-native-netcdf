@@ -159,8 +159,7 @@ func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Typ
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		err := binary.Read(bf, binary.LittleEndian, values)
-		thrower.ThrowIfError(err)
+		util.MustReadLE(bf, values)
 		return values
 	}
 	vals := makeSlices(cast, dimLengths)
@@ -181,15 +180,13 @@ func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 	}
 	if len(dimLengths) == 0 {
 		var value uint16
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, &value)
 		return reflect.ValueOf(value).Convert(cast).Interface()
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, values)
 		return values
 	}
 	vals := makeSlices(cast, dimLengths)
@@ -211,15 +208,13 @@ func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signe
 	}
 	if len(dimLengths) == 0 {
 		var value uint32
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, &value)
 		return reflect.ValueOf(value).Convert(cast).Interface()
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, values)
 		return values
 	}
 	vals := makeSlices(cast, dimLengths)
@@ -241,15 +236,13 @@ func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 	}
 	if len(dimLengths) == 0 {
 		var value uint64
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, &value)
 		return reflect.ValueOf(value).Convert(cast).Interface()
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		values := reflect.MakeSlice(reflect.SliceOf(cast), int(thisDim), int(thisDim)).Interface()
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, values)
 		return values
 	}
 	vals := makeSlices(cast, dimLengths)

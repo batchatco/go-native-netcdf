@@ -22,3 +22,26 @@ func MustWriteLE(w io.Writer, data any) {
 func MustWriteBE(w io.Writer, data any) {
 	MustWrite(w, binary.BigEndian, data)
 }
+
+// MustRead wraps binary.Read and throws an error if it fails.
+func MustRead(r io.Reader, order binary.ByteOrder, data any) {
+	err := binary.Read(r, order, data)
+	thrower.ThrowIfError(err)
+}
+
+// MustReadLE wraps binary.Read with LittleEndian and throws an error if it fails.
+func MustReadLE(r io.Reader, data any) {
+	MustRead(r, binary.LittleEndian, data)
+}
+
+// MustReadBE wraps binary.Read with BigEndian and throws an error if it fails.
+func MustReadBE(r io.Reader, data any) {
+	MustRead(r, binary.BigEndian, data)
+}
+
+// MustRead8 reads a single byte and throws an error if it fails.
+func MustRead8(r io.Reader) byte {
+	var b byte
+	MustReadLE(r, &b)
+	return b
+}

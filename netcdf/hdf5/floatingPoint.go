@@ -153,15 +153,13 @@ func (floatingPointManagerType) parse(hr heapReader, c caster, attr *attribute, 
 func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) any {
 	if len(dimLengths) == 0 {
 		var value float32
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, &value)
 		return value
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		values := make([]float32, thisDim)
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, values)
 		return values
 	}
 	vals := makeSlices(reflect.TypeOf(float32(0)), dimLengths)
@@ -174,15 +172,13 @@ func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) any
 func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) any {
 	if len(dimLengths) == 0 {
 		var value float64
-		err := binary.Read(bf, endian, &value)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, &value)
 		return value
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		values := make([]float64, thisDim)
-		err := binary.Read(bf, endian, values)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, values)
 		return values
 	}
 	vals := makeSlices(reflect.TypeOf(float64(0)), dimLengths)

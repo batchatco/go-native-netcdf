@@ -42,7 +42,6 @@ const (
 	dtversionStandard = iota + 1 // not what the doc calls it
 	dtversionArray
 	dtversionPacked
-	dtversionV4 // undocumented V4 datatype version
 )
 
 // For disabling/enabling code
@@ -58,17 +57,8 @@ const (
 	floatEnums = false
 )
 
-// Vars for some specific things that aren't useful or are not implemented yet,
-// and so the code is disabled.
-// They are vars so they can be unit tested.
-var (
-	// We have not fully implemented V3 of the superblock.  Enabling this allows some
-	// undocumented things to appear, like datatype V4, which we do not support.
-	superblockV3 = false
-)
-
 // undocumented datatype version 4 is enabled with superblockV3
-var maxDTVersion byte = 3
+const maxDTVersion byte = 3
 
 // The hidden attribute which identifies what software wrote the file out.
 const ncpKey = "_NCProperties"
@@ -418,9 +408,7 @@ func (h5 *HDF5) readSuperblock() {
 	case 2:
 		break
 	default:
-		if !superblockV3 {
-			thrower.Throw(ErrVersion)
-		}
+		thrower.Throw(ErrVersion)
 	}
 	if version < 2 {
 		// we've read 9 bytes of a 64 byte chunk

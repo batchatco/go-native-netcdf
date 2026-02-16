@@ -90,7 +90,7 @@ func (compoundManagerType) parse(hr heapReader, c caster, attr *attribute, bitFi
 		switch attr.dtversion {
 		case dtversionStandard, dtversionArray:
 			nbytes = 4
-		case dtversionPacked, dtversionV4:
+		case dtversionPacked:
 			switch {
 			case attr.length < 256:
 				nbytes = 1

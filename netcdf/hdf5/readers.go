@@ -133,7 +133,8 @@ func (fl *fletcher) Read(b []byte) (int, error) {
 		}
 		calcedSum := (uint32(fl.sum2) << 16) | uint32(fl.sum1)
 		if !fl.readChecksum {
-			binary.Read(fl.r, binary.LittleEndian, &fl.checksum)
+			err := binary.Read(fl.r, binary.LittleEndian, &fl.checksum)
+			thrower.ThrowIfError(err)
 			fl.readChecksum = true
 		}
 		if calcedSum != fl.checksum {
@@ -150,10 +151,12 @@ func oldFletcher32Reader(r io.Reader, size uint64) remReader {
 	b := make([]byte, size-4)
 	read(r, b)
 	var checksum uint32
-	binary.Read(r, binary.LittleEndian, &checksum)
+	err := binary.Read(r, binary.LittleEndian, &checksum)
+	thrower.ThrowIfError(err)
 	bf := newResetReaderFromBytes(b)
 	values := make([]uint16, len(b)/2)
-	binary.Read(bf, binary.BigEndian, values)
+	err = binary.Read(bf, binary.BigEndian, values)
+	thrower.ThrowIfError(err)
 	if len(b)%2 == 1 {
 		last := uint16(b[len(b)-1])
 		values = append(values, last<<8)

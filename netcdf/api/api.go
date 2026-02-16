@@ -2,7 +2,12 @@
 package api
 
 import (
+	"errors"
 	"io"
+)
+
+var (
+	ErrUnsupported = errors.New("unsupported")
 )
 
 type ReadSeekerCloser interface {
@@ -99,4 +104,19 @@ type Group interface {
 	// GetDimension returns the size of the given dimension and sets
 	// the bool to true if found.
 	GetDimension(string) (uint64, bool)
+}
+
+type Writer interface {
+	// Close writes all the data out and closes the file (for root writer)
+	// or closes the group writer.
+	Close() error
+
+	// AddAttributes adds attributes to this group.
+	AddAttributes(attrs AttributeMap) error
+
+	// AddVar adds a variable to this group.
+	AddVar(name string, vr Variable) error
+
+	// CreateGroup creates a subgroup.
+	CreateGroup(name string) (Writer, error)
 }

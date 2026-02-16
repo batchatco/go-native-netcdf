@@ -125,7 +125,7 @@ gettingfiles:
 			t.Error(err)
 			return
 		}
-		cw.AddGlobalAttrs(newAttrs)
+		cw.AddAttributes(newAttrs)
 		for _, varName := range nc.ListVariables() {
 			val, err := nc.GetVariable(varName)
 			if err != nil {

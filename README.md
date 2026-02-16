@@ -153,19 +153,20 @@ For very large variables that may not fit in memory, you can use the `VarGetter`
     dataMD, err := vg.GetSliceMD([]int64{0, 0}, []int64{100, 100})
 ```
 
-### Writing a CDF file
+### Writing a NetCDF file
 ```go
 
 package main
 
 import (
+  "github.com/batchatco/go-native-netcdf/netcdf"
   "github.com/batchatco/go-native-netcdf/netcdf/api"
-  "github.com/batchatco/go-native-netcdf/netcdf/cdf"
   "github.com/batchatco/go-native-netcdf/netcdf/util"
 )
 
 func main() {
-    cw, err := cdf.OpenWriter("newdata.nc")
+    // Create a new CDF file (or netcdf.KindHDF5 for NetCDF4)
+    cw, err := netcdf.OpenWriter("newdata.nc", netcdf.KindCDF)
     if err != nil {
         panic(err)
     }
@@ -179,13 +180,20 @@ func main() {
         panic(err)
     }
     variable := api.Variable{
-        latitude,
-        dimensions,
-        attributes}
+        Values:     latitude,
+        Dimensions: dimensions,
+        Attributes: attributes}
     err = cw.AddVar("latitude", variable)
     if err != nil {
         panic(err)
     }
+
+    // Creating groups (HDF5 only)
+    // group, err := cw.CreateGroup("raw")
+    // if err == nil {
+    //     group.AddVar(...)
+    // }
+
     // Close will write out the data and close the file
     err = cw.Close()
     if err != nil {

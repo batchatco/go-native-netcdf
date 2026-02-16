@@ -385,14 +385,19 @@ func hasValidNames(am api.AttributeMap) bool {
 	return true
 }
 
-// AddGlobalAttrs adds global attributes to be written out.
+// AddAttributes adds attributes to be written out.
 // Use util.NewOrderedMap to create attribute maps.
-func (cw *CDFWriter) AddGlobalAttrs(attrs api.AttributeMap) error {
+func (cw *CDFWriter) AddAttributes(attrs api.AttributeMap) error {
 	if !hasValidNames(attrs) {
 		return ErrInvalidName
 	}
 	cw.globalAttrs = attrs
 	return nil
+}
+
+// CreateGroup is not supported in CDF.
+func (cw *CDFWriter) CreateGroup(name string) (api.Writer, error) {
+	return nil, api.ErrUnsupported
 }
 
 // AddVar adds a variable to be written out.
@@ -940,7 +945,7 @@ func (cw *CDFWriter) writeAll() {
 // OpenWriter creates the file and make it available for writing
 // using AddVar and AddGlobalAttrs.  The file must be closed to actually
 // write it out.
-func OpenWriter(fileName string) (*CDFWriter, error) {
+func OpenWriter(fileName string) (api.Writer, error) {
 	file, err := os.Create(fileName)
 	if err != nil {
 		return nil, err

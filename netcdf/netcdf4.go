@@ -18,6 +18,13 @@ const (
 
 var ErrUnknown = errors.New("not a CDF or HDF5 file")
 
+type FileKind int
+
+const (
+	KindCDF FileKind = iota
+	KindHDF5
+)
+
 // Open opens a NetCDF4 file by name
 func Open(fname string) (api.Group, error) {
 	file, err := os.Open(fname)
@@ -68,4 +75,15 @@ func getKind(file io.ReadSeeker) (byte, error) {
 	}
 	_, err = file.Seek(0, io.SeekStart)
 	return b[0], err
+}
+
+// OpenWriter creates a new NetCDF4 file of the specified kind.
+func OpenWriter(fname string, kind FileKind) (api.Writer, error) {
+	switch kind {
+	case KindCDF:
+		return cdf.OpenWriter(fname)
+	case KindHDF5:
+		return hdf5.OpenWriter(fname)
+	}
+	return nil, ErrUnknown
 }

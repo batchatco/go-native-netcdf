@@ -13,7 +13,7 @@ func TestSlicer(t *testing.T) {
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
-	defer closeCW(t, &cw) // can be called twice
+	defer closeCW(t, &cw, fileName) // can be called twice
 	if err != nil {
 		t.Error(err)
 		return
@@ -36,7 +36,7 @@ func TestSlicer(t *testing.T) {
 			return
 		}
 	}
-	closeCW(t, &cw) // this writes out the data
+	closeCW(t, &cw, fileName) // this writes out the data
 
 	// Now read and verify it
 	nc, err := Open(fileName)

@@ -9,7 +9,7 @@ the sandboxing and garbage collection that Go provides, so is safer to use in a 
 environment.
 
 The API supports both reading and writing files.
-To read files, please use the generic *Open* and *New()* interface, rather than any lower
+Please use the generic *Open*, *New()*, and *OpenWriter()* interfaces, rather than any lower
 layer interfaces.
 
 The goal of the API is to be easy to use, and some functionality may be compromised because

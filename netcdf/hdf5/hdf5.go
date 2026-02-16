@@ -74,9 +74,6 @@ var (
 	// We have not fully implemented V3 of the superblock.  Enabling this allows some
 	// undocumented things to appear, like datatype V4, which we do not support.
 	superblockV3 = false
-
-	// We don't need to parse heap direct blocks
-	parseHeapDirectBlock = false
 )
 
 // undocumented datatype version 4 is enabled with superblockV3
@@ -1156,47 +1153,6 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 	}
 }
 
-func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
-	blockSize uint64) {
-	if parseHeapDirectBlock { // we don't need this code
-		logger.Infof("heap direct block=0x%x size=%d", addr, blockSize)
-		bf := h5.newSeek(addr, int64(blockSize))
-		checkMagic(bf, 4, "FHDB")
-		version := read8(bf)
-		logger.Info("heap direct version=", version)
-		checkVal(0, version, "version")
-		heapHeaderAddr := read64(bf)
-		logger.Infof("heap header addr=0x%x", heapHeaderAddr)
-		blockOffset := uint64(read32(bf))
-		checksumOffset := 13 + (link.maxHeapSize / 8)
-		logger.Info("maxheapsize", link.maxHeapSize)
-		if link.maxHeapSize == 40 {
-			logger.Info("1 more byte")
-			more := read8(bf)
-			blockOffset = blockOffset | (uint64(more) << 32)
-		}
-		logger.Infof("block offset=0x%x", blockOffset)
-		logger.Infof("(block size=%d)", blockSize)
-		logger.Info("flags", flags)
-		if !hasFlag8(flags, 1) {
-			logger.Info("Do not check checksum")
-			return
-		}
-		checksum := read32(bf)
-		bf = h5.newSeek(addr, int64(blockSize))
-		// Zero out pre-existing checksum field and recalculate
-		b := make([]byte, blockSize)
-		read(bf, b)
-		for i := range 4 {
-			b[checksumOffset+i] = 0
-		}
-		bff := newResetReaderFromBytes(b)
-		hash := computeChecksumStream(bff, int(blockSize))
-		logger.Infof("checksum=0x%x (expect=0x%x)", hash, checksum)
-		assert(checksum == hash, "checksum mismatch")
-	}
-}
-
 func log2(v uint64) int {
 	r := -1
 	for v > 0 {
@@ -1423,7 +1379,6 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 		assert(link.block == nil, "don't overwrite direct heap block")
 		link.block = make([]uint64, 1)
 		link.block[0] = rootBlockAddress
-		h5.readHeapDirectBlock(link, rootBlockAddress, flags, startingBlockSize)
 	}
 }
 

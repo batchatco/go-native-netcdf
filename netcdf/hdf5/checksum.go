@@ -105,17 +105,58 @@ func fletcher32(vals []uint16) uint32 {
 
 func checksum(data []byte) uint32 {
 	n := len(data)
-	nUint32 := (n + 3) / 4
-	vals := make([]uint32, nUint32)
-	for i := 0; i < nUint32; i++ {
-		start := i * 4
-		end := (i + 1) * 4
-		if end > n {
-			end = n
-		}
-		var b [4]byte
-		copy(b[:], data[start:end])
-		vals[i] = binary.LittleEndian.Uint32(b[:])
+	a := uint32(0xdeadbeef + n)
+	b := a
+	c := a
+
+	for len(data) > 12 {
+		a += binary.LittleEndian.Uint32(data[0:4])
+		b += binary.LittleEndian.Uint32(data[4:8])
+		c += binary.LittleEndian.Uint32(data[8:12])
+		mix(&a, &b, &c)
+		data = data[12:]
 	}
-	return hashInts(vals, uint32(n))
+
+	if len(data) > 0 {
+		switch len(data) {
+		case 12:
+			c += uint32(data[11]) << 24
+			fallthrough
+		case 11:
+			c += uint32(data[10]) << 16
+			fallthrough
+		case 10:
+			c += uint32(data[9]) << 8
+			fallthrough
+		case 9:
+			c += uint32(data[8])
+			fallthrough
+		case 8:
+			b += uint32(data[7]) << 24
+			fallthrough
+		case 7:
+			b += uint32(data[6]) << 16
+			fallthrough
+		case 6:
+			b += uint32(data[5]) << 8
+			fallthrough
+		case 5:
+			b += uint32(data[4])
+			fallthrough
+		case 4:
+			a += uint32(data[3]) << 24
+			fallthrough
+		case 3:
+			a += uint32(data[2]) << 16
+			fallthrough
+		case 2:
+			a += uint32(data[1]) << 8
+			fallthrough
+		case 1:
+			a += uint32(data[0])
+		}
+		final(&a, &b, &c)
+	}
+
+	return c
 }

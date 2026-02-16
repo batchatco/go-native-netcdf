@@ -56,11 +56,16 @@ func allocRegularStrings(bf io.Reader, dimLengths []uint64, dtlen uint32) interf
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
-		b := make([]byte, thisDim)
-		read(bf, b)
-		return getString(b)
+		values := make([]string, thisDim)
+		for i := uint64(0); i < thisDim; i++ {
+			b := make([]byte, dtlen)
+			read(bf, b)
+			values[i] = getString(b)
+		}
+		return values
 	}
-	vals := makeStringSlices(dimLengths)
+	ty := reflect.TypeOf("")
+	vals := makeSlices(ty, dimLengths)
 	for i := uint64(0); i < thisDim; i++ {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocRegularStrings(bf, dimLengths[1:], dtlen)))
 	}

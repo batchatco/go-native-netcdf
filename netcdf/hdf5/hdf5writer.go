@@ -56,6 +56,13 @@ func (hw *HDF5Writer) Close() (err error) {
 	eofAddr := uint64(hw.buf.Len())
 	data := hw.buf.Bytes()
 	
+	// Superblock V2 offsets:
+	// Magic (8), Version (1), Offsets Size (1), Lengths Size (1), Flags (1) = 12 bytes
+	// Base Address (8): 12-19
+	// SB Extension (8): 20-27
+	// EOF Address (8): 28-35
+	// Root OH Address (8): 36-43
+	// Checksum (4): 44-47
 	binary.LittleEndian.PutUint64(data[28:], eofAddr)
 	binary.LittleEndian.PutUint64(data[36:], rootAddr)
 	
@@ -146,11 +153,14 @@ func (hw *HDF5Writer) writeSuperblockV2() {
 	hw.buf.WriteByte(8)
 	hw.buf.WriteByte(0)
 	
-	binary.Write(hw.buf, binary.LittleEndian, uint64(0))
-	binary.Write(hw.buf, binary.LittleEndian, uint64(invalidAddress))
-	binary.Write(hw.buf, binary.LittleEndian, uint64(0))
-	binary.Write(hw.buf, binary.LittleEndian, uint64(0))
-	binary.Write(hw.buf, binary.LittleEndian, uint32(0))
+	temp := make([]byte, 32)
+	binary.LittleEndian.PutUint64(temp[0:], 0)              // Base Address
+	binary.LittleEndian.PutUint64(temp[8:], 0xffffffffffffffff) // Superblock Extension Address (invalidAddress)
+	binary.LittleEndian.PutUint64(temp[16:], 0)             // End of File Address
+	binary.LittleEndian.PutUint64(temp[24:], 0)             // Root Group Object Header Address
+	hw.buf.Write(temp)
+	
+	binary.Write(hw.buf, binary.LittleEndian, uint32(0)) // Checksum
 }
 
 func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize uint64) {
@@ -208,6 +218,11 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 		msgBuf.Write(m.data)
 	}
 	
+	// Pad the entire message block to 8 bytes
+	for (msgBuf.Len() % 8) != 0 {
+		msgBuf.WriteByte(0) // Type 0 (NIL message) would be better, but padding is just zeros
+	}
+	
 	binary.Write(ohBuf, binary.LittleEndian, uint32(msgBuf.Len()))
 	ohBuf.Write(msgBuf.Bytes())
 	
@@ -218,24 +233,59 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 }
 
 func (hw *HDF5Writer) writeData(val interface{}) {
-	err := binary.Write(hw.buf, binary.LittleEndian, val)
-	thrower.ThrowIfError(err)
+	rv := reflect.ValueOf(val)
+	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	fixedLen := 0
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array || rv.Kind() == reflect.String {
+		findMaxLen(rv, &fixedLen)
+		fixedLen++ // include null terminator
+	}
+	hw.writeDataRecursive(rv, fixedLen)
 	for (hw.buf.Len() % 8) != 0 {
 		hw.buf.WriteByte(0)
 	}
 }
 
+func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		for i := 0; i < rv.Len(); i++ {
+			hw.writeDataRecursive(rv.Index(i), fixedLen)
+		}
+		return
+	}
+	if rv.Kind() == reflect.String {
+		str := rv.String()
+		hw.buf.Write([]byte(str))
+		// Pad to fixedLen
+		for i := len(str); i < fixedLen; i++ {
+			hw.buf.WriteByte(0)
+		}
+		return
+	}
+	err := binary.Write(hw.buf, binary.LittleEndian, rv.Interface())
+	thrower.ThrowIfError(err)
+}
+
 func (hw *HDF5Writer) getDimensions(val interface{}) []uint64 {
 	rv := reflect.ValueOf(val)
-	var dims []uint64
-	for rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
-		dims = append(dims, uint64(rv.Len()))
-		if rv.Len() == 0 {
-			break
-		}
-		rv = rv.Index(0)
+	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
 	}
-	return dims
+	return getDimensionsRecursive(rv)
+}
+
+func getDimensionsRecursive(rv reflect.Value) []uint64 {
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		dims := []uint64{uint64(rv.Len())}
+		if rv.Len() > 0 {
+			inner := getDimensionsRecursive(rv.Index(0))
+			dims = append(dims, inner...)
+		}
+		return dims
+	}
+	return nil
 }
 
 func (hw *HDF5Writer) AddAttributes(attrs api.AttributeMap) error {

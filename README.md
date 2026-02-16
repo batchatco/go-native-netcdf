@@ -223,6 +223,15 @@ underlying format for NetCDF4, it does not aim to support every feature or exoti
 data type available in the full HDF5 specification that is not typically used in
 NetCDF4 files.
 
+### HDF5 Writer Storage
+The native HDF5 writer currently stores all data using **contiguous** storage. 
+Advanced HDF5 features such as **chunking**, **deflate (compression)**, **shuffle**, and **Fletcher32** are not yet supported for writing.
+
+Benchmarks (both using this library and the official NetCDF C API) have shown that 
+contiguous storage performs just as well as uncompressed chunked storage for common 
+NetCDF access patterns. The primary advantage of chunking is enabling compression, 
+which may be implemented in a future release.
+
 If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically,
 the *ncdump* and *ncgen* commands. You will also need the HDF5 package, and specifically the
 *h5dump* and *h5repack* commands. These are both available as an Ubuntu packages.

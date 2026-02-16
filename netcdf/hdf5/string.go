@@ -56,6 +56,15 @@ func allocRegularStrings(bf io.Reader, dimLengths []uint64, dtlen uint32) interf
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
+		// NetCDF convention: 1D character arrays are returned as a single concatenated string.
+		// However, HDF5 strings can also be arrays of strings. 
+		// If dtlen is 1, it's definitely a character array. 
+		// If dtlen > 1, it's an array of strings.
+		if dtlen == 1 {
+			b := make([]byte, thisDim)
+			read(bf, b)
+			return getString(b)
+		}
 		values := make([]string, thisDim)
 		for i := uint64(0); i < thisDim; i++ {
 			b := make([]byte, dtlen)

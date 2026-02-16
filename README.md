@@ -227,6 +227,10 @@ NetCDF4 files.
 The native HDF5 writer currently stores all data using **contiguous** storage. 
 Advanced HDF5 features such as **chunking**, **deflate (compression)**, **shuffle**, and **Fletcher32** are not yet supported for writing.
 
+The writer uses **fixed-size strings** (HDF5 Class 3). Variable-length (vlen) strings 
+are not currently supported for writing, as they require complex Global Heap management. 
+Support for vlen strings may be implemented in a future release.
+
 Benchmarks (both using this library and the official NetCDF C API) have shown that 
 contiguous storage performs just as well as uncompressed chunked storage for common 
 NetCDF access patterns. The primary advantage of chunking is enabling compression, 

@@ -161,7 +161,7 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 }
 
 func (hw *HDF5Writer) writeSuperblockV2() {
-	util.MustWriteRaw(hw.buf, []byte(magic) )
+	util.MustWriteRaw(hw.buf, []byte(magic))
 	util.MustWriteByte(hw.buf, 2)
 	util.MustWriteByte(hw.buf, 8)
 	util.MustWriteByte(hw.buf, 8)
@@ -239,11 +239,9 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 
 	util.MustWriteLE(ohBuf, uint32(msgBuf.Len()))
 	util.MustWriteRaw(ohBuf, msgBuf.Bytes())
-
 	ohChecksum := checksum(ohBuf.Bytes())
 	util.MustWriteLE(ohBuf, ohChecksum)
-
-	util.MustWriteRaw(hw.buf, ohBuf.Bytes() )
+	util.MustWriteRaw(hw.buf, ohBuf.Bytes())
 }
 func (hw *HDF5Writer) writeData(val any) {
 	rv := reflect.ValueOf(val)
@@ -273,7 +271,7 @@ func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 	if rv.Kind() == reflect.String {
 		if fixedLen > 0 {
 			str := rv.String()
-			util.MustWriteRaw(hw.buf, []byte(str) )
+			util.MustWriteRaw(hw.buf, []byte(str))
 			// Pad to fixedLen
 			for i := len(str); i < fixedLen; i++ {
 				util.MustWriteByte(hw.buf, 0)
@@ -359,8 +357,8 @@ func (hw *HDF5Writer) writeGlobalHeap() {
 	gh.addr = uint64(hw.buf.Len())
 
 	// Collection Header
-	util.MustWriteRaw(hw.buf, []byte("GCOL") )
-	util.MustWriteByte(hw.buf, 1)          // version
+	util.MustWriteRaw(hw.buf, []byte("GCOL"))
+	util.MustWriteByte(hw.buf, 1)              // version
 	util.MustWriteRaw(hw.buf, []byte{0, 0, 0}) // reserved
 
 	sizeAddr := hw.buf.Len()

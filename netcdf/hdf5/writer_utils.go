@@ -44,9 +44,7 @@ func buildFixedPointDatatype(size int, signed bool) []byte {
 	util.MustWriteByte(buf, 0) // b3
 
 	util.MustWriteLE(buf, uint32(size))
-
-	util.MustWriteLE(buf, uint16(0)) // bit offset
-
+	util.MustWriteLE(buf, uint16(0))      // bit offset
 	util.MustWriteLE(buf, uint16(size*8)) // precision
 
 	return buf.Bytes()

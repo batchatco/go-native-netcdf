@@ -432,7 +432,7 @@ func (lr *layoutReader) fillrow() error {
 	// A "row" here is the last dimension.
 	numRowsInStripe := 1
 	validCounts := make([]int, rank-1)
-	for i := range rank-1 {
+	for i := range rank - 1 {
 		start := uint64(stripeCoords[i]) * layout[i]
 		end := start + layout[i]
 		if end > dims[i] {
@@ -460,7 +460,7 @@ func (lr *layoutReader) fillrow() error {
 
 		// Interleave this chunk's rows into lr.buf
 		numRowsInChunk := 1
-		for i := range rank-1 {
+		for i := range rank - 1 {
 			numRowsInChunk *= int(layout[i])
 		}
 
@@ -477,7 +477,7 @@ func (lr *layoutReader) fillrow() error {
 
 			// Check if this row is valid in the dataset
 			isValid := true
-			for i := range rank-1 {
+			for i := range rank - 1 {
 				if uint64(stripeCoords[i])*layout[i]+uint64(delta[i]) >= dims[i] {
 					isValid = false
 					break

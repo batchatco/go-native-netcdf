@@ -1832,7 +1832,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 				fmt.Sprint("Invalid dimensionality ", dimensionality))
 
 			layout := make([]uint64, int(dimensionality)-1)
-			for i := range int(dimensionality)-1 {
+			for i := range int(dimensionality) - 1 {
 				size := read32(bf)
 				numberOfElements *= uint64(size)
 				layout[i] = uint64(size)

@@ -55,13 +55,13 @@ func (referenceManagerType) parse(hr heapReader, c caster, attr *attribute, bitF
 		logger.Infof("no data")
 		return
 	}
-	if !allowReferences {
-		assert(df == nil, "references can't be attributes")
-		logger.Infof("References ignored")
-		thrower.Throw(ErrReference)
-	}
+	// References are not part of NetCDF.  We only support them
+	// for internal metadata attributes (like DIMENSION_LIST).
 	if df.Rem() >= int64(attr.length) {
 		attr.df = newResetReaderSave(df, df.Rem())
+	} else {
+		// If it's not an attribute, it's a variable (data), which we don't support.
+		thrower.Throw(ErrReference)
 	}
 }
 

@@ -39,7 +39,7 @@ var dispatch = []typeManager{
 	floatingPointManager,
 	timeManager,
 	stringManager,
-	bitfieldManager,
+	unsupportedManager{typeBitField}, // bitfield
 	// 5-9
 	opaqueManager,
 	compoundManager,
@@ -48,6 +48,31 @@ var dispatch = []typeManager{
 	vlenManager,
 	// 10
 	arrayManager,
+}
+
+type unsupportedManager struct {
+	class int
+}
+
+func (um unsupportedManager) parse(hr heapReader, c caster, attr *attribute, bitFields uint32, f remReader, d remReader) {
+	switch um.class {
+	case typeBitField:
+		thrower.Throw(ErrBitfield)
+	default:
+		thrower.Throw(ErrUnsupportedDataTypeVersion)
+	}
+}
+func (unsupportedManager) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+	return objFillValue
+}
+func (unsupportedManager) alloc(hr heapReader, c caster, r io.Reader, attr *attribute, dimensions []uint64) any {
+	return nil
+}
+func (unsupportedManager) cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
+	return ""
+}
+func (unsupportedManager) goTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string {
+	return ""
 }
 
 func getDispatch(class uint8) typeManager {

@@ -555,18 +555,6 @@ var fills2 = keyValList{
 	}},
 }
 
-// Set allowBitfields and return the old value
-func setBitfields(val bool) (prev bool) {
-	prev, allowBitfields = allowBitfields, val
-	return prev
-}
-
-// Set allowReferences and return the old value
-func setReferences(val bool) (prev bool) {
-	prev, allowReferences = allowReferences, val
-	return prev
-}
-
 func makeFill(fill any) api.AttributeMap {
 	ret, _ := newTypedAttributeMap(nil, []string{"_FillValue"},
 		map[string]any{"_FillValue": fill})
@@ -2053,40 +2041,6 @@ func TestEnumCasted(t *testing.T) {
 	}
 
 	checkAll(t, nc, enum)
-}
-
-func TestBitfield(t *testing.T) {
-	// BitFields are not part of NetCDF.  They are in HDF5 though.
-	fileName := "testdata/bitfield.h5"
-
-	// First check that they don't work by default
-	nc, err := Open(fileName)
-	if err == nil {
-		t.Error("Bitfields should produce error")
-		nc.Close()
-		return
-	}
-
-	// Enable bitfields and try again
-	defer setBitfields(setBitfields(true))
-	nc, err = Open(fileName)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	defer nc.Close()
-
-	attrs, err := newTypedAttributeMap(nc.(*HDF5),
-		[]string{"bitfield"},
-		map[string]any{
-			"bitfield": []byte{0, 1, 2, 3, 4, 5, 6, 7},
-		})
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	got := nc.Attributes()
-	checkAllAttrs(t, "<testbitfields>", got, attrs)
 }
 
 func TestNCProperties(t *testing.T) {

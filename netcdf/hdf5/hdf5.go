@@ -65,12 +65,6 @@ var (
 	// We don't implement any extended types, so we don't allow the superblock extension
 	parseSBExtension = false
 
-	// Bitfields are not part of NetCDF, but they are part of HDF5.
-	allowBitfields = false
-
-	// References are not part of NetCDF, but they are part of HDF5.
-	allowReferences = false
-
 	// We have not fully implemented V3 of the superblock.  Enabling this allows some
 	// undocumented things to appear, like datatype V4, which we do not support.
 	superblockV3 = false

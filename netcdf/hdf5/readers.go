@@ -13,8 +13,7 @@ import (
 )
 
 func skip(r io.Reader, length int64) {
-	data := make([]byte, length)
-	err := binary.Read(r, binary.LittleEndian, data)
+	_, err := io.CopyN(io.Discard, r, length)
 	thrower.ThrowIfError(err)
 }
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -35,11 +35,11 @@ func NewOrderedMap(keys []string, values map[string]any) (*OrderedMap, error) {
 	for k := range values {
 		mapKeys = append(mapKeys, k)
 	}
-	sort.Strings(mapKeys)
+	slices.Sort(mapKeys)
 
 	sortedKeys := make([]string, len(keys))
 	copy(sortedKeys, keys)
-	sort.Strings(sortedKeys)
+	slices.Sort(sortedKeys)
 
 	for i := range sortedKeys {
 		if mapKeys[i] != sortedKeys[i] {
@@ -134,7 +134,7 @@ func (om *OrderedMap) pGoType(val any) (string, bool) {
 		prelim = fmt.Sprintf("[]%s", inner)
 	case reflect.Struct:
 		inner := ""
-		for i := 0; i < rVal.NumField(); i++ {
+		for i := range rVal.NumField() {
 			field := rVal.Type().Field(i)
 			fName := field.Name
 			var fType string
@@ -225,7 +225,7 @@ func (om *OrderedMap) pType(val any) (string, bool) {
 
 	case reflect.Struct:
 		inner := ""
-		for i := 0; i < rVal.NumField(); i++ {
+		for i := range rVal.NumField() {
 			field := rTyp.Field(i)
 			fName := field.Name
 			var fType string

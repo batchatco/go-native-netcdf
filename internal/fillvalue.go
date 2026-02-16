@@ -24,7 +24,7 @@ func (fvr *FillValueReader) Read(p []byte) (int, error) {
 			z = z[rl:]
 		}
 	}
-	for i := 0; i < len(z); i++ {
+	for i := range z {
 		z[i] = fvr.repeat[ri%rl]
 		ri++
 	}

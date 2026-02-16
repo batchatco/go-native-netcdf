@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 	"reflect"
-	"sort"
+	"slices"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
@@ -99,7 +99,7 @@ func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
 	for name := range g.vars {
 		varNames = append(varNames, name)
 	}
-	sort.Strings(varNames)
+	slices.Sort(varNames)
 	for _, name := range varNames {
 		v := g.vars[name]
 		dataAddr := uint64(hw.buf.Len())
@@ -115,7 +115,7 @@ func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
 	for name := range g.groups {
 		groupNames = append(groupNames, name)
 	}
-	sort.Strings(groupNames)
+	slices.Sort(groupNames)
 	for _, name := range groupNames {
 		sub := g.groups[name]
 		hw.writeGroupContents(sub)
@@ -135,7 +135,7 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 	for name := range g.vars {
 		varNames = append(varNames, name)
 	}
-	sort.Strings(varNames)
+	slices.Sort(varNames)
 	for _, name := range varNames {
 		messages = append(messages, hw.buildLinkMessage(name, g.vars[name].addr))
 	}
@@ -144,7 +144,7 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 	for name := range g.groups {
 		groupNames = append(groupNames, name)
 	}
-	sort.Strings(groupNames)
+	slices.Sort(groupNames)
 	for _, name := range groupNames {
 		messages = append(messages, hw.buildLinkMessage(name, g.groups[name].addr))
 	}
@@ -295,7 +295,7 @@ func (hw *HDF5Writer) writeData(val any) {
 
 func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
-		for i := 0; i < rv.Len(); i++ {
+		for i := range rv.Len() {
 			hw.writeDataRecursive(rv.Index(i), fixedLen)
 		}
 		return
@@ -376,7 +376,7 @@ func (hw *HDF5Writer) collectStringsRecursiveActual(rv reflect.Value) {
 		rv = rv.Elem()
 	}
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
-		for i := 0; i < rv.Len(); i++ {
+		for i := range rv.Len() {
 			hw.collectStringsRecursiveActual(rv.Index(i))
 		}
 		return

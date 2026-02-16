@@ -144,7 +144,7 @@ func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) any {
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		values := make([]string, thisDim)
-		for i := uint64(0); i < thisDim; i++ {
+		for i := range thisDim {
 			var length uint32
 			var addr uint64
 			var index uint32
@@ -170,7 +170,7 @@ func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) any {
 	}
 	ty := reflect.TypeOf("")
 	vals := makeSlices(ty, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocStrings(hr, bf, dimLengths[1:])))
 	}
 	return vals.Interface()
@@ -227,14 +227,14 @@ func allocVariable(hr heapReader, c caster, bf io.Reader, dimLengths []uint64, a
 	if len(dimLengths) == 1 {
 		// For scalars, this can be faster using binary.Read
 		vals := make([]any, thisDim)
-		for i := uint64(0); i < thisDim; i++ {
+		for i := range thisDim {
 			logger.Info("Alloc inner", i, "of", thisDim)
 			vals[i] = allocVariable(hr, c, bf, dimLengths[1:], attr, cast)
 		}
 		assert(vals[0] != nil, "we never return nil")
 		t := reflect.ValueOf(vals[0]).Type()
 		vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))
-		for i := 0; i < int(thisDim); i++ {
+		for i := range int(thisDim) {
 			vals2.Index(i).Set(reflect.ValueOf(vals[i]))
 		}
 		return vals2.Interface()
@@ -243,13 +243,13 @@ func allocVariable(hr heapReader, c caster, bf io.Reader, dimLengths []uint64, a
 	// TODO: we sometimes know the type (float32) and can do something smarter here
 
 	vals := make([]any, thisDim)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		logger.Info("Alloc outer", i, "of", thisDim)
 		vals[i] = allocVariable(hr, c, bf, dimLengths[1:], attr, cast)
 	}
 	t := reflect.ValueOf(vals[0]).Type()
 	vals2 := reflect.MakeSlice(reflect.SliceOf(t), int(thisDim), int(thisDim))
-	for i := 0; i < int(thisDim); i++ {
+	for i := range int(thisDim) {
 		vals2.Index(i).Set(reflect.ValueOf(vals[i]))
 	}
 	return vals2.Interface()

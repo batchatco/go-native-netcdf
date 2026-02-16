@@ -20,14 +20,14 @@ func buildDataspaceMessage(dimensions []uint64) []byte {
 	if len(dimensions) == 0 {
 		err = buf.WriteByte(0) // type scalar
 		thrower.ThrowIfError(err)
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			err = buf.WriteByte(0)
 			thrower.ThrowIfError(err)
 		}
 	} else {
 		err = buf.WriteByte(0) // Reserved
 		thrower.ThrowIfError(err)
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			err = buf.WriteByte(0)
 			thrower.ThrowIfError(err)
 		}
@@ -190,7 +190,7 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 
 func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.Value, maxLen int) {
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
-		for i := 0; i < rv.Len(); i++ {
+		for i := range rv.Len() {
 			hw.writeAttributeDataRecursive(buf, rv.Index(i), maxLen)
 		}
 		return

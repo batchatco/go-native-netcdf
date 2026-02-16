@@ -95,7 +95,7 @@ func (cw *CDFWriter) storeChars(val reflect.Value, dimLengths []int64) {
 		}
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeChars(value, dimLengths[1:])
 	}
@@ -111,7 +111,7 @@ func (cw *CDFWriter) storeBytes(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, b)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeBytes(value, dimLengths[1:])
 	}
@@ -127,7 +127,7 @@ func (cw *CDFWriter) storeUBytes(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, b)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeUBytes(value, dimLengths[1:])
 	}
@@ -143,7 +143,7 @@ func (cw *CDFWriter) storeShorts(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, s)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeShorts(value, dimLengths[1:])
 	}
@@ -159,7 +159,7 @@ func (cw *CDFWriter) storeUShorts(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, s)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeUShorts(value, dimLengths[1:])
 	}
@@ -175,7 +175,7 @@ func (cw *CDFWriter) storeInts(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, iv)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeInts(value, dimLengths[1:])
 	}
@@ -191,7 +191,7 @@ func (cw *CDFWriter) storeUInts(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, iv)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeUInts(value, dimLengths[1:])
 	}
@@ -207,7 +207,7 @@ func (cw *CDFWriter) storeInt64s(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, iv)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeInt64s(value, dimLengths[1:])
 	}
@@ -223,7 +223,7 @@ func (cw *CDFWriter) storeUInt64s(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, iv)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeUInt64s(value, dimLengths[1:])
 	}
@@ -241,7 +241,7 @@ func (cw *CDFWriter) storeFloats(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, fv)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeFloats(value, dimLengths[1:])
 	}
@@ -259,7 +259,7 @@ func (cw *CDFWriter) storeDoubles(val reflect.Value, dimLengths []int64) {
 		writeAny(cw.bf, dv)
 		return
 	}
-	for i := 0; i < val.Len(); i++ {
+	for i := range val.Len() {
 		value := val.Index(int(i))
 		cw.storeDoubles(value, dimLengths[1:])
 	}
@@ -289,7 +289,7 @@ func (cw *CDFWriter) getDimLengthsHelper(
 		if t.Elem().Kind() == reflect.String {
 			// special case to longest string
 			maxLen := int64(0)
-			for i := 0; i < int(vLen); i++ {
+			for i := range int(vLen) {
 				if int64(rv.Index(i).Len()) > maxLen {
 					maxLen = int64(rv.Index(i).Len())
 				}
@@ -418,7 +418,7 @@ func (cw *CDFWriter) AddVar(name string, vr api.Variable) (err error) {
 	case typeUByte, typeUShort, typeUInt, typeUInt64, typeInt64:
 		cw.version = 5
 	}
-	for i := 0; i < len(dimLengths); i++ {
+	for i := range dimLengths {
 		var dimName string
 		if i < len(vr.Dimensions) {
 			dimName = vr.Dimensions[i]
@@ -647,7 +647,7 @@ func (cw *CDFWriter) writeVar(which int) {
 	saved.vsize = vsize
 
 	calcOffset := cw.begin
-	for i := 0; i < which; i++ {
+	for i := range which {
 		calcOffset += cw.vars[i].vsize
 	}
 	write64(cw.bf, calcOffset)
@@ -908,7 +908,7 @@ func (cw *CDFWriter) writeAll() {
 	if len(cw.dimLengths) > 0 {
 		write32(cw.bf, fieldDimension)
 		cw.writeNumber(int64(len(cw.dimLengths)))
-		for dimid := int64(0); dimid < cw.nextID; dimid++ {
+		for dimid := range cw.nextID {
 			name := cw.dimNames[dimid]
 			cw.writeName(name)
 			cw.writeNumber(cw.dimLengths[name])

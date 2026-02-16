@@ -166,7 +166,7 @@ func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Typ
 		return values
 	}
 	vals := makeSlices(cast, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocInt8s(bf, dimLengths[1:], signed, cast)))
 	}
 	return vals.Interface()
@@ -195,7 +195,7 @@ func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 		return values
 	}
 	vals := makeSlices(cast, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocShorts(bf, dimLengths[1:], endian, signed,
 			cast)))
 	}
@@ -225,7 +225,7 @@ func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signe
 		return values
 	}
 	vals := makeSlices(cast, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocInts(bf, dimLengths[1:], endian, signed,
 			cast)))
 	}
@@ -255,7 +255,7 @@ func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 		return values
 	}
 	vals := makeSlices(cast, dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocInt64s(bf, dimLengths[1:], endian, signed,
 			cast)))
 	}

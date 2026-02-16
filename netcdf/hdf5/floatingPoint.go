@@ -166,7 +166,7 @@ func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) any
 		return values
 	}
 	vals := makeSlices(reflect.TypeOf(float32(0)), dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocFloats(bf, dimLengths[1:], endian)))
 	}
 	return vals.Interface()
@@ -187,7 +187,7 @@ func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) an
 		return values
 	}
 	vals := makeSlices(reflect.TypeOf(float64(0)), dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocDoubles(bf, dimLengths[1:], endian)))
 	}
 	return vals.Interface()

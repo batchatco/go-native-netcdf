@@ -96,7 +96,7 @@ func sliceRecursive(v reflect.Value, dims []uint64, begin, end []int64) reflect.
 			// For each element in the sliced dimension, recurse
 			newLen := e - b
 			newSlice := reflect.MakeSlice(sliced.Type(), newLen, newLen)
-			for i := 0; i < newLen; i++ {
+			for i := range newLen {
 				res := sliceRecursive(sliced.Index(i), dims[1:], begin[1:], end[1:])
 				newSlice.Index(i).Set(res)
 			}

@@ -958,7 +958,7 @@ func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, rec
 
 func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 	logger.Info("ty=", ty)
-	for i := 0; i < int(numRec); i++ {
+	for i := range int(numRec) {
 		logger.Infof("reading record %d of %d", i, numRec)
 		switch ty {
 		case 5: // for indexing the ‘name’ field for links in indexed groups.

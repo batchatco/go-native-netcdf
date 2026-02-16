@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/batchatco/go-thrower"
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 )
 
 type timeManagerType struct{}
@@ -49,8 +49,7 @@ func (timeManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields
 			logger.Infof("time big-endian")
 		}
 		var bp int16
-		err := binary.Read(bf, endian, &bp)
-		thrower.ThrowIfError(err)
+		util.MustRead(bf, endian, &bp)
 		logger.Info("time bit precision=", bp)
 		if df.Rem() > 0 {
 			fail("time")

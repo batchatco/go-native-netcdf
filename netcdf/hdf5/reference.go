@@ -1,11 +1,11 @@
 package hdf5
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 	"reflect"
 
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
 )
 
@@ -68,8 +68,7 @@ func (referenceManagerType) parse(hr heapReader, c caster, attr *attribute, bitF
 func allocReferences(bf io.Reader, dimLengths []uint64) any {
 	if len(dimLengths) == 0 {
 		var addr uint64
-		err := binary.Read(bf, binary.LittleEndian, &addr)
-		thrower.ThrowIfError(err)
+		util.MustReadLE(bf, &addr)
 		logger.Infof("Reference addr 0x%x", addr)
 		return addr
 	}
@@ -79,15 +78,14 @@ func allocReferences(bf io.Reader, dimLengths []uint64) any {
 		values := make([]uint64, thisDim)
 		for i := range values {
 			var addr uint64
-			err := binary.Read(bf, binary.LittleEndian, &addr)
-			thrower.ThrowIfError(err)
+			util.MustReadLE(bf, &addr)
 			logger.Infof("Reference addr[%d] 0x%x", i, addr)
 			values[i] = addr
 		}
 		return values
 	}
 	vals := makeSlices(reflect.TypeOf(uint64(0)), dimLengths)
-	for i := uint64(0); i < thisDim; i++ {
+	for i := range thisDim {
 		vals.Index(int(i)).Set(reflect.ValueOf(allocReferences(bf, dimLengths[1:])))
 	}
 	return vals.Interface()

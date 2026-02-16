@@ -1,7 +1,9 @@
 // Package api is common to different implementations of NetCDF4 (CDF or HDF5)
 package api
 
-import "io"
+import (
+	"io"
+)
 
 type ReadSeekerCloser interface {
 	io.ReadSeeker
@@ -12,14 +14,14 @@ type AttributeMap interface {
 	// Ordered list of keys
 	Keys() []string
 	// Indexed lookup
-	Get(key string) (val interface{}, has bool)
+	Get(key string) (val any, has bool)
 
 	GetType(key string) (string, bool)
 	GetGoType(key string) (string, bool)
 }
 
 type Variable struct {
-	Values     interface{}
+	Values     any
 	Dimensions []string
 	Attributes AttributeMap
 }
@@ -31,11 +33,18 @@ type VarGetter interface {
 
 	// Values returns all the values of the variable.  For very large variables,
 	// it may be more appropriate to call GetSlice instead.
-	Values() (interface{}, error)
+	Values() (any, error)
 
 	// GetSlice gets a (smaller) slice of the variable's slice
 	// It's useful for variables which are very large and may not fit in memory.
-	GetSlice(begin, end int64) (interface{}, error)
+	GetSlice(begin, end int64) (any, error)
+
+	// GetSliceMD gets a multi-dimensional slice of the variable.
+	// begin and end are slices of indices for each dimension.
+	GetSliceMD(begin, end []int64) (any, error)
+
+	// Shape returns the lengths of all dimensions of the variable.
+	Shape() []int64
 
 	Dimensions() []string
 

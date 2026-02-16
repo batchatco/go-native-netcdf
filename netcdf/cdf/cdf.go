@@ -230,12 +230,12 @@ func roundInt32(i uint64) uint64 {
 	return (i + 3) & ^uint64(0x3)
 }
 
-func (cdf *CDF) getAttr(bf io.Reader) (string, interface{}) {
+func (cdf *CDF) getAttr(bf io.Reader) (string, any) {
 	name := cdf.readName(bf)
 	vType := read32(bf)
 	nvars := cdf.readNumber(bf)
 	nread := uint64(0)
-	var values interface{}
+	var values any
 	switch vType {
 	case typeByte:
 		// byte becomes int8 in go-speak
@@ -365,7 +365,7 @@ func (cdf *CDF) getNElems(bf io.Reader, expectedField uint32) uint64 {
 
 func (cdf *CDF) getAttrList(bf io.Reader) *util.OrderedMap {
 	nElems := cdf.getNElems(bf, fieldAttribute)
-	attrs := make(map[string]interface{})
+	attrs := make(map[string]any)
 	keys := make([]string, 0)
 	for i := uint64(0); i < nElems; i++ {
 		name, val := cdf.getAttr(bf)
@@ -653,7 +653,7 @@ func (cdf *CDF) getVarCommon(name string) (api.VarGetter, error) {
 		chunkSize = totalSize / int64(dimLengths[0])
 		length = int64(dimLengths[0])
 	}
-	getSlice := func(begin, end int64) (interface{}, error) {
+	getSlice := func(begin, end int64) (any, error) {
 		if end < begin {
 			return nil, errors.New("invalid slice parameters")
 		}
@@ -700,7 +700,7 @@ func (cdf *CDF) getVarCommon(name string) (api.VarGetter, error) {
 		}
 
 		// in case of unlimited, should read a record at a time, using cdf.recSize
-		var data interface{}
+		var data any
 		switch varFound.vType {
 		case typeByte:
 			data = make([]int8, sliceSize)
@@ -753,7 +753,39 @@ func (cdf *CDF) getVarCommon(name string) (api.VarGetter, error) {
 		}
 		return converted, nil
 	}
-	return internal.NewSlicer(getSlice, length, dimNames, varFound.attrs,
+	getSliceMD := func(begin, end []int64) (any, error) {
+		if len(begin) != len(dimLengths) || len(end) != len(dimLengths) {
+			return nil, ErrTooManyDimensions
+		}
+		for i := range begin {
+			if end[i] < begin[i] {
+				return nil, errors.New("invalid slice parameters")
+			}
+		}
+		// Optimize: only read the required range of the first dimension from disk
+		partialData, err := getSlice(begin[0], end[0])
+		if err != nil {
+			return nil, err
+		}
+		newDims := make([]uint64, len(dimLengths))
+		copy(newDims, dimLengths)
+		newDims[0] = uint64(end[0] - begin[0])
+
+		newBegin := make([]int64, len(begin))
+		copy(newBegin, begin)
+		newBegin[0] = 0 // Already sliced first dim on disk
+
+		newEnd := make([]int64, len(end))
+		copy(newEnd, end)
+		newEnd[0] = end[0] - begin[0]
+
+		return internal.SliceMD(partialData, newDims, newBegin, newEnd)
+	}
+	shape := make([]int64, len(dimLengths))
+	for i, v := range dimLengths {
+		shape[i] = int64(v)
+	}
+	return internal.NewSlicer(getSlice, getSliceMD, length, shape, dimNames, varFound.attrs,
 		cdlType(varFound.vType), goType(varFound.vType)), nil
 }
 
@@ -901,7 +933,7 @@ func (cdf *CDF) newRecordReader(v *variable, start int64, size int64) io.Reader 
 	return io.MultiReader(readers...)
 }
 
-func emptySlice(v interface{}, dimLengths []uint64) interface{} {
+func emptySlice(v any, dimLengths []uint64) any {
 	top := reflect.ValueOf(v)
 	elemType := top.Type().Elem()
 	var empty reflect.Value
@@ -912,7 +944,7 @@ func emptySlice(v interface{}, dimLengths []uint64) interface{} {
 	return empty.Interface()
 }
 
-func (cdf *CDF) convert(data interface{}, dimLengths []uint64, vType uint32) interface{} {
+func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 	// in case of unlimited, should read a record at a time, using cdf.recSize
 
 	// try fast conversions first

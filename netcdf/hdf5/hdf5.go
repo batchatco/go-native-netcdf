@@ -70,9 +70,6 @@ var (
 	// References are not part of NetCDF, but they are part of HDF5.
 	allowReferences = false
 
-	// Allow a few non-standard things for testing, such as ignoring non-standard headers
-	allowNonStandard = false
-
 	// We have not fully implemented V3 of the superblock.  Enabling this allows some
 	// undocumented things to appear, like datatype V4, which we do not support.
 	superblockV3 = false
@@ -200,13 +197,13 @@ const (
 
 type attribute struct {
 	name          string
-	value         interface{}
+	value         any
 	class         uint8
 	vtType        uint8        // for variable length
 	signed        bool         // for fixed-point
 	children      []*attribute // for variable, compound, enums, vlen.
 	enumNames     []string
-	enumValues    []interface{}
+	enumValues    []any
 	shared        bool   // if shared
 	length        uint32 // datatype length
 	layout        []uint64
@@ -215,6 +212,9 @@ type attribute struct {
 	isSlice       bool
 	firstDim      int64 // first dimension if getting slice (fake objects only)
 	lastDim       int64 // last dimension if getting slice (fake objects only)
+	isSliceMD     bool
+	firstDims     []int64 // for MD slicing
+	lastDims      []int64 // for MD slicing
 	endian        binary.ByteOrder
 	dtversion     uint8
 	creationOrder uint64
@@ -249,7 +249,7 @@ type HDF5 struct {
 	rootObject    *object
 	groupObject   *object
 	sharedAttrs   map[uint64]*attribute
-	registrations map[string]interface{}
+	registrations map[string]any
 	addrs         map[uint64]bool
 }
 
@@ -331,7 +331,7 @@ func (h5 *HDF5) newSeek(addr uint64, size int64) remReader {
 	return newResetReaderOffset(h5.file, size, addr)
 }
 
-func read(r io.Reader, data interface{}) {
+func read(r io.Reader, data any) {
 	err := binary.Read(r, binary.LittleEndian, data)
 	thrower.ThrowIfError(err)
 }
@@ -1291,8 +1291,8 @@ func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uin
 	h5.checkChecksum(bta, int(bSize)-4)
 }
 
-func checkVal(expected, actual interface{}, comment string) {
-	extractVal := func(generic interface{}) (uint64, bool) {
+func checkVal(expected, actual any, comment string) {
+	extractVal := func(generic any) (uint64, bool) {
 		var val uint64
 		switch v := generic.(type) {
 		case uint64:
@@ -2635,7 +2635,7 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		rootObject:    nil,
 		groupObject:   nil,
 		sharedAttrs:   make(map[uint64]*attribute),
-		registrations: make(map[string]interface{}),
+		registrations: make(map[string]any),
 		addrs:         make(map[uint64]bool),
 	}
 	h5.readSuperblock()
@@ -2922,7 +2922,7 @@ func makeFillValueReader(obj *object, bf io.Reader, length int64) remReader {
 		length)
 }
 
-func (h5 *HDF5) getData(obj *object) interface{} {
+func (h5 *HDF5) getData(obj *object) any {
 	zlibFound := false
 	shuffleFound := false
 	fletcher32Found := false
@@ -2982,7 +2982,7 @@ func (h5 *HDF5) getData(obj *object) interface{} {
 	return getDataAttr(h5, h5, bff, *attr)
 }
 
-func getDataAttr(hr heapReader, c caster, bf io.Reader, attr attribute) interface{} {
+func getDataAttr(hr heapReader, c caster, bf io.Reader, attr attribute) any {
 	for i, v := range attr.dimensions {
 		logger.Info("dimension", i, "=", v)
 	}
@@ -2994,6 +2994,12 @@ func getDataAttr(hr heapReader, c caster, bf io.Reader, attr attribute) interfac
 		copy(nd, dimensions)
 		if len(dimensions) > 0 {
 			nd[0] = uint64(attr.lastDim - attr.firstDim)
+		}
+		dimensions = nd
+	} else if attr.isSliceMD {
+		nd := make([]uint64, len(dimensions))
+		for i := range dimensions {
+			nd[i] = uint64(attr.lastDims[i] - attr.firstDims[i])
 		}
 		dimensions = nd
 	}
@@ -3009,7 +3015,7 @@ func (h5 *HDF5) cast(attr attribute) reflect.Type {
 	ty := goTypeString(attr.class, h5, varName, &attr, origNames)
 	assert(ty != "", "did not calculate go type")
 	has := false
-	var proto interface{}
+	var proto any
 	logger.Info("trying to find cast for", ty, len(h5.registrations),
 		"class=", typeNames[attr.class])
 loop:
@@ -3411,7 +3417,7 @@ func (h5 *HDF5) parseAttr(obj *object, a *attribute) {
 }
 
 func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
-	filtered := make(map[string]interface{})
+	filtered := make(map[string]any)
 	for i := range unfiltered {
 		val := unfiltered[i]
 		logger.Infof("getting attribute %s %p", val.name, val)
@@ -3444,7 +3450,7 @@ func (h5 *HDF5) getAttributes(unfiltered []*attribute) api.AttributeMap {
 
 // A scalar attribute can be stored as a single-length array.
 // This code undoes that to return an actual scalar.
-func undoScalarAttribute(value interface{}) interface{} {
+func undoScalarAttribute(value any) any {
 	// Opaque is a slice, but we don't want to undo it.
 	_, has := value.(opaque)
 	if has {
@@ -3606,7 +3612,7 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 	default:
 		d = int64(found.objAttr.dimensions[0])
 	}
-	getSlice := func(begin, end int64) (interface{}, error) {
+	getSlice := func(begin, end int64) (any, error) {
 		if begin == 0 && end == 1 && fakeEnd {
 			data := h5.getData(found)
 			if data == nil {
@@ -3627,13 +3633,45 @@ func (h5 *HDF5) GetVarGetter(varName string) (slicer api.VarGetter, err error) {
 		}
 		return data, nil
 	}
+	getSliceMD := func(begin, end []int64) (any, error) {
+		if len(begin) != len(found.objAttr.dimensions) || len(end) != len(found.objAttr.dimensions) {
+			return nil, ErrDimensionality
+		}
+		for i := range begin {
+			if end[i] < begin[i] {
+				return nil, errors.New("invalid slice parameters")
+			}
+		}
+		// Optimize: only read the required range of the first dimension from disk
+		partialData, err := getSlice(begin[0], end[0])
+		if err != nil {
+			return nil, err
+		}
+		newDims := make([]uint64, len(found.objAttr.dimensions))
+		copy(newDims, found.objAttr.dimensions)
+		newDims[0] = uint64(end[0] - begin[0])
+
+		newBegin := make([]int64, len(begin))
+		copy(newBegin, begin)
+		newBegin[0] = 0 // Already sliced first dim on disk
+
+		newEnd := make([]int64, len(end))
+		copy(newEnd, end)
+		newEnd[0] = end[0] - begin[0]
+
+		return internal.SliceMD(partialData, newDims, newBegin, newEnd)
+	}
 	dims := h5.getDimensions(found)
+	shape := make([]int64, len(found.objAttr.dimensions))
+	for i, v := range found.objAttr.dimensions {
+		shape[i] = int64(v)
+	}
 	attrs := h5.getAttributes(found.attrlist)
 	origNames := map[string]bool{varName: true}
 	ty := cdlTypeString(found.objAttr.class, h5, varName, found.objAttr, origNames)
 	origNames = map[string]bool{varName: true}
 	goTy := goTypeString(found.objAttr.class, h5, varName, found.objAttr, origNames)
-	return internal.NewSlicer(getSlice, d, dims, attrs, ty, goTy), nil
+	return internal.NewSlicer(getSlice, getSliceMD, d, shape, dims, attrs, ty, goTy), nil
 }
 
 // ListSubgroups returns the names of the subgroups of this group.
@@ -3734,7 +3772,7 @@ func (h5 *HDF5) ListVariables() []string {
 	return ret
 }
 
-func emptySlice(v interface{}) reflect.Value {
+func emptySlice(v any) reflect.Value {
 	top := reflect.ValueOf(v)
 	elemType := top.Type().Elem()
 	slices := 0
@@ -3752,7 +3790,7 @@ func emptySlice(v interface{}) reflect.Value {
 	return empty
 }
 
-func undoInterfaces(v interface{}) reflect.Value {
+func undoInterfaces(v any) reflect.Value {
 	top := reflect.ValueOf(v)
 	if top.Kind() != reflect.Slice {
 		return top
@@ -3774,13 +3812,13 @@ func undoInterfaces(v interface{}) reflect.Value {
 	return val
 }
 
-func convert(v interface{}) interface{} {
+func convert(v any) any {
 	val := undoInterfaces(v)
 	assert(val.IsValid(), "invalid conversion")
 	return val.Interface()
 }
 
-func (h5 *HDF5) register(typeName string, proto interface{}) {
+func (h5 *HDF5) register(typeName string, proto any) {
 	if _, has := h5.GetType(typeName); !has {
 		logger.Warn("no such type", typeName)
 		return

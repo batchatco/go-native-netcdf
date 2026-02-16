@@ -129,6 +129,30 @@ func main() {
 
 ```
 
+### Handling Large Variables (Slicing)
+
+For very large variables that may not fit in memory, you can use the `VarGetter` interface to read specific slices. This is highly optimized and only reads the necessary data from disk.
+
+```go
+    // Get a VarGetter for a large variable
+    vg, err := nc.GetVarGetter("elevation")
+    if err != nil {
+        panic(err)
+    }
+
+    // Get the shape (dimensions) of the variable
+    shape := vg.Shape()
+    fmt.Println("Shape:", shape) // e.g., [43200 86400]
+
+    // Read a 1D slice (e.g., first 100 rows)
+    // GetSlice(begin, end)
+    data, err := vg.GetSlice(0, 100)
+
+    // Read a multi-dimensional slice (e.g., a 100x100 region at the top-left)
+    // GetSliceMD(beginIndices, endIndices)
+    dataMD, err := vg.GetSliceMD([]int64{0, 0}, []int64{100, 100})
+```
+
 ### Writing a CDF file
 ```go
 
@@ -177,20 +201,19 @@ currently zero length. For writing out variables with dimensions greater than
 one to work, extra information would need to be passed in to know the sizes of
 the other dimensions, because they cannot be guessed based upon the information
 in the slice. This doesn't seem like all that important of a feature though,
-and it would clutter the UI, so it is not implemented.
+and it would clutter the API, so it is not implemented.
 
 ## Some notes about the HDF5 code
-The HDF5 code is quite hacky, but it has run though several unit tests, with good coverage,
-and should be pretty solid. Performance has not been looked at yet though, so it is likely
-slower than the alternative.
+The HDF5 code has been optimized for performance, especially when using the slicing
+APIs (`GetSlice` and `GetSliceMD`). These APIs only read the required data from disk, making
+it possible to work with very large datasets that can otherwise exceed available memory.
 
-It's working well enough that I feel it is okay to publish it now. I'll continue to work
-on it. I can clean up the code and make it run faster, for example. Feedback is welcome.
+The implementation is pure Go and has good test coverage. 
 
-Some of the exotic HDF5 types are actually implemented, but the interfaces to them
-mostly hidden. Variables of these types will get parsed and returned in
-an unsupported format. If you want to play with it, fine. If there's enough demand,
-I can expose the interfaces.
+This implementation focuses on supporting NetCDF4 only. While it uses HDF5 as the
+underlying format for NetCDF4, it does not aim to support every feature or exotic
+data type available in the full HDF5 specification that is not typically used in
+NetCDF4 files.
 
 If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically,
 the *ncdump* and *ncgen* commands. You will also need the HDF5 package, and specifically the

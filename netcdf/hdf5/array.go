@@ -73,13 +73,13 @@ func (arrayManagerType) parse(hr heapReader, c caster, attr *attribute, bitField
 		checkZeroes(bf, 3)
 	}
 	dimensions := make([]uint64, dimensionality)
-	for i := 0; i < int(dimensionality); i++ {
+	for i := range int(dimensionality) {
 		dimensions[i] = uint64(read32(bf))
 		logger.Info("dim=", dimensions[i])
 	}
 	logger.Info("dimensions=", dimensions)
 	if attr.dtversion < 3 {
-		for i := 0; i < int(dimensionality); i++ {
+		for range int(dimensionality) {
 			perm := read32(bf)
 			logger.Info("perm=", perm)
 		}

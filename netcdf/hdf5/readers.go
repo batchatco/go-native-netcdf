@@ -301,8 +301,8 @@ func unshuffle(val []byte, n uint32) {
 	// of memory.
 	tmp := make([]byte, len(val))
 	nelems := len(val) / int(n)
-	for i := 0; i < int(n); i++ {
-		for j := 0; j < nelems; j++ {
+	for i := range int(n) {
+		for j := range nelems {
 			tmp[j*int(n)+i] = val[i*nelems+j]
 		}
 	}
@@ -382,7 +382,7 @@ func calcDataSize(attr *attribute) uint64 {
 func calculateFlatOffset(offsets []uint64, dims []uint64, layout []uint64, dtLength uint64) uint64 {
 	rank := len(dims)
 	flatChunkIndex := uint64(0)
-	for i := 0; i < rank; i++ {
+	for i := range rank {
 		gi := offsets[i] / layout[i]
 		gridStride := uint64(1)
 		for k := i + 1; k < rank; k++ {
@@ -409,7 +409,7 @@ func (lr *layoutReader) fillrow() error {
 	// Grid dimensions
 	g := make([]int, rank)
 	totalStripes := 1
-	for i := 0; i < rank; i++ {
+	for i := range rank {
 		g[i] = int((dims[i] + layout[i] - 1) / layout[i])
 		if i < rank-1 {
 			totalStripes *= g[i]
@@ -432,7 +432,7 @@ func (lr *layoutReader) fillrow() error {
 	// A "row" here is the last dimension.
 	numRowsInStripe := 1
 	validCounts := make([]int, rank-1)
-	for i := 0; i < rank-1; i++ {
+	for i := range rank-1 {
 		start := uint64(stripeCoords[i]) * layout[i]
 		end := start + layout[i]
 		if end > dims[i] {
@@ -451,7 +451,7 @@ func (lr *layoutReader) fillrow() error {
 	chunkSize := calcChunkSize(attr)
 	readBuf := make([]byte, chunkSize*dtLength)
 
-	for gc := 0; gc < numChunksInStripe; gc++ {
+	for gc := range numChunksInStripe {
 		// Read one chunk
 		_, err := io.ReadFull(lr.r, readBuf)
 		if err != nil {
@@ -460,14 +460,14 @@ func (lr *layoutReader) fillrow() error {
 
 		// Interleave this chunk's rows into lr.buf
 		numRowsInChunk := 1
-		for i := 0; i < rank-1; i++ {
+		for i := range rank-1 {
 			numRowsInChunk *= int(layout[i])
 		}
 
 		chunkLineLen := layout[rank-1]
 		delta := make([]int, rank-1)
 
-		for rc := 0; rc < numRowsInChunk; rc++ {
+		for rc := range numRowsInChunk {
 			// Decode rc into local relative coordinates
 			tempRC := rc
 			for i := rank - 2; i >= 0; i-- {
@@ -477,7 +477,7 @@ func (lr *layoutReader) fillrow() error {
 
 			// Check if this row is valid in the dataset
 			isValid := true
-			for i := 0; i < rank-1; i++ {
+			for i := range rank-1 {
 				if uint64(stripeCoords[i])*layout[i]+uint64(delta[i]) >= dims[i] {
 					isValid = false
 					break

@@ -96,7 +96,7 @@ func padBytesCheck(obf io.Reader, pad32 int, round bool,
 		logger.Info(cbf.Count(), "prepad", extra, "bytes")
 		b := make([]byte, extra)
 		read(cbf, b)
-		for i := 0; i < int(extra); i++ {
+		for i := range int(extra) {
 			if b[i] != 0 {
 				success = false
 			}

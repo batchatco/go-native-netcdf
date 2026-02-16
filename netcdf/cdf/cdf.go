@@ -926,7 +926,7 @@ func emptySlice(v any, dimLengths []uint64) any {
 	top := reflect.ValueOf(v)
 	elemType := top.Type().Elem()
 	var empty reflect.Value
-	for i := 0; i < len(dimLengths); i++ {
+	for range len(dimLengths) {
 		empty = reflect.MakeSlice(reflect.SliceOf(elemType), 0, 0)
 		elemType = empty.Type()
 	}
@@ -1000,7 +1000,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeByte:
 			v := data.([]int8)
 			ret := make([][]int8, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1009,7 +1009,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeChar:
 			v := data.([]byte)
 			ret := make([]string, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = string(v[:dimLengths[1]])
 				v = v[dimLengths[1]:]
 			}
@@ -1018,7 +1018,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeShort:
 			v := data.([]int16)
 			ret := make([][]int16, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1027,7 +1027,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeInt:
 			v := data.([]int32)
 			ret := make([][]int32, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1036,7 +1036,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeFloat:
 			v := data.([]float32)
 			ret := make([][]float32, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1045,7 +1045,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeDouble:
 			v := data.([]float64)
 			ret := make([][]float64, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1054,7 +1054,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeUByte:
 			v := data.([]uint8)
 			ret := make([][]uint8, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1063,7 +1063,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeUShort:
 			v := data.([]uint16)
 			ret := make([][]uint16, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1072,7 +1072,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeUInt:
 			v := data.([]uint32)
 			ret := make([][]uint32, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1081,7 +1081,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeUInt64:
 			v := data.([]uint64)
 			ret := make([][]uint64, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}
@@ -1090,7 +1090,7 @@ func (cdf *CDF) convert(data any, dimLengths []uint64, vType uint32) any {
 		case typeInt64:
 			v := data.([]int64)
 			ret := make([][]int64, dimLengths[0])
-			for i := 0; i < int(dimLengths[0]); i++ {
+			for i := range int(dimLengths[0]) {
 				ret[i] = v[:dimLengths[1]]
 				v = v[dimLengths[1]:]
 			}

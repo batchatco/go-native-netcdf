@@ -12,7 +12,7 @@ import (
 func common(b testing.TB, num int, slow convertType) {
 	b.Helper()
 	fileName := "testdata/solarforcing_small.nc"
-	for i := 0; i < num; i++ {
+	for range num {
 		nc, err := Open(fileName)
 		nc.(*CDF).slowConvert = slow
 		if err != nil {

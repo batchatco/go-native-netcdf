@@ -227,7 +227,7 @@ func (hw *HDF5Writer) buildVLenStringDatatype() []byte {
 
 func findMaxLen(rv reflect.Value, maxLen *int) {
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
-		for i := 0; i < rv.Len(); i++ {
+		for i := range rv.Len() {
 			findMaxLen(rv.Index(i), maxLen)
 		}
 		return

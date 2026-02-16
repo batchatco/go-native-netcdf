@@ -665,7 +665,7 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 	if version == 1 {
 		pad := ((datatypeSize + 7) & ^uint16(7)) - datatypeSize
 		logger.Info("datatype pad", datatypeSize, pad)
-		for i := 0; i < int(pad); i++ {
+		for range int(pad) {
 			z := read8(bf)
 			checkVal(0, z, "zero pad")
 		}
@@ -1187,7 +1187,7 @@ func (h5 *HDF5) readHeapDirectBlock(link *linkInfo, addr uint64, flags uint8,
 		// Zero out pre-existing checksum field and recalculate
 		b := make([]byte, blockSize)
 		read(bf, b)
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			b[checksumOffset+i] = 0
 		}
 		bff := newResetReaderFromBytes(b)
@@ -1244,7 +1244,7 @@ func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uin
 	addrs := make([]uint64, 0, directRows*int(width))
 	iAddrs := make([]uint64, 0, indirectRows*int(width))
 	blockSize := startBlockSize
-	for i := 0; i < int(nrows); i++ {
+	for i := range int(nrows) {
 		if i > 1 {
 			if i < maxRowsDirect {
 				if blockSize < maxBlockSize {
@@ -1256,7 +1256,7 @@ func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uin
 				logger.Info("doubled block size (indirect)", blockSize, "->", blockSize*2)
 			}
 		}
-		for j := 0; j < int(width); j++ {
+		for range int(width) {
 			childDirectBlockAddress := read64(bf)
 			logger.Infof("child block address=0x%x row=%d maxrows=%d", childDirectBlockAddress,
 				i, maxRowsDirect)
@@ -1453,7 +1453,7 @@ func (h5 *HDF5) readSymbolTableLeaf(parent *object, addr uint64, heapAddr uint64
 	thisSize := int64(numSymbols) * 40
 	logger.Info("number of symbols", numSymbols, "thisSize=", thisSize)
 	bf = h5.newSeek(addr+uint64(bf.Count()), thisSize)
-	for i := 0; i < int(numSymbols); i++ {
+	for i := range int(numSymbols) {
 		logger.Info("Start: count=", bf.Count(), "rem=", bf.Rem())
 		assert(bf.Rem() >= 24,
 			fmt.Sprintln(i, "not enough space to read another entry", bf.Rem()))
@@ -1740,14 +1740,14 @@ func (h5 *HDF5) readDataspace(obf io.Reader) ([]uint64, int64) {
 	}
 	ret := make([]uint64, d)
 	count := int64(1)
-	for i := 0; i < int(d); i++ {
+	for i := range int(d) {
 		sz := read64(bf)
 		logger.Infof("dataspace dimension %d/%d size=%d", i, d, sz)
 		ret[i] = sz
 		count *= int64(sz)
 	}
 	if hasFlag8(flags, 0) {
-		for i := 0; i < int(d); i++ {
+		for i := range int(d) {
 			sz := read64(bf)
 			if sz == unlimitedSize {
 				logger.Infof("dataspace maximum dimension %d/%d UNLIMITED", i, d)
@@ -1758,7 +1758,7 @@ func (h5 *HDF5) readDataspace(obf io.Reader) ([]uint64, int64) {
 	}
 	if version == 1 && hasFlag8(flags, 1) {
 		// has not been seen in the wild
-		for i := 0; i < int(d); i++ {
+		for i := range int(d) {
 			pi := read64(bf)
 			logger.Infof("dataspace permutation index %d/%d = %d", i, d, pi)
 		}
@@ -1784,7 +1784,7 @@ func (h5 *HDF5) readFilterPipeline(obj *object, obf io.Reader) {
 		reserved2 := read32(bf)
 		checkVal(0, reserved2, "reserved")
 	}
-	for i := 0; i < int(nof); i++ {
+	for range int(nof) {
 		fiv := read16(bf)
 		nameLength := uint16(0)
 		if version == 1 || fiv >= 256 {
@@ -1801,7 +1801,7 @@ func (h5 *HDF5) readFilterPipeline(obj *object, obf io.Reader) {
 			padBytes(bf, 7)
 		}
 		cdv := make([]uint32, nCDV)
-		for i := 0; i < int(nCDV); i++ {
+		for i := range int(nCDV) {
 			assert(bf.Rem() >= 4, fmt.Sprintf("short read on client data (%d)", bf.Rem()))
 			cd := read32(bf)
 			cdv[i] = cd
@@ -1877,7 +1877,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 				fmt.Sprint("Invalid dimensionality ", dimensionality))
 
 			layout := make([]uint64, int(dimensionality)-1)
-			for i := 0; i < int(dimensionality)-1; i++ {
+			for i := range int(dimensionality)-1 {
 				size := read32(bf)
 				numberOfElements *= uint64(size)
 				layout[i] = uint64(size)
@@ -1912,7 +1912,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 			layout := make([]uint64, int(dimensionality))
 			numberOfElements := uint64(1)
 
-			for i := 0; i < int(dimensionality); i++ {
+			for i := range int(dimensionality) {
 				size := readEnc(bf, encodedLen)
 				numberOfElements *= uint64(size)
 				layout[i] = size
@@ -2269,7 +2269,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Info("Object Modification Time")
 			v := read8(f)
 			logger.Info("object modification time version=", v)
-			for i := 0; i < 3; i++ {
+			for range 3 {
 				z := read8(f)
 				checkVal(0, z, "zero")
 			}
@@ -2758,7 +2758,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 		// to ensure filters like Fletcher32 and Shuffle receive the correct input/output sizes.
 		targetSize := make([]uint64, len(obj.filters))
 		curr := dsLength
-		for j := 0; j < len(obj.filters); j++ {
+		for j := range obj.filters {
 			targetSize[j] = curr
 			if (1<<uint(j))&val.filterMask == 0 {
 				if obj.filters[j].kind == filterFletcher32 {
@@ -3053,7 +3053,7 @@ loop:
 		if v.Kind() == reflect.Struct && attr.class == typeCompound {
 			// All fields must have the same name and type
 			fields := []string{}
-			for i := 0; i < v.NumField(); i++ {
+			for i := range v.NumField() {
 				field := v.Field(i)
 				fType := field.Type.String()
 				if strings.Contains(fType, ".") {
@@ -3140,7 +3140,7 @@ func (h5 *HDF5) findGlobalAttrType(attrName string) string {
 		dims := ""
 		if len(attr.dimensions) == 1 && attr.dimensions[0] == 1 {
 		} else {
-			for i := 0; i < len(attr.dimensions); i++ {
+			for range attr.dimensions {
 				dims += "(*)"
 			}
 		}
@@ -3160,7 +3160,7 @@ func (h5 *HDF5) findGlobalAttrGoType(attrName string) string {
 		dims := ""
 		if len(attr.dimensions) == 1 && attr.dimensions[0] == 1 {
 		} else {
-			for i := 0; i < len(attr.dimensions); i++ {
+			for range attr.dimensions {
 				dims += "[]"
 			}
 		}

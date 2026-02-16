@@ -82,7 +82,7 @@ func (compoundManagerType) parse(hr heapReader, c caster, attr *attribute, bitFi
 	if df != nil {
 		rem = df.Rem()
 	}
-	for i := 0; i < int(nmembers); i++ {
+	for i := range int(nmembers) {
 		name := readNullTerminatedName(bf, padding)
 		logger.Info(i, "compound name=", name)
 		var byteOffset uint32
@@ -120,7 +120,7 @@ func (compoundManagerType) parse(hr heapReader, c caster, attr *attribute, bitFi
 			reserved := read32(bf)
 			checkVal(0, reserved, "reserved dt")
 			compoundAttribute.dimensions = make([]uint64, 4)
-			for i := 0; i < 4; i++ {
+			for i := range 4 {
 				dsize := read32(bf)
 				logger.Info("dimension", i, "size", dsize)
 				compoundAttribute.dimensions[i] = uint64(dsize)

@@ -14,7 +14,7 @@ func TestFletcherOdd(t *testing.T) {
 	// Put in the checksum
 	copy(b[nbytes:], []byte{0x19, 0x1e, 0x50, 0x46})
 	// Then write the data
-	for i := 0; i < nbytes; i++ {
+	for i := range nbytes {
 		b[i] = byte(i)
 	}
 	r := bytes.NewReader(b)
@@ -31,7 +31,7 @@ func TestFletcherOdd(t *testing.T) {
 		t.Error("Got", n, "expected", len(b2))
 		return
 	}
-	for i := 0; i < nbytes; i++ {
+	for i := range nbytes {
 		if b2[i] != b[i] {
 			t.Error("Got", b2[i], "at offset", i, "expected", b[i])
 		}
@@ -45,7 +45,7 @@ func TestFletcherEven(t *testing.T) {
 	// Put in the checksum
 	copy(b[nbytes:], []byte{0x19, 0x14, 0x37, 0x28})
 	// Then write the data
-	for i := 0; i < nbytes; i++ {
+	for i := range nbytes {
 		b[i] = byte(i)
 	}
 	r := bytes.NewReader(b)
@@ -62,7 +62,7 @@ func TestFletcherEven(t *testing.T) {
 		t.Error("Got", n, "expected", len(b2))
 		return
 	}
-	for i := 0; i < nbytes; i++ {
+	for i := range nbytes {
 		if b2[i] != b[i] {
 			t.Error("Got", b2[i], "at offset", i, "expected", b[i])
 		}
@@ -77,7 +77,7 @@ func TestFletcherFail(t *testing.T) {
 	// Put in the checksum
 	copy(b[nbytes:], []byte{0xde, 0xad, 0xbe, 0xef})
 	// Then write the data
-	for i := 0; i < nbytes; i++ {
+	for i := range nbytes {
 		b[i] = byte(i)
 	}
 
@@ -107,7 +107,7 @@ func TestFletcherSingle(t *testing.T) {
 	// Put in the checksum
 	copy(b[nbytes:], []byte{0x00, 0x01, 0x00, 0x01})
 	// Then write the data
-	for i := 0; i < nbytes; i++ {
+	for i := range nbytes {
 		b[i] = byte(i) + 1
 	}
 	r := bytes.NewReader(b)
@@ -124,7 +124,7 @@ func TestFletcherSingle(t *testing.T) {
 		t.Error("Got", n, "expected", len(b2))
 		return
 	}
-	for i := 0; i < nbytes; i++ {
+	for i := range nbytes {
 		if b2[i] != b[i] {
 			t.Error("Got", b2[i], "at offset", i, "expected", b[i])
 		}

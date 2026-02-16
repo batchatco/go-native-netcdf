@@ -1,28 +1,329 @@
 package hdf5
 
 import (
+	"bytes"
+	"encoding/binary"
+	"os"
+	"reflect"
+	"sort"
+
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
+	"github.com/batchatco/go-thrower"
 )
 
-type HDF5Writer struct {
+type h5Var struct {
+	name       string
+	val        interface{}
+	dimensions []string
+	attributes api.AttributeMap
+	addr       uint64
 }
 
-func (hw *HDF5Writer) Close() error {
-	return api.ErrUnsupported
+type h5Group struct {
+	name       string
+	groups     map[string]*h5Group
+	vars       map[string]*h5Var
+	attributes api.AttributeMap
+	addr       uint64
+}
+
+type HDF5Writer struct {
+	file   *os.File
+	buf    *bytes.Buffer
+	root   *h5Group
+	closed bool
+}
+
+func (hw *HDF5Writer) Close() (err error) {
+	defer thrower.RecoverError(&err)
+	if hw.closed {
+		return nil
+	}
+	hw.closed = true
+
+	// 1. Write Superblock V2 (48 bytes)
+	hw.writeSuperblockV2()
+	
+	// 2. Write variables and subgroups recursively
+	hw.writeGroupContents(hw.root)
+	
+	// 3. Write Root Group OH V2
+	rootAddr := uint64(hw.buf.Len())
+	hw.writeGroupObjectHeaderV2(hw.root)
+	
+	// 4. Finalize Superblock
+	eofAddr := uint64(hw.buf.Len())
+	data := hw.buf.Bytes()
+	
+	binary.LittleEndian.PutUint64(data[28:], eofAddr)
+	binary.LittleEndian.PutUint64(data[36:], rootAddr)
+	
+	sbChecksum := checksum(data[:44])
+	binary.LittleEndian.PutUint32(data[44:], sbChecksum)
+
+	_, err = hw.file.Write(data)
+	if err != nil {
+		return err
+	}
+	err = hw.file.Close()
+	return err
+}
+
+func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
+	// Write children's data and object headers first
+	
+	// Variables
+	var varNames []string
+	for name := range g.vars {
+		varNames = append(varNames, name)
+	}
+	sort.Strings(varNames)
+	for _, name := range varNames {
+		v := g.vars[name]
+		dataAddr := uint64(hw.buf.Len())
+		hw.writeData(v.val)
+		dataSize := uint64(hw.buf.Len()) - dataAddr
+		
+		v.addr = uint64(hw.buf.Len())
+		hw.writeVarObjectHeaderV2(v, dataAddr, dataSize)
+	}
+	
+	// Subgroups
+	var groupNames []string
+	for name := range g.groups {
+		groupNames = append(groupNames, name)
+	}
+	sort.Strings(groupNames)
+	for _, name := range groupNames {
+		sub := g.groups[name]
+		hw.writeGroupContents(sub)
+		sub.addr = uint64(hw.buf.Len())
+		hw.writeGroupObjectHeaderV2(sub)
+	}
+}
+
+func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
+	var messages []h5Message
+	
+	// Group Info Message (type 10)
+	messages = append(messages, h5Message{mType: 10, data: []byte{0, 0}})
+	
+	// Link messages for children
+	var varNames []string
+	for name := range g.vars {
+		varNames = append(varNames, name)
+	}
+	sort.Strings(varNames)
+	for _, name := range varNames {
+		messages = append(messages, hw.buildLinkMessage(name, g.vars[name].addr))
+	}
+	
+	var groupNames []string
+	for name := range g.groups {
+		groupNames = append(groupNames, name)
+	}
+	sort.Strings(groupNames)
+	for _, name := range groupNames {
+		messages = append(messages, hw.buildLinkMessage(name, g.groups[name].addr))
+	}
+	
+	// Attributes
+	if g.attributes != nil {
+		for _, k := range g.attributes.Keys() {
+			val, _ := g.attributes.Get(k)
+			messages = append(messages, hw.buildAttributeMessage(k, val))
+		}
+	}
+	
+	hw.writeObjectHeaderV2(messages)
+}
+
+func (hw *HDF5Writer) writeSuperblockV2() {
+	hw.buf.Write([]byte(magic))
+	hw.buf.WriteByte(2)
+	hw.buf.WriteByte(8)
+	hw.buf.WriteByte(8)
+	hw.buf.WriteByte(0)
+	
+	binary.Write(hw.buf, binary.LittleEndian, uint64(0))
+	binary.Write(hw.buf, binary.LittleEndian, uint64(invalidAddress))
+	binary.Write(hw.buf, binary.LittleEndian, uint64(0))
+	binary.Write(hw.buf, binary.LittleEndian, uint64(0))
+	binary.Write(hw.buf, binary.LittleEndian, uint32(0))
+}
+
+func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize uint64) {
+	dtMsg := hw.buildDatatypeMessage(v.val)
+	dsMsg := buildDataspaceMessage(hw.getDimensions(v.val))
+	layoutMsg := hw.buildLayoutMessageV2(dataAddr, dataSize)
+	
+	messages := []h5Message{
+		{mType: 1, data: dsMsg},
+		{mType: 3, data: dtMsg},
+		{mType: 8, data: layoutMsg},
+	}
+	
+	if v.attributes != nil {
+		for _, k := range v.attributes.Keys() {
+			val, _ := v.attributes.Get(k)
+			messages = append(messages, hw.buildAttributeMessage(k, val))
+		}
+	}
+	
+	hw.writeObjectHeaderV2(messages)
+}
+
+func (hw *HDF5Writer) buildLinkMessage(name string, addr uint64) h5Message {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(1) // version
+	buf.WriteByte(0) // flags
+	buf.WriteByte(byte(len(name)))
+	buf.Write([]byte(name))
+	binary.Write(buf, binary.LittleEndian, addr)
+	
+	return h5Message{mType: 6, data: buf.Bytes()}
+}
+
+func (hw *HDF5Writer) buildLayoutMessageV2(addr uint64, size uint64) []byte {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(3) // version 3
+	buf.WriteByte(1) // contiguous
+	binary.Write(buf, binary.LittleEndian, addr)
+	binary.Write(buf, binary.LittleEndian, size)
+	return buf.Bytes()
+}
+
+func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
+	ohBuf := new(bytes.Buffer)
+	ohBuf.Write([]byte("OHDR"))
+	ohBuf.WriteByte(2)
+	ohBuf.WriteByte(0x02) // flags: 4-byte size of chunk 0
+	
+	msgBuf := new(bytes.Buffer)
+	for _, m := range messages {
+		msgBuf.WriteByte(byte(m.mType))
+		binary.Write(msgBuf, binary.LittleEndian, uint16(len(m.data)))
+		msgBuf.WriteByte(m.flags)
+		msgBuf.Write(m.data)
+	}
+	
+	binary.Write(ohBuf, binary.LittleEndian, uint32(msgBuf.Len()))
+	ohBuf.Write(msgBuf.Bytes())
+	
+	ohChecksum := checksum(ohBuf.Bytes())
+	binary.Write(ohBuf, binary.LittleEndian, ohChecksum)
+	
+	hw.buf.Write(ohBuf.Bytes())
+}
+
+func (hw *HDF5Writer) writeData(val interface{}) {
+	err := binary.Write(hw.buf, binary.LittleEndian, val)
+	thrower.ThrowIfError(err)
+	for (hw.buf.Len() % 8) != 0 {
+		hw.buf.WriteByte(0)
+	}
+}
+
+func (hw *HDF5Writer) getDimensions(val interface{}) []uint64 {
+	rv := reflect.ValueOf(val)
+	var dims []uint64
+	for rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		dims = append(dims, uint64(rv.Len()))
+		if rv.Len() == 0 {
+			break
+		}
+		rv = rv.Index(0)
+	}
+	return dims
 }
 
 func (hw *HDF5Writer) AddAttributes(attrs api.AttributeMap) error {
-	return api.ErrUnsupported
+	hw.root.attributes = attrs
+	return nil
 }
 
 func (hw *HDF5Writer) AddVar(name string, vr api.Variable) error {
-	return api.ErrUnsupported
+	hw.root.vars[name] = &h5Var{
+		name:       name,
+		val:        vr.Values,
+		dimensions: vr.Dimensions,
+		attributes: vr.Attributes,
+	}
+	return nil
 }
 
 func (hw *HDF5Writer) CreateGroup(name string) (api.Writer, error) {
-	return nil, api.ErrUnsupported
+	if g, ok := hw.root.groups[name]; ok {
+		return &groupWriter{hw: hw, group: g}, nil
+	}
+	g := &h5Group{
+		name:   name,
+		groups: make(map[string]*h5Group),
+		vars:   make(map[string]*h5Var),
+	}
+	hw.root.groups[name] = g
+	return &groupWriter{hw: hw, group: g}, nil
+}
+
+type groupWriter struct {
+	hw    *HDF5Writer
+	group *h5Group
+}
+
+func (gw *groupWriter) Close() error {
+	return nil
+}
+
+func (gw *groupWriter) AddAttributes(attrs api.AttributeMap) error {
+	gw.group.attributes = attrs
+	return nil
+}
+
+func (gw *groupWriter) AddVar(name string, vr api.Variable) error {
+	gw.group.vars[name] = &h5Var{
+		name:       name,
+		val:        vr.Values,
+		dimensions: vr.Dimensions,
+		attributes: vr.Attributes,
+	}
+	return nil
+}
+
+func (gw *groupWriter) CreateGroup(name string) (api.Writer, error) {
+	if g, ok := gw.group.groups[name]; ok {
+		return &groupWriter{hw: gw.hw, group: g}, nil
+	}
+	g := &h5Group{
+		name:   name,
+		groups: make(map[string]*h5Group),
+		vars:   make(map[string]*h5Var),
+	}
+	gw.group.groups[name] = g
+	return &groupWriter{hw: gw.hw, group: g}, nil
 }
 
 func OpenWriter(fileName string) (api.Writer, error) {
-	return nil, api.ErrUnsupported
+	file, err := os.Create(fileName)
+	if err != nil {
+		return nil, err
+	}
+	rootAttrs, _ := util.NewOrderedMap(nil, nil)
+	hw := &HDF5Writer{
+		file: file,
+		buf:  new(bytes.Buffer),
+		root: &h5Group{
+			name:   "/",
+			groups: make(map[string]*h5Group),
+			vars:   make(map[string]*h5Var),
+			attributes: rootAttrs,
+		},
+	}
+	return hw, nil
+}
+
+type h5Message struct {
+	mType uint16
+	data  []byte
+	flags uint8
 }

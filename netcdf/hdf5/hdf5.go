@@ -876,19 +876,6 @@ func (h5 *HDF5) readLinkDirectFrom(parent *object, obf io.Reader, length uint16,
 	if lenlen > 0 {
 		read(bf, linkName)
 	}
-	logger.Infof("start with link name=%s lenlen=%d", string(linkName), lenlen)
-	logger.Info("remlen=", bf.Rem())
-	if linkType != 0 {
-		switch linkType {
-		case 1:
-			logger.Error("soft links not supported")
-		case 64:
-			logger.Error("external links not supported")
-		default:
-			logger.Error("unsupported link type", linkType)
-		}
-		thrower.Throw(ErrLinkType)
-	}
 	hardAddr := read64(bf)
 	if bf.Rem() > 0 {
 		checkZeroes(bf, int(bf.Rem()))
@@ -2239,6 +2226,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			assert(bogus == 0xdeadbeef, "bogus")
 
 		case typeGroupInfo:
+			obj.isGroup = true
 			h5.readGroupInfo(f)
 
 		case typeDataStorageFilterPipeline:
@@ -2274,6 +2262,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			h5.readContinuation(obj, f, version, ohFlags)
 
 		case typeSymbolTableMessage:
+			obj.isGroup = true
 			btreeAddr := read64(f)
 			heapAddr := uint64(math.MaxUint64)
 			heapAddr = read64(f)

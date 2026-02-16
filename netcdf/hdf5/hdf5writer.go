@@ -28,10 +28,17 @@ type h5Group struct {
 	addr       uint64
 }
 
+type h5GlobalHeap struct {
+	addr    uint64
+	objects [][]byte
+	indices map[string]uint32
+}
+
 type HDF5Writer struct {
 	file   *os.File
 	buf    *bytes.Buffer
 	root   *h5Group
+	heap   *h5GlobalHeap
 	closed bool
 }
 
@@ -45,6 +52,13 @@ func (hw *HDF5Writer) Close() (err error) {
 	// 1. Write Superblock V2 (48 bytes)
 	hw.writeSuperblockV2()
 	
+	// 1.5 Collect and write global heap if needed
+	hw.heap = &h5GlobalHeap{indices: make(map[string]uint32)}
+	hw.collectStrings(hw.root)
+	if len(hw.heap.objects) > 0 {
+		hw.writeGlobalHeap()
+	}
+
 	// 2. Write variables and subgroups recursively
 	hw.writeGroupContents(hw.root)
 	
@@ -193,21 +207,30 @@ func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize
 
 func (hw *HDF5Writer) buildLinkMessage(name string, addr uint64) h5Message {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(1) // version
-	buf.WriteByte(0) // flags
-	buf.WriteByte(byte(len(name)))
-	buf.Write([]byte(name))
-	binary.Write(buf, binary.LittleEndian, addr)
+	err := buf.WriteByte(1) // version
+	thrower.ThrowIfError(err)
+	err = buf.WriteByte(0) // flags
+	thrower.ThrowIfError(err)
+	err = buf.WriteByte(byte(len(name)))
+	thrower.ThrowIfError(err)
+	_, err = buf.Write([]byte(name))
+	thrower.ThrowIfError(err)
+	err = binary.Write(buf, binary.LittleEndian, addr)
+	thrower.ThrowIfError(err)
 	
 	return h5Message{mType: 6, data: buf.Bytes()}
 }
 
 func (hw *HDF5Writer) buildLayoutMessageV2(addr uint64, size uint64) []byte {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(3) // version 3
-	buf.WriteByte(1) // contiguous
-	binary.Write(buf, binary.LittleEndian, addr)
-	binary.Write(buf, binary.LittleEndian, size)
+	err := buf.WriteByte(3) // version 3
+	thrower.ThrowIfError(err)
+	err = buf.WriteByte(1) // contiguous
+	thrower.ThrowIfError(err)
+	err = binary.Write(buf, binary.LittleEndian, addr)
+	thrower.ThrowIfError(err)
+	err = binary.Write(buf, binary.LittleEndian, size)
+	thrower.ThrowIfError(err)
 	return buf.Bytes()
 }
 
@@ -257,13 +280,16 @@ func (hw *HDF5Writer) writeData(val interface{}) {
 		rv = rv.Elem()
 	}
 	fixedLen := 0
-	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array || rv.Kind() == reflect.String {
-		findMaxLen(rv, &fixedLen)
-		fixedLen++ // include null terminator
+	if !hw.shouldUseVLen(rv) {
+		if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array || rv.Kind() == reflect.String {
+			findMaxLen(rv, &fixedLen)
+			fixedLen++ // include null terminator
+		}
 	}
 	hw.writeDataRecursive(rv, fixedLen)
 	for (hw.buf.Len() % 8) != 0 {
-		hw.buf.WriteByte(0)
+		err := hw.buf.WriteByte(0)
+		thrower.ThrowIfError(err)
 	}
 }
 
@@ -275,18 +301,133 @@ func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 		return
 	}
 	if rv.Kind() == reflect.String {
-		str := rv.String()
-		_, err := hw.buf.Write([]byte(str))
-		thrower.ThrowIfError(err)
-		// Pad to fixedLen
-		for i := len(str); i < fixedLen; i++ {
-			err = hw.buf.WriteByte(0)
+		if fixedLen > 0 {
+			str := rv.String()
+			_, err := hw.buf.Write([]byte(str))
+			thrower.ThrowIfError(err)
+			// Pad to fixedLen
+			for i := len(str); i < fixedLen; i++ {
+				err = hw.buf.WriteByte(0)
+				thrower.ThrowIfError(err)
+			}
+		} else {
+			// VLen string
+			str := rv.String()
+			idx := hw.heap.indices[str]
+			err := binary.Write(hw.buf, binary.LittleEndian, uint32(len(str)))
+			thrower.ThrowIfError(err)
+			err = binary.Write(hw.buf, binary.LittleEndian, hw.heap.addr)
+			thrower.ThrowIfError(err)
+			err = binary.Write(hw.buf, binary.LittleEndian, idx)
 			thrower.ThrowIfError(err)
 		}
 		return
 	}
 	err := binary.Write(hw.buf, binary.LittleEndian, rv.Interface())
 	thrower.ThrowIfError(err)
+}
+
+func (hw *HDF5Writer) shouldUseVLen(rv reflect.Value) bool {
+	t := rv.Type()
+	for t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.String {
+		return false
+	}
+	// Heuristic: if it's a slice or array of strings, use vlen.
+	// If it's a single string, use fixed-length (for compatibility and simplicity).
+	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	return rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array
+}
+
+func (hw *HDF5Writer) collectStrings(g *h5Group) {
+	for _, v := range g.vars {
+		hw.collectStringsRecursive(reflect.ValueOf(v.val))
+		if v.attributes != nil {
+			for _, k := range v.attributes.Keys() {
+				val, _ := v.attributes.Get(k)
+				hw.collectStringsRecursive(reflect.ValueOf(val))
+			}
+		}
+	}
+	if g.attributes != nil {
+		for _, k := range g.attributes.Keys() {
+			val, _ := g.attributes.Get(k)
+			hw.collectStringsRecursive(reflect.ValueOf(val))
+		}
+	}
+	for _, sub := range g.groups {
+		hw.collectStrings(sub)
+	}
+}
+
+func (hw *HDF5Writer) collectStringsRecursive(rv reflect.Value) {
+	if !hw.shouldUseVLen(rv) {
+		return
+	}
+	hw.collectStringsRecursiveActual(rv)
+}
+
+func (hw *HDF5Writer) collectStringsRecursiveActual(rv reflect.Value) {
+	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		for i := 0; i < rv.Len(); i++ {
+			hw.collectStringsRecursiveActual(rv.Index(i))
+		}
+		return
+	}
+	if rv.Kind() == reflect.String {
+		s := rv.String()
+		if _, ok := hw.heap.indices[s]; !ok {
+			hw.heap.objects = append(hw.heap.objects, []byte(s))
+			hw.heap.indices[s] = uint32(len(hw.heap.objects))
+		}
+	}
+}
+
+func (hw *HDF5Writer) writeGlobalHeap() {
+	gh := hw.heap
+	gh.addr = uint64(hw.buf.Len())
+
+	// Collection Header
+	_, err := hw.buf.Write([]byte("GCOL"))
+	thrower.ThrowIfError(err)
+	err = hw.buf.WriteByte(1) // version
+	thrower.ThrowIfError(err)
+	_, err = hw.buf.Write([]byte{0, 0, 0}) // reserved
+	thrower.ThrowIfError(err)
+
+	sizeAddr := hw.buf.Len()
+	err = binary.Write(hw.buf, binary.LittleEndian, uint64(0)) // placeholder for size
+	thrower.ThrowIfError(err)
+
+	for i, obj := range gh.objects {
+		err = binary.Write(hw.buf, binary.LittleEndian, uint16(i+1)) // index
+		thrower.ThrowIfError(err)
+		err = binary.Write(hw.buf, binary.LittleEndian, uint16(0)) // ref count
+		thrower.ThrowIfError(err)
+		err = binary.Write(hw.buf, binary.LittleEndian, uint32(0)) // reserved
+		thrower.ThrowIfError(err)
+		err = binary.Write(hw.buf, binary.LittleEndian, uint64(len(obj)))
+		thrower.ThrowIfError(err)
+		_, err = hw.buf.Write(obj)
+		thrower.ThrowIfError(err)
+		// Pad object to 8 bytes
+		for (hw.buf.Len() % 8) != 0 {
+			err = hw.buf.WriteByte(0)
+			thrower.ThrowIfError(err)
+		}
+	}
+
+	// Final size
+	totalSize := uint64(hw.buf.Len()) - gh.addr
+	data := hw.buf.Bytes()
+	binary.LittleEndian.PutUint64(data[sizeAddr:], totalSize)
 }
 
 func (hw *HDF5Writer) getDimensions(val interface{}) []uint64 {

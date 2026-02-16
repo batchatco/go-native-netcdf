@@ -177,29 +177,43 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val interface{}) h5Mess
 		rv = rv.Elem()
 	}
 	maxLen := 0
-	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array || rv.Kind() == reflect.String {
-		findMaxLen(rv, &maxLen)
-		maxLen++ // include null terminator
+	if !hw.shouldUseVLen(rv) {
+		if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array || rv.Kind() == reflect.String {
+			findMaxLen(rv, &maxLen)
+			maxLen++ // include null terminator
+		}
 	}
-	writeAttributeDataRecursive(buf, rv, maxLen)
+	hw.writeAttributeDataRecursive(buf, rv, maxLen)
 	
 	return h5Message{mType: 12, data: buf.Bytes()}
 }
 
-func writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.Value, maxLen int) {
+func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.Value, maxLen int) {
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
 		for i := 0; i < rv.Len(); i++ {
-			writeAttributeDataRecursive(buf, rv.Index(i), maxLen)
+			hw.writeAttributeDataRecursive(buf, rv.Index(i), maxLen)
 		}
 		return
 	}
 	if rv.Kind() == reflect.String {
-		str := rv.String()
-		_, err := buf.Write([]byte(str))
-		thrower.ThrowIfError(err)
-		// Pad to maxLen
-		for i := len(str); i < maxLen; i++ {
-			err = buf.WriteByte(0)
+		if maxLen > 0 {
+			str := rv.String()
+			_, err := buf.Write([]byte(str))
+			thrower.ThrowIfError(err)
+			// Pad to maxLen
+			for i := len(str); i < maxLen; i++ {
+				err = buf.WriteByte(0)
+				thrower.ThrowIfError(err)
+			}
+		} else {
+			// VLen string
+			str := rv.String()
+			idx := hw.heap.indices[str]
+			err := binary.Write(buf, binary.LittleEndian, uint32(len(str)))
+			thrower.ThrowIfError(err)
+			err = binary.Write(buf, binary.LittleEndian, hw.heap.addr)
+			thrower.ThrowIfError(err)
+			err = binary.Write(buf, binary.LittleEndian, idx)
 			thrower.ThrowIfError(err)
 		}
 		return
@@ -237,6 +251,9 @@ func (hw *HDF5Writer) buildDatatypeMessage(val interface{}) []byte {
 	case reflect.Float64:
 		return buildFloatingPointDatatype(8)
 	case reflect.String:
+		if hw.shouldUseVLen(rv) {
+			return hw.buildVLenStringDatatype()
+		}
 		maxLen := 0
 		for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
 			rv = rv.Elem()
@@ -245,6 +262,25 @@ func (hw *HDF5Writer) buildDatatypeMessage(val interface{}) []byte {
 		return buildStringDatatype(maxLen + 1)
 	}
 	return buildFixedPointDatatype(4, true)
+}
+
+func (hw *HDF5Writer) buildVLenStringDatatype() []byte {
+	buf := new(bytes.Buffer)
+	err := buf.WriteByte(0x19) // version 1, class 9
+	thrower.ThrowIfError(err)
+	err = buf.WriteByte(0x01) // type=1 (string), padding=0, cset=0
+	thrower.ThrowIfError(err)
+	err = buf.WriteByte(0x00)
+	thrower.ThrowIfError(err)
+	err = buf.WriteByte(0x00)
+	thrower.ThrowIfError(err)
+	err = binary.Write(buf, binary.LittleEndian, uint32(16)) // seq length
+	thrower.ThrowIfError(err)
+
+	baseType := buildStringDatatype(1)
+	_, err = buf.Write(baseType)
+	thrower.ThrowIfError(err)
+	return buf.Bytes()
 }
 
 func findMaxLen(rv reflect.Value, maxLen *int) {

@@ -264,7 +264,7 @@ var (
 	}
 )
 
-func (kl keyValList) check(t *testing.T, name string, val api.VarGetter, values interface{}) bool {
+func (kl keyValList) check(t *testing.T, name string, val api.VarGetter, values any) bool {
 	t.Helper()
 	for _, kv := range kl {
 		if name != kv.name {
@@ -331,7 +331,7 @@ func (kl keyValList) check(t *testing.T, name string, val api.VarGetter, values 
 	return false
 }
 
-func ndims(t *testing.T, val interface{}) int {
+func ndims(t *testing.T, val any) int {
 	t.Helper()
 	v := reflect.ValueOf(val)
 	n := 0
@@ -382,7 +382,7 @@ func TestTypes(t *testing.T) {
 			om, err = util.NewOrderedMap(nil, nil)
 		} else {
 			om, err = util.NewOrderedMap([]string{"attr"},
-				map[string]interface{}{"attr": v.val.Values})
+				map[string]any{"attr": v.val.Values})
 		}
 		if err != nil {
 			t.Error(err)
@@ -869,7 +869,7 @@ func TestFill(t *testing.T) {
 		val := reflect.ValueOf(v.val.Values)
 		om, err := util.NewOrderedMap(
 			[]string{"_FillValue"},
-			map[string]interface{}{
+			map[string]any{
 				"_FillValue": val.Index(0).Interface()})
 		if err != nil {
 			t.Error(err)
@@ -909,7 +909,7 @@ func TestGlobalAttributes(t *testing.T) {
 	}
 	defer closeCW(t, &cw, fileName) // okay to call this twice, sets cw to nil
 	attributes, err := util.NewOrderedMap([]string{"gattr"},
-		map[string]interface{}{"gattr": []float64{2.71828, 3.14159}})
+		map[string]any{"gattr": []float64{2.71828, 3.14159}})
 	if err != nil {
 		t.Error(err)
 		return
@@ -1161,7 +1161,7 @@ func TestInvalidName(t *testing.T) {
 	}
 	defer closeCW(t, &cw, fileName) // okay to call this twice, sets cw to nil
 	attributes, err := util.NewOrderedMap([]string{"not valid "},
-		map[string]interface{}{"not valid ": 3.14})
+		map[string]any{"not valid ": 3.14})
 	if err != nil {
 		t.Error(err)
 		return
@@ -1210,7 +1210,7 @@ func TestReservedWord(t *testing.T) {
 		"int64", "uint64",
 		"float", "double",
 	}
-	reservedVals := []interface{}{
+	reservedVals := []any{
 		int8(0), uint8(0),
 		"c", "s",
 		int16(0), uint16(0),
@@ -1232,7 +1232,7 @@ func TestReservedWord(t *testing.T) {
 	// Invalid local attribute name
 	for i, word := range reservedWords {
 		attrs, err := util.NewOrderedMap([]string{word},
-			map[string]interface{}{
+			map[string]any{
 				word: reservedVals[i],
 			})
 		if err != nil {
@@ -1250,7 +1250,7 @@ func TestReservedWord(t *testing.T) {
 	}
 	for i, word := range reservedWords {
 		attrs, err := util.NewOrderedMap([]string{word},
-			map[string]interface{}{
+			map[string]any{
 				word: reservedVals[i],
 			})
 		if err != nil {

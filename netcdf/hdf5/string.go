@@ -21,7 +21,7 @@ func (stringManagerType) goTypeString(sh sigHelper, name string, attr *attribute
 }
 
 func (stringManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
+	dimensions []uint64) any {
 	logger.Info("regular string", len(dimensions), "dtlen=", attr.length)
 	return allocRegularStrings(bf, dimensions, attr.length) // already converted
 }
@@ -48,7 +48,7 @@ func (stringManagerType) parse(hr heapReader, c caster, attr *attribute, bitFiel
 }
 
 // Regular strings are fixed length, as opposed to variable length ones
-func allocRegularStrings(bf io.Reader, dimLengths []uint64, dtlen uint32) interface{} {
+func allocRegularStrings(bf io.Reader, dimLengths []uint64, dtlen uint32) any {
 	if len(dimLengths) == 0 {
 		b := make([]byte, dtlen)
 		read(bf, b)
@@ -57,8 +57,8 @@ func allocRegularStrings(bf io.Reader, dimLengths []uint64, dtlen uint32) interf
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		// NetCDF convention: 1D character arrays are returned as a single concatenated string.
-		// However, HDF5 strings can also be arrays of strings. 
-		// If dtlen is 1, it's definitely a character array. 
+		// However, HDF5 strings can also be arrays of strings.
+		// If dtlen is 1, it's definitely a character array.
 		// If dtlen > 1, it's an array of strings.
 		if dtlen == 1 {
 			b := make([]byte, thisDim)

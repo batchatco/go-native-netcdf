@@ -22,7 +22,7 @@ func (c *callback) goCallback(key string) (string, bool) {
 	return ret, ret != ""
 }
 
-func newTypedAttributeMap(h5 *HDF5, keys []string, values map[string]interface{}) (*util.OrderedMap, error) {
+func newTypedAttributeMap(h5 *HDF5, keys []string, values map[string]any) (*util.OrderedMap, error) {
 	om, err := util.NewOrderedMap(keys, values)
 	assertError(err == nil, err, "creating ordered map")
 	if h5 != nil {

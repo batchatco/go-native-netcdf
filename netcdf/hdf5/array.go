@@ -44,7 +44,7 @@ func (arrayManagerType) goTypeString(sh sigHelper, typeName string, attr *attrib
 }
 
 func (arrayManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
+	dimensions []uint64) any {
 	logger.Info("orig dimensions=", attr.dimensions)
 	logger.Info("Array length=", attr.length)
 	logger.Info("Array dimensions=", dimensions)

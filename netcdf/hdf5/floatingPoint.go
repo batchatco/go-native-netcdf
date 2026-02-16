@@ -41,8 +41,8 @@ func (floatingPointManagerType) goTypeString(sh sigHelper, name string, attr *at
 }
 
 func (floatingPointManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
-	var values interface{}
+	dimensions []uint64) any {
+	var values any
 	switch attr.length {
 	case 4:
 		values = allocFloats(bf, dimensions, attr.endian)
@@ -151,7 +151,7 @@ func (floatingPointManagerType) parse(hr heapReader, c caster, attr *attribute, 
 	attr.df = newResetReaderSave(df, df.Rem())
 }
 
-func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) interface{} {
+func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) any {
 	if len(dimLengths) == 0 {
 		var value float32
 		err := binary.Read(bf, endian, &value)
@@ -172,7 +172,7 @@ func allocFloats(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) int
 	return vals.Interface()
 }
 
-func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) interface{} {
+func allocDoubles(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder) any {
 	if len(dimLengths) == 0 {
 		var value float64
 		err := binary.Read(bf, endian, &value)

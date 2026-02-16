@@ -16,7 +16,7 @@ func buildDataspaceMessage(dimensions []uint64) []byte {
 	thrower.ThrowIfError(err)
 	err = buf.WriteByte(0) // flags
 	thrower.ThrowIfError(err)
-	
+
 	if len(dimensions) == 0 {
 		err = buf.WriteByte(0) // type scalar
 		thrower.ThrowIfError(err)
@@ -43,7 +43,7 @@ func buildFixedPointDatatype(size int, signed bool) []byte {
 	buf := new(bytes.Buffer)
 	err := buf.WriteByte(0x10) // version 1, class 0
 	thrower.ThrowIfError(err)
-	
+
 	var b1 byte
 	b1 = 0x00 // bit 0 = 0 (LE)
 	if signed {
@@ -55,14 +55,14 @@ func buildFixedPointDatatype(size int, signed bool) []byte {
 	thrower.ThrowIfError(err)
 	err = buf.WriteByte(0) // b3
 	thrower.ThrowIfError(err)
-	
+
 	err = binary.Write(buf, binary.LittleEndian, uint32(size))
 	thrower.ThrowIfError(err)
-	err = binary.Write(buf, binary.LittleEndian, uint16(0))      // bit offset
+	err = binary.Write(buf, binary.LittleEndian, uint16(0)) // bit offset
 	thrower.ThrowIfError(err)
 	err = binary.Write(buf, binary.LittleEndian, uint16(size*8)) // precision
 	thrower.ThrowIfError(err)
-	
+
 	return buf.Bytes()
 }
 
@@ -70,7 +70,7 @@ func buildFloatingPointDatatype(size int) []byte {
 	buf := new(bytes.Buffer)
 	err := buf.WriteByte(0x11) // version 1, class 1
 	thrower.ThrowIfError(err)
-	
+
 	var b1, b2, b3 byte
 	b1 = 0x20 // LE, mantissa norm = 2
 	if size == 4 {
@@ -84,42 +84,42 @@ func buildFloatingPointDatatype(size int) []byte {
 	thrower.ThrowIfError(err)
 	err = buf.WriteByte(b3)
 	thrower.ThrowIfError(err)
-	
+
 	err = binary.Write(buf, binary.LittleEndian, uint32(size))
 	thrower.ThrowIfError(err)
-	
+
 	if size == 4 {
-		err = binary.Write(buf, binary.LittleEndian, uint16(0))   // bit offset
+		err = binary.Write(buf, binary.LittleEndian, uint16(0)) // bit offset
 		thrower.ThrowIfError(err)
-		err = binary.Write(buf, binary.LittleEndian, uint16(32))  // precision
+		err = binary.Write(buf, binary.LittleEndian, uint16(32)) // precision
 		thrower.ThrowIfError(err)
-		err = buf.WriteByte(23)  // exponent location
+		err = buf.WriteByte(23) // exponent location
 		thrower.ThrowIfError(err)
-		err = buf.WriteByte(8)   // exponent size
+		err = buf.WriteByte(8) // exponent size
 		thrower.ThrowIfError(err)
-		err = buf.WriteByte(0)   // mantissa location
+		err = buf.WriteByte(0) // mantissa location
 		thrower.ThrowIfError(err)
-		err = buf.WriteByte(23)  // mantissa size
+		err = buf.WriteByte(23) // mantissa size
 		thrower.ThrowIfError(err)
 		err = binary.Write(buf, binary.LittleEndian, uint32(127)) // bias
 		thrower.ThrowIfError(err)
 	} else {
-		err = binary.Write(buf, binary.LittleEndian, uint16(0))   // bit offset
+		err = binary.Write(buf, binary.LittleEndian, uint16(0)) // bit offset
 		thrower.ThrowIfError(err)
-		err = binary.Write(buf, binary.LittleEndian, uint16(64))  // precision
+		err = binary.Write(buf, binary.LittleEndian, uint16(64)) // precision
 		thrower.ThrowIfError(err)
-		err = buf.WriteByte(52)  // exponent location
+		err = buf.WriteByte(52) // exponent location
 		thrower.ThrowIfError(err)
-		err = buf.WriteByte(11)  // exponent size
+		err = buf.WriteByte(11) // exponent size
 		thrower.ThrowIfError(err)
-		err = buf.WriteByte(0)   // mantissa location
+		err = buf.WriteByte(0) // mantissa location
 		thrower.ThrowIfError(err)
-		err = buf.WriteByte(52)  // mantissa size
+		err = buf.WriteByte(52) // mantissa size
 		thrower.ThrowIfError(err)
 		err = binary.Write(buf, binary.LittleEndian, uint32(1023)) // bias
 		thrower.ThrowIfError(err)
 	}
-	
+
 	return buf.Bytes()
 }
 
@@ -138,26 +138,26 @@ func buildStringDatatype(size int) []byte {
 	return buf.Bytes()
 }
 
-func (hw *HDF5Writer) buildAttributeMessage(name string, val interface{}) h5Message {
+func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 	buf := new(bytes.Buffer)
 	err := buf.WriteByte(1) // version
 	thrower.ThrowIfError(err)
 	err = buf.WriteByte(0) // reserved
 	thrower.ThrowIfError(err)
-	
+
 	nameBytes := append([]byte(name), 0)
 	err = binary.Write(buf, binary.LittleEndian, uint16(len(nameBytes)))
 	thrower.ThrowIfError(err)
-	
+
 	dtMsg := hw.buildDatatypeMessage(val)
 	err = binary.Write(buf, binary.LittleEndian, uint16(len(dtMsg)))
 	thrower.ThrowIfError(err)
-	
+
 	dims := hw.getDimensions(val)
 	dsMsg := buildDataspaceMessage(dims)
 	err = binary.Write(buf, binary.LittleEndian, uint16(len(dsMsg)))
 	thrower.ThrowIfError(err)
-	
+
 	writePadded := func(b []byte) {
 		_, err = buf.Write(b)
 		thrower.ThrowIfError(err)
@@ -166,11 +166,11 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val interface{}) h5Mess
 			thrower.ThrowIfError(err)
 		}
 	}
-	
+
 	writePadded(nameBytes)
 	writePadded(dtMsg)
 	writePadded(dsMsg)
-	
+
 	// Value
 	rv := reflect.ValueOf(val)
 	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
@@ -184,7 +184,7 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val interface{}) h5Mess
 		}
 	}
 	hw.writeAttributeDataRecursive(buf, rv, maxLen)
-	
+
 	return h5Message{mType: 12, data: buf.Bytes()}
 }
 
@@ -222,13 +222,13 @@ func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.
 	thrower.ThrowIfError(err)
 }
 
-func (hw *HDF5Writer) buildDatatypeMessage(val interface{}) []byte {
+func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
 	rv := reflect.ValueOf(val)
 	t := rv.Type()
 	for t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	
+
 	switch t.Kind() {
 	case reflect.Int8:
 		return buildFixedPointDatatype(1, true)

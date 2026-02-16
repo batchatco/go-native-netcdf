@@ -12,7 +12,7 @@ import (
 type typeManager interface {
 	parse(hr heapReader, c caster, attr *attribute, bitFields uint32, f remReader, d remReader)
 	defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte
-	alloc(hr heapReader, c caster, r io.Reader, attr *attribute, dimensions []uint64) interface{}
+	alloc(hr heapReader, c caster, r io.Reader, attr *attribute, dimensions []uint64) any
 	cdlTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string
 	goTypeString(sh sigHelper, name string, attr *attribute, origNames map[string]bool) string
 }
@@ -67,7 +67,7 @@ func defaultFillValue(class uint8, obj *object, objFillValue []byte, undefinedFi
 	return getDispatch(class).defaultFillValue(obj, objFillValue, undefinedFillValue)
 }
 
-func alloc(class uint8, hr heapReader, c caster, r io.Reader, attr *attribute, dimensions []uint64) interface{} {
+func alloc(class uint8, hr heapReader, c caster, r io.Reader, attr *attribute, dimensions []uint64) any {
 	return getDispatch(class).alloc(hr, c, r, attr, dimensions)
 }
 

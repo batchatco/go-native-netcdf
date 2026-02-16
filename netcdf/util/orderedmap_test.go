@@ -10,7 +10,7 @@ func TestNil(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	_, err = NewOrderedMap(nil, map[string]interface{}{})
+	_, err = NewOrderedMap(nil, map[string]any{})
 	if err != nil {
 		t.Error(err)
 		return
@@ -24,7 +24,7 @@ func TestNil(t *testing.T) {
 
 func TestMismatchedLength(t *testing.T) {
 	_, err := NewOrderedMap([]string{"a", "b"},
-		map[string]interface{}{"a": nil})
+		map[string]any{"a": nil})
 	if err != ErrorKeysDontMatchValues {
 		t.Error("Should have returned an error")
 		return
@@ -33,7 +33,7 @@ func TestMismatchedLength(t *testing.T) {
 
 func TestHidden(t *testing.T) {
 	om, err := NewOrderedMap([]string{"a", "b"},
-		map[string]interface{}{"a": nil, "b": nil})
+		map[string]any{"a": nil, "b": nil})
 	if err != nil {
 		t.Error(err)
 		return
@@ -55,7 +55,7 @@ func TestHidden(t *testing.T) {
 
 func TestMismatchedKeys(t *testing.T) {
 	_, err := NewOrderedMap([]string{"a", "b"},
-		map[string]interface{}{"a": nil, "c": nil})
+		map[string]any{"a": nil, "c": nil})
 	if err != ErrorKeysDontMatchValues {
 		t.Error("Should have returned an error")
 		return
@@ -135,7 +135,7 @@ type c257i struct{ member [2][5][7]int32 }
 
 var i23 c257i
 
-var myMap = map[string]interface{}{
+var myMap = map[string]any{
 	// scalars
 	"i": i, "f": f, "d": d, "s": s,
 	"n": n,
@@ -174,7 +174,7 @@ func initMaps(t *testing.T) {
 }
 
 func TestOrder(t *testing.T) {
-	myMap := map[string]interface{}{"a": nil, "b": nil, "c": nil}
+	myMap := map[string]any{"a": nil, "b": nil, "c": nil}
 	om, err := NewOrderedMap([]string{"c", "b", "a"}, myMap)
 	if err != nil {
 		t.Error(err)

@@ -11,7 +11,7 @@ import (
 type enumManagerType struct{}
 
 type enumerated struct {
-	values interface{}
+	values any
 }
 
 var (
@@ -62,8 +62,8 @@ func (enumManagerType) goTypeString(sh sigHelper, typeName string, attr *attribu
 }
 
 func (enumManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
-	var values interface{}
+	dimensions []uint64) any {
+	var values any
 	enumAttr := attr.children[0]
 	cast := c.cast(*enumAttr)
 	switch enumAttr.class {
@@ -142,7 +142,7 @@ func (enumManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields
 	default:
 		thrower.Throw(ErrFixedPoint)
 	}
-	values := make([]interface{}, numberOfMembers)
+	values := make([]any, numberOfMembers)
 	enumAttr.enumValues = values
 	for i := uint32(0); i < numberOfMembers; i++ {
 		values[i] = getDataAttr(hr, c, bf, enumAttr)

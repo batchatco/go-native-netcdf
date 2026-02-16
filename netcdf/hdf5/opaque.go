@@ -34,7 +34,7 @@ func (opaqueManagerType) goTypeString(sh sigHelper, typeName string, attr *attri
 }
 
 func (opaqueManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
+	dimensions []uint64) any {
 	cast := c.cast(*attr)
 	return allocOpaque(bf, dimensions, attr.length, cast)
 }
@@ -65,7 +65,7 @@ func (opaqueManagerType) parse(hr heapReader, c caster, attr *attribute, bitFiel
 }
 
 func allocOpaque(bf io.Reader, dimLengths []uint64, length uint32,
-	cast reflect.Type) interface{} {
+	cast reflect.Type) any {
 	if len(dimLengths) == 0 {
 		if cast != nil {
 			b := reflect.New(cast)

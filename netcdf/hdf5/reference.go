@@ -27,7 +27,7 @@ func (referenceManagerType) goTypeString(sh sigHelper, name string, attr *attrib
 }
 
 func (referenceManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
+	dimensions []uint64) any {
 	return allocReferences(bf, dimensions) // already converted
 }
 
@@ -65,7 +65,7 @@ func (referenceManagerType) parse(hr heapReader, c caster, attr *attribute, bitF
 	}
 }
 
-func allocReferences(bf io.Reader, dimLengths []uint64) interface{} {
+func allocReferences(bf io.Reader, dimLengths []uint64) any {
 	if len(dimLengths) == 0 {
 		var addr uint64
 		err := binary.Read(bf, binary.LittleEndian, &addr)

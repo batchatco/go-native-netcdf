@@ -26,7 +26,7 @@ func (timeManagerType) goTypeString(sh sigHelper, name string, attr *attribute, 
 	return ""
 }
 
-func (timeManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute, dimensions []uint64) interface{} {
+func (timeManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute, dimensions []uint64) any {
 	fail("time")
 	return nil
 }

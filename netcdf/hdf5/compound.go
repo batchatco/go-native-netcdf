@@ -13,7 +13,7 @@ type compoundManagerType struct{}
 
 type compoundField struct {
 	Name string
-	Val  interface{}
+	Val  any
 }
 type compound []compoundField
 
@@ -53,7 +53,7 @@ func (compoundManagerType) goTypeString(sh sigHelper, typeName string, attr *att
 }
 
 func (compoundManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
+	dimensions []uint64) any {
 	cast := c.cast(*attr)
 	values := allocCompounds(hr, c, bf, dimensions, *attr, cast)
 	return values
@@ -151,7 +151,7 @@ func (compoundManagerType) parse(hr heapReader, c caster, attr *attribute, bitFi
 }
 
 func allocCompounds(hr heapReader, cstr caster, bf io.Reader, dimLengths []uint64, attr attribute,
-	cast reflect.Type) interface{} {
+	cast reflect.Type) any {
 	length := int64(attr.length)
 	class := typeNames[attr.class]
 	logger.Info(bf.(remReader).Count(), "Alloc compounds", dimLengths, class,

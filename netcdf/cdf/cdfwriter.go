@@ -26,7 +26,7 @@ type countedWriter struct {
 
 type savedVar struct {
 	name       string
-	val        interface{}
+	val        any
 	ty         int
 	dimLengths []int64
 	dimNames   []string
@@ -320,7 +320,7 @@ func (cw *CDFWriter) getDimLengthsHelper(
 	panic("internal error") // should never happen
 }
 
-func (cw *CDFWriter) getDimLengths(val interface{}, dimNames []string) ([]int64, int) {
+func (cw *CDFWriter) getDimLengths(val any, dimNames []string) ([]int64, int) {
 	v := reflect.ValueOf(val)
 	dims := make([]int64, 0)
 	return cw.getDimLengthsHelper(v, dims, dimNames)
@@ -853,7 +853,7 @@ func (cw *CDFWriter) Close() (err error) {
 	return err
 }
 
-func writeAny(w io.Writer, any interface{}) {
+func writeAny(w io.Writer, any any) {
 	err := binary.Write(w, binary.BigEndian, any)
 	thrower.ThrowIfError(err)
 }
@@ -953,7 +953,7 @@ func OpenWriter(fileName string) (api.Writer, error) {
 	bf := bufio.NewWriter(file)
 	globalAttrs, err := util.NewOrderedMap(
 		[]string{ncpKey},
-		map[string]interface{}{
+		map[string]any{
 			ncpKey: "version=2,github.com/batchatco/go-native-netcdf=1.0",
 		})
 	thrower.ThrowIfError(err)

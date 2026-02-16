@@ -26,9 +26,9 @@ func TestVLenStringWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	attrValues := []string{"attr1", "longer attribute value"}
-	am, _ := util.NewOrderedMap([]string{"vlen_attr"}, map[string]interface{}{
+	am, _ := util.NewOrderedMap([]string{"vlen_attr"}, map[string]any{
 		"vlen_attr": attrValues,
 	})
 	err = w.AddAttributes(am)
@@ -62,7 +62,7 @@ func TestVLenStringWriter(t *testing.T) {
 	if !reflect.DeepEqual(gotValues, values) {
 		t.Errorf("expected %v, got %v", values, gotValues)
 	}
-	
+
 	// Check attribute
 	attr, has := r.Attributes().Get("vlen_attr")
 	if !has {

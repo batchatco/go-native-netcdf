@@ -175,7 +175,7 @@ func main() {
     dimensions := []string{"sounding_id"}
     attributes, err := util.NewOrderedMap(
         []string{"comment"},
-        map[string]interface{}{"comment": "Latitude indexed by sounding ID"})
+        map[string]any{"comment": "Latitude indexed by sounding ID"})
     if err != nil {
         panic(err)
     }

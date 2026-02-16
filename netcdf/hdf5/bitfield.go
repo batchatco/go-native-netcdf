@@ -25,7 +25,7 @@ func (bitfieldManagerType) goTypeString(sh sigHelper, typeName string, attr *att
 }
 
 func (bitfieldManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
+	dimensions []uint64) any {
 	values := allocInt8s(bf, dimensions, false, nil)
 	return values
 }

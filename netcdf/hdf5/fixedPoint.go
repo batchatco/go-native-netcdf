@@ -57,8 +57,8 @@ func (fixedPointManagerType) goTypeString(sh sigHelper, name string, attr *attri
 }
 
 func (fixedPointManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
-	var values interface{}
+	dimensions []uint64) any {
+	var values any
 	switch attr.length {
 	case 1:
 		values = allocInt8s(bf, dimensions, attr.signed, nil)
@@ -146,7 +146,7 @@ func (fixedPointManagerType) parse(hr heapReader, c caster, attr *attribute, bit
 	}
 }
 
-func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Type) interface{} {
+func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Type) any {
 	if cast == nil {
 		if signed {
 			cast = reflect.TypeOf(int8(0))
@@ -173,7 +173,7 @@ func allocInt8s(bf io.Reader, dimLengths []uint64, signed bool, cast reflect.Typ
 }
 
 func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
-	cast reflect.Type) interface{} {
+	cast reflect.Type) any {
 	if cast == nil {
 		if signed {
 			cast = reflect.TypeOf(int16(0))
@@ -203,7 +203,7 @@ func allocShorts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, sig
 }
 
 func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
-	cast reflect.Type) interface{} {
+	cast reflect.Type) any {
 	if cast == nil {
 		if signed {
 			cast = reflect.TypeOf(int32(0))
@@ -233,7 +233,7 @@ func allocInts(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signe
 }
 
 func allocInt64s(bf io.Reader, dimLengths []uint64, endian binary.ByteOrder, signed bool,
-	cast reflect.Type) interface{} {
+	cast reflect.Type) any {
 	if cast == nil {
 		if signed {
 			cast = reflect.TypeOf(int64(0))

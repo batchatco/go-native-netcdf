@@ -113,7 +113,7 @@ gettingfiles:
 			continue
 		}
 		newKeys := make([]string, 0)
-		newValues := make(map[string]interface{})
+		newValues := make(map[string]any)
 		gattr := nc.Attributes()
 		for _, attrName := range gattr.Keys() {
 			v, _ := gattr.Get(attrName)

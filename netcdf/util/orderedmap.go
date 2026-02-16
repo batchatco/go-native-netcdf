@@ -14,7 +14,7 @@ type funcCallback func(name string) (string, bool)
 
 type OrderedMap struct {
 	keys            []string
-	values          map[string]interface{}
+	values          map[string]any
 	visibleKeys     []string
 	hiddenKeys      map[string]bool
 	regTypeCallback funcCallback
@@ -27,7 +27,7 @@ var (
 
 // NewOrderedMap takes an unordered map (values) and an order (keys) and
 // returns an OrderedMap.
-func NewOrderedMap(keys []string, values map[string]interface{}) (*OrderedMap, error) {
+func NewOrderedMap(keys []string, values map[string]any) (*OrderedMap, error) {
 	if len(keys) != len(values) {
 		return nil, ErrorKeysDontMatchValues
 	}
@@ -47,7 +47,7 @@ func NewOrderedMap(keys []string, values map[string]interface{}) (*OrderedMap, e
 		}
 	}
 	if values == nil {
-		values = map[string]interface{}{}
+		values = map[string]any{}
 	}
 
 	visibleKeys := []string{}
@@ -61,7 +61,7 @@ func NewOrderedMap(keys []string, values map[string]interface{}) (*OrderedMap, e
 }
 
 // Add adds a key/value pair to an ordered map at the end.
-func (om *OrderedMap) Add(name string, val interface{}) {
+func (om *OrderedMap) Add(name string, val any) {
 	if !om.hiddenKeys[name] {
 		om.keys = append(om.keys, name)
 		om.visibleKeys = append(om.visibleKeys, name)
@@ -70,7 +70,7 @@ func (om *OrderedMap) Add(name string, val interface{}) {
 }
 
 // Get returns the value associated with key and sets has to true if found.
-func (om *OrderedMap) Get(key string) (val interface{}, has bool) {
+func (om *OrderedMap) Get(key string) (val any, has bool) {
 	val, has = om.values[key]
 	return
 }
@@ -104,12 +104,12 @@ func (om *OrderedMap) Keys() []string {
 	return om.visibleKeys
 }
 
-func (om *OrderedMap) pGoType(val interface{}) (string, bool) {
+func (om *OrderedMap) pGoType(val any) (string, bool) {
 	rVal := reflect.ValueOf(val)
 	var prelim string
 	switch rVal.Kind() {
 	case reflect.Array:
-		var i interface{}
+		var i any
 		if rVal.Len() == 0 {
 			i = reflect.Zero(rVal.Type().Elem()).Interface()
 		} else {
@@ -121,7 +121,7 @@ func (om *OrderedMap) pGoType(val interface{}) (string, bool) {
 		}
 		prelim = fmt.Sprintf("[%d]%s", rVal.Len(), inner)
 	case reflect.Slice:
-		var i interface{}
+		var i any
 		if rVal.Len() == 0 {
 			i = reflect.Zero(rVal.Type().Elem()).Interface()
 		} else {
@@ -139,7 +139,7 @@ func (om *OrderedMap) pGoType(val interface{}) (string, bool) {
 			fName := field.Name
 			var fType string
 			var has bool
-			var fi interface{}
+			var fi any
 			if field.PkgPath != "" {
 				ft := rVal.Field(i).Type()
 				fi = reflect.Zero(ft).Interface()
@@ -193,13 +193,13 @@ func (om *OrderedMap) putDim(inner string, dim int, kind reflect.Kind) string {
 	return fixed
 }
 
-func (om *OrderedMap) pType(val interface{}) (string, bool) {
+func (om *OrderedMap) pType(val any) (string, bool) {
 	rVal := reflect.ValueOf(val)
 	rTyp := reflect.TypeOf(val)
 	prelim := ""
 	switch rVal.Kind() {
 	case reflect.Array:
-		var i interface{}
+		var i any
 		if rVal.Len() == 0 {
 			i = reflect.Zero(rTyp.Elem()).Interface()
 		} else {
@@ -211,7 +211,7 @@ func (om *OrderedMap) pType(val interface{}) (string, bool) {
 		}
 		prelim = om.putDim(inner, rVal.Len(), rVal.Kind())
 	case reflect.Slice:
-		var i interface{}
+		var i any
 		if rVal.Len() == 0 {
 			i = reflect.Zero(rTyp.Elem()).Interface()
 		} else {
@@ -230,7 +230,7 @@ func (om *OrderedMap) pType(val interface{}) (string, bool) {
 			fName := field.Name
 			var fType string
 			var has bool
-			var fi interface{}
+			var fi any
 			if field.PkgPath != "" {
 				ft := rVal.Field(i).Type()
 				fi = reflect.Zero(ft).Interface()

@@ -62,7 +62,7 @@ func (l *Logger) SetLogLevel(level LogLevel) LogLevel {
 	return old
 }
 
-func (l *Logger) output(level LogLevel, f func(...interface{}), v ...interface{}) {
+func (l *Logger) output(level LogLevel, f func(...any), v ...any) {
 	if level > l.logLevel {
 		return
 	}
@@ -72,7 +72,7 @@ func (l *Logger) output(level LogLevel, f func(...interface{}), v ...interface{}
 	f(v...)
 }
 
-func (l *Logger) outputf(level LogLevel, f func(string, ...interface{}), format string, v ...interface{}) {
+func (l *Logger) outputf(level LogLevel, f func(string, ...any), format string, v ...any) {
 	if level > l.logLevel {
 		return
 	}
@@ -83,36 +83,36 @@ func (l *Logger) outputf(level LogLevel, f func(string, ...interface{}), format 
 	f(format, v...)
 }
 
-func (l *Logger) Info(v ...interface{}) {
+func (l *Logger) Info(v ...any) {
 	l.output(LevelInfo, l.logger.Println, v...)
 }
 
-func (l *Logger) Infof(format string, v ...interface{}) {
+func (l *Logger) Infof(format string, v ...any) {
 	l.outputf(LevelInfo, l.logger.Printf, format, v...)
 }
 
-func (l *Logger) Warn(v ...interface{}) {
+func (l *Logger) Warn(v ...any) {
 	l.output(LevelWarn, l.logger.Println, v...)
 }
 
-func (l *Logger) Warnf(format string, v ...interface{}) {
+func (l *Logger) Warnf(format string, v ...any) {
 	l.outputf(LevelWarn, l.logger.Printf, format, v...)
 }
 
-func (l *Logger) Error(v ...interface{}) {
+func (l *Logger) Error(v ...any) {
 	l.output(LevelError, l.logger.Println, v...)
 }
 
-func (l *Logger) Errorf(format string, v ...interface{}) {
+func (l *Logger) Errorf(format string, v ...any) {
 	l.outputf(LevelError, l.logger.Printf, format, v...)
 }
 
-func (l *Logger) Fatal(v ...interface{}) {
+func (l *Logger) Fatal(v ...any) {
 	log.Print(string(debug.Stack()))
 	l.output(LevelFatal, l.logger.Fatalln, v...)
 }
 
-func (l *Logger) Fatalf(format string, v ...interface{}) {
+func (l *Logger) Fatalf(format string, v ...any) {
 	log.Print(string(debug.Stack()))
 	l.outputf(LevelFatal, l.logger.Fatalf, format, v...)
 }

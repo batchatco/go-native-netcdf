@@ -96,7 +96,7 @@ func (vlenManagerType) defaultFillValue(obj *object, objFillValue []byte, undefi
 }
 
 func (vlenManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attribute,
-	dimensions []uint64) interface{} {
+	dimensions []uint64) any {
 	logger.Info("dimensions=", dimensions)
 	if attr.vtType == 1 {
 		// It's a string
@@ -115,7 +115,7 @@ func (vlenManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attrib
 	return convert(values)
 }
 
-func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) interface{} {
+func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) any {
 	logger.Info("allocStrings", dimLengths)
 	if len(dimLengths) == 0 {
 		// alloc one scalar
@@ -177,7 +177,7 @@ func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) interface{} 
 }
 
 func allocVariable(hr heapReader, c caster, bf io.Reader, dimLengths []uint64, attr attribute,
-	cast reflect.Type) interface{} {
+	cast reflect.Type) any {
 	logger.Info("allocVariable", dimLengths, "count=", bf.(remReader).Count(),
 		"rem=", bf.(remReader).Rem())
 	if len(dimLengths) == 0 {
@@ -192,7 +192,7 @@ func allocVariable(hr heapReader, c caster, bf io.Reader, dimLengths []uint64, a
 		thrower.ThrowIfError(err)
 		logger.Infof("length %d(0x%x) addr 0x%x index %d(0x%x)\n",
 			length, length, addr, index, index)
-		var val0 interface{}
+		var val0 any
 		var s []byte
 		var bff remReader
 		if length == 0 {
@@ -226,7 +226,7 @@ func allocVariable(hr heapReader, c caster, bf io.Reader, dimLengths []uint64, a
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
 		// For scalars, this can be faster using binary.Read
-		vals := make([]interface{}, thisDim)
+		vals := make([]any, thisDim)
 		for i := uint64(0); i < thisDim; i++ {
 			logger.Info("Alloc inner", i, "of", thisDim)
 			vals[i] = allocVariable(hr, c, bf, dimLengths[1:], attr, cast)
@@ -242,7 +242,7 @@ func allocVariable(hr heapReader, c caster, bf io.Reader, dimLengths []uint64, a
 
 	// TODO: we sometimes know the type (float32) and can do something smarter here
 
-	vals := make([]interface{}, thisDim)
+	vals := make([]any, thisDim)
 	for i := uint64(0); i < thisDim; i++ {
 		logger.Info("Alloc outer", i, "of", thisDim)
 		vals[i] = allocVariable(hr, c, bf, dimLengths[1:], attr, cast)

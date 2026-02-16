@@ -81,7 +81,7 @@ func checkZeroes(bf io.Reader, len int) {
 
 // Check that pad bytes are zero.
 func padBytesCheck(obf io.Reader, pad32 int, round bool,
-	logFunc func(v ...interface{})) bool {
+	logFunc func(v ...any)) bool {
 	cbf := obf.(remReader)
 	success := true
 	var extra int

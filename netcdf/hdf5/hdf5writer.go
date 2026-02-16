@@ -14,7 +14,7 @@ import (
 
 type h5Var struct {
 	name       string
-	val        interface{}
+	val        any
 	dimensions []string
 	attributes api.AttributeMap
 	addr       uint64
@@ -51,7 +51,7 @@ func (hw *HDF5Writer) Close() (err error) {
 
 	// 1. Write Superblock V2 (48 bytes)
 	hw.writeSuperblockV2()
-	
+
 	// 1.5 Collect and write global heap if needed
 	hw.heap = &h5GlobalHeap{indices: make(map[string]uint32)}
 	hw.collectStrings(hw.root)
@@ -61,15 +61,15 @@ func (hw *HDF5Writer) Close() (err error) {
 
 	// 2. Write variables and subgroups recursively
 	hw.writeGroupContents(hw.root)
-	
+
 	// 3. Write Root Group OH V2
 	rootAddr := uint64(hw.buf.Len())
 	hw.writeGroupObjectHeaderV2(hw.root)
-	
+
 	// 4. Finalize Superblock
 	eofAddr := uint64(hw.buf.Len())
 	data := hw.buf.Bytes()
-	
+
 	// Superblock V2 offsets:
 	// Magic (8), Version (1), Offsets Size (1), Lengths Size (1), Flags (1) = 12 bytes
 	// Base Address (8): 12-19
@@ -79,7 +79,7 @@ func (hw *HDF5Writer) Close() (err error) {
 	// Checksum (4): 44-47
 	binary.LittleEndian.PutUint64(data[28:], eofAddr)
 	binary.LittleEndian.PutUint64(data[36:], rootAddr)
-	
+
 	sbChecksum := checksum(data[:44])
 	binary.LittleEndian.PutUint32(data[44:], sbChecksum)
 
@@ -93,7 +93,7 @@ func (hw *HDF5Writer) Close() (err error) {
 
 func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
 	// Write children's data and object headers first
-	
+
 	// Variables
 	var varNames []string
 	for name := range g.vars {
@@ -105,11 +105,11 @@ func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
 		dataAddr := uint64(hw.buf.Len())
 		hw.writeData(v.val)
 		dataSize := uint64(hw.buf.Len()) - dataAddr
-		
+
 		v.addr = uint64(hw.buf.Len())
 		hw.writeVarObjectHeaderV2(v, dataAddr, dataSize)
 	}
-	
+
 	// Subgroups
 	var groupNames []string
 	for name := range g.groups {
@@ -126,10 +126,10 @@ func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
 
 func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 	var messages []h5Message
-	
+
 	// Group Info Message (type 10)
 	messages = append(messages, h5Message{mType: 10, data: []byte{0, 0}})
-	
+
 	// Link messages for children
 	var varNames []string
 	for name := range g.vars {
@@ -139,7 +139,7 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 	for _, name := range varNames {
 		messages = append(messages, hw.buildLinkMessage(name, g.vars[name].addr))
 	}
-	
+
 	var groupNames []string
 	for name := range g.groups {
 		groupNames = append(groupNames, name)
@@ -148,7 +148,7 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 	for _, name := range groupNames {
 		messages = append(messages, hw.buildLinkMessage(name, g.groups[name].addr))
 	}
-	
+
 	// Attributes
 	if g.attributes != nil {
 		for _, k := range g.attributes.Keys() {
@@ -156,7 +156,7 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 			messages = append(messages, hw.buildAttributeMessage(k, val))
 		}
 	}
-	
+
 	hw.writeObjectHeaderV2(messages)
 }
 
@@ -171,15 +171,15 @@ func (hw *HDF5Writer) writeSuperblockV2() {
 	thrower.ThrowIfError(err)
 	err = hw.buf.WriteByte(0)
 	thrower.ThrowIfError(err)
-	
+
 	temp := make([]byte, 32)
-	binary.LittleEndian.PutUint64(temp[0:], 0)              // Base Address
+	binary.LittleEndian.PutUint64(temp[0:], 0)                  // Base Address
 	binary.LittleEndian.PutUint64(temp[8:], 0xffffffffffffffff) // Superblock Extension Address (invalidAddress)
-	binary.LittleEndian.PutUint64(temp[16:], 0)             // End of File Address
-	binary.LittleEndian.PutUint64(temp[24:], 0)             // Root Group Object Header Address
+	binary.LittleEndian.PutUint64(temp[16:], 0)                 // End of File Address
+	binary.LittleEndian.PutUint64(temp[24:], 0)                 // Root Group Object Header Address
 	_, err = hw.buf.Write(temp)
 	thrower.ThrowIfError(err)
-	
+
 	err = binary.Write(hw.buf, binary.LittleEndian, uint32(0)) // Checksum
 	thrower.ThrowIfError(err)
 }
@@ -188,20 +188,20 @@ func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize
 	dtMsg := hw.buildDatatypeMessage(v.val)
 	dsMsg := buildDataspaceMessage(hw.getDimensions(v.val))
 	layoutMsg := hw.buildLayoutMessageV2(dataAddr, dataSize)
-	
+
 	messages := []h5Message{
 		{mType: 1, data: dsMsg},
 		{mType: 3, data: dtMsg},
 		{mType: 8, data: layoutMsg},
 	}
-	
+
 	if v.attributes != nil {
 		for _, k := range v.attributes.Keys() {
 			val, _ := v.attributes.Get(k)
 			messages = append(messages, hw.buildAttributeMessage(k, val))
 		}
 	}
-	
+
 	hw.writeObjectHeaderV2(messages)
 }
 
@@ -217,7 +217,7 @@ func (hw *HDF5Writer) buildLinkMessage(name string, addr uint64) h5Message {
 	thrower.ThrowIfError(err)
 	err = binary.Write(buf, binary.LittleEndian, addr)
 	thrower.ThrowIfError(err)
-	
+
 	return h5Message{mType: 6, data: buf.Bytes()}
 }
 
@@ -242,7 +242,7 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 	thrower.ThrowIfError(err)
 	err = ohBuf.WriteByte(0x02) // flags: 4-byte size of chunk 0
 	thrower.ThrowIfError(err)
-	
+
 	msgBuf := new(bytes.Buffer)
 	for _, m := range messages {
 		err = msgBuf.WriteByte(byte(m.mType))
@@ -254,27 +254,27 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 		_, err = msgBuf.Write(m.data)
 		thrower.ThrowIfError(err)
 	}
-	
+
 	// Pad the entire message block to 8 bytes
 	for (msgBuf.Len() % 8) != 0 {
 		err = msgBuf.WriteByte(0) // Type 0 (NIL message) would be better, but padding is just zeros
 		thrower.ThrowIfError(err)
 	}
-	
+
 	err = binary.Write(ohBuf, binary.LittleEndian, uint32(msgBuf.Len()))
 	thrower.ThrowIfError(err)
 	_, err = ohBuf.Write(msgBuf.Bytes())
 	thrower.ThrowIfError(err)
-	
+
 	ohChecksum := checksum(ohBuf.Bytes())
 	err = binary.Write(ohBuf, binary.LittleEndian, ohChecksum)
 	thrower.ThrowIfError(err)
-	
+
 	_, err = hw.buf.Write(ohBuf.Bytes())
 	thrower.ThrowIfError(err)
 }
 
-func (hw *HDF5Writer) writeData(val interface{}) {
+func (hw *HDF5Writer) writeData(val any) {
 	rv := reflect.ValueOf(val)
 	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
@@ -430,7 +430,7 @@ func (hw *HDF5Writer) writeGlobalHeap() {
 	binary.LittleEndian.PutUint64(data[sizeAddr:], totalSize)
 }
 
-func (hw *HDF5Writer) getDimensions(val interface{}) []uint64 {
+func (hw *HDF5Writer) getDimensions(val any) []uint64 {
 	rv := reflect.ValueOf(val)
 	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
@@ -525,9 +525,9 @@ func OpenWriter(fileName string) (api.Writer, error) {
 		file: file,
 		buf:  new(bytes.Buffer),
 		root: &h5Group{
-			name:   "/",
-			groups: make(map[string]*h5Group),
-			vars:   make(map[string]*h5Var),
+			name:       "/",
+			groups:     make(map[string]*h5Group),
+			vars:       make(map[string]*h5Var),
 			attributes: rootAttrs,
 		},
 	}

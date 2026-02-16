@@ -161,24 +161,18 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 }
 
 func (hw *HDF5Writer) writeSuperblockV2() {
-	_, err := hw.buf.Write([]byte(magic))
-	thrower.ThrowIfError(err)
-	err = hw.buf.WriteByte(2)
-	thrower.ThrowIfError(err)
-	err = hw.buf.WriteByte(8)
-	thrower.ThrowIfError(err)
-	err = hw.buf.WriteByte(8)
-	thrower.ThrowIfError(err)
-	err = hw.buf.WriteByte(0)
-	thrower.ThrowIfError(err)
+	util.MustWriteRaw(hw.buf, []byte(magic) )
+	util.MustWriteByte(hw.buf, 2)
+	util.MustWriteByte(hw.buf, 8)
+	util.MustWriteByte(hw.buf, 8)
+	util.MustWriteByte(hw.buf, 0)
 
 	temp := make([]byte, 32)
 	binary.LittleEndian.PutUint64(temp[0:], 0)                  // Base Address
 	binary.LittleEndian.PutUint64(temp[8:], 0xffffffffffffffff) // Superblock Extension Address (invalidAddress)
 	binary.LittleEndian.PutUint64(temp[16:], 0)                 // End of File Address
 	binary.LittleEndian.PutUint64(temp[24:], 0)                 // Root Group Object Header Address
-	_, err = hw.buf.Write(temp)
-	thrower.ThrowIfError(err)
+	util.MustWriteRaw(hw.buf, temp)
 
 	util.MustWriteLE(hw.buf, uint32(0)) // Checksum
 }
@@ -206,24 +200,19 @@ func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize
 
 func (hw *HDF5Writer) buildLinkMessage(name string, addr uint64) h5Message {
 	buf := new(bytes.Buffer)
-	err := buf.WriteByte(1) // version
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0) // flags
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(byte(len(name)))
-	thrower.ThrowIfError(err)
-	_, err = buf.Write([]byte(name))
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, 1) // version
+	util.MustWriteByte(buf, 0) // flags
+	util.MustWriteByte(buf, byte(len(name)))
+	util.MustWriteRaw(buf, []byte(name))
 	util.MustWriteLE(buf, addr)
 
 	return h5Message{mType: 6, data: buf.Bytes()}
 }
+
 func (hw *HDF5Writer) buildLayoutMessageV2(addr uint64, size uint64) []byte {
 	buf := new(bytes.Buffer)
-	err := buf.WriteByte(3) // version 3
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(1) // contiguous
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, 3) // version 3
+	util.MustWriteByte(buf, 1) // contiguous
 	util.MustWriteLE(buf, addr)
 	util.MustWriteLE(buf, size)
 	return buf.Bytes()
@@ -231,39 +220,30 @@ func (hw *HDF5Writer) buildLayoutMessageV2(addr uint64, size uint64) []byte {
 
 func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 	ohBuf := new(bytes.Buffer)
-	_, err := ohBuf.Write([]byte("OHDR"))
-	thrower.ThrowIfError(err)
-	err = ohBuf.WriteByte(2)
-	thrower.ThrowIfError(err)
-	err = ohBuf.WriteByte(0x02) // flags: 4-byte size of chunk 0
-	thrower.ThrowIfError(err)
+	util.MustWriteRaw(ohBuf, []byte("OHDR"))
+	util.MustWriteByte(ohBuf, 2)
+	util.MustWriteByte(ohBuf, 0x02) // flags: 4-byte size of chunk 0
 
 	msgBuf := new(bytes.Buffer)
 	for _, m := range messages {
-		err = msgBuf.WriteByte(byte(m.mType))
-		thrower.ThrowIfError(err)
+		util.MustWriteByte(msgBuf, byte(m.mType))
 		util.MustWriteLE(msgBuf, uint16(len(m.data)))
-		err = msgBuf.WriteByte(m.flags)
-		thrower.ThrowIfError(err)
-		_, err = msgBuf.Write(m.data)
-		thrower.ThrowIfError(err)
+		util.MustWriteByte(msgBuf, m.flags)
+		util.MustWriteRaw(msgBuf, m.data)
 	}
 
 	// Pad the entire message block to 8 bytes
 	for (msgBuf.Len() % 8) != 0 {
-		err = msgBuf.WriteByte(0) // Type 0 (NIL message) would be better, but padding is just zeros
-		thrower.ThrowIfError(err)
+		util.MustWriteByte(msgBuf, 0) // Type 0 (NIL message) would be better, but padding is just zeros
 	}
 
 	util.MustWriteLE(ohBuf, uint32(msgBuf.Len()))
-	_, err = ohBuf.Write(msgBuf.Bytes())
-	thrower.ThrowIfError(err)
+	util.MustWriteRaw(ohBuf, msgBuf.Bytes())
 
 	ohChecksum := checksum(ohBuf.Bytes())
 	util.MustWriteLE(ohBuf, ohChecksum)
 
-	_, err = hw.buf.Write(ohBuf.Bytes())
-	thrower.ThrowIfError(err)
+	util.MustWriteRaw(hw.buf, ohBuf.Bytes() )
 }
 func (hw *HDF5Writer) writeData(val any) {
 	rv := reflect.ValueOf(val)
@@ -279,8 +259,7 @@ func (hw *HDF5Writer) writeData(val any) {
 	}
 	hw.writeDataRecursive(rv, fixedLen)
 	for (hw.buf.Len() % 8) != 0 {
-		err := hw.buf.WriteByte(0)
-		thrower.ThrowIfError(err)
+		util.MustWriteByte(hw.buf, 0)
 	}
 }
 
@@ -294,12 +273,10 @@ func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 	if rv.Kind() == reflect.String {
 		if fixedLen > 0 {
 			str := rv.String()
-			_, err := hw.buf.Write([]byte(str))
-			thrower.ThrowIfError(err)
+			util.MustWriteRaw(hw.buf, []byte(str) )
 			// Pad to fixedLen
 			for i := len(str); i < fixedLen; i++ {
-				err = hw.buf.WriteByte(0)
-				thrower.ThrowIfError(err)
+				util.MustWriteByte(hw.buf, 0)
 			}
 		} else {
 			// VLen string
@@ -382,12 +359,9 @@ func (hw *HDF5Writer) writeGlobalHeap() {
 	gh.addr = uint64(hw.buf.Len())
 
 	// Collection Header
-	_, err := hw.buf.Write([]byte("GCOL"))
-	thrower.ThrowIfError(err)
-	err = hw.buf.WriteByte(1) // version
-	thrower.ThrowIfError(err)
-	_, err = hw.buf.Write([]byte{0, 0, 0}) // reserved
-	thrower.ThrowIfError(err)
+	util.MustWriteRaw(hw.buf, []byte("GCOL") )
+	util.MustWriteByte(hw.buf, 1)          // version
+	util.MustWriteRaw(hw.buf, []byte{0, 0, 0}) // reserved
 
 	sizeAddr := hw.buf.Len()
 	util.MustWriteLE(hw.buf, uint64(0)) // placeholder for size
@@ -397,12 +371,10 @@ func (hw *HDF5Writer) writeGlobalHeap() {
 		util.MustWriteLE(hw.buf, uint16(0))   // ref count
 		util.MustWriteLE(hw.buf, uint32(0))   // reserved
 		util.MustWriteLE(hw.buf, uint64(len(obj)))
-		_, err = hw.buf.Write(obj)
-		thrower.ThrowIfError(err)
+		util.MustWriteRaw(hw.buf, obj)
 		// Pad object to 8 bytes
 		for (hw.buf.Len() % 8) != 0 {
-			err = hw.buf.WriteByte(0)
-			thrower.ThrowIfError(err)
+			util.MustWriteByte(hw.buf, 0)
 		}
 	}
 

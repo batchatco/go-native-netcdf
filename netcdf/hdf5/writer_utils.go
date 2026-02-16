@@ -5,31 +5,23 @@ import (
 	"reflect"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
-	"github.com/batchatco/go-thrower"
 )
 
 func buildDataspaceMessage(dimensions []uint64) []byte {
 	buf := new(bytes.Buffer)
-	err := buf.WriteByte(1) // version
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(byte(len(dimensions)))
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0) // flags
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, 1) // version
+	util.MustWriteByte(buf, byte(len(dimensions)))
+	util.MustWriteByte(buf, 0) // flags
 
 	if len(dimensions) == 0 {
-		err = buf.WriteByte(0) // type scalar
-		thrower.ThrowIfError(err)
+		util.MustWriteByte(buf, 0) // type scalar
 		for range 4 {
-			err = buf.WriteByte(0)
-			thrower.ThrowIfError(err)
+			util.MustWriteByte(buf, 0)
 		}
 	} else {
-		err = buf.WriteByte(0) // Reserved
-		thrower.ThrowIfError(err)
+		util.MustWriteByte(buf, 0) // Reserved
 		for range 4 {
-			err = buf.WriteByte(0)
-			thrower.ThrowIfError(err)
+			util.MustWriteByte(buf, 0)
 		}
 		for _, d := range dimensions {
 			util.MustWriteLE(buf, d)
@@ -40,20 +32,16 @@ func buildDataspaceMessage(dimensions []uint64) []byte {
 
 func buildFixedPointDatatype(size int, signed bool) []byte {
 	buf := new(bytes.Buffer)
-	err := buf.WriteByte(0x10) // version 1, class 0
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, 0x10) // version 1, class 0
 
 	var b1 byte
 	b1 = 0x00 // bit 0 = 0 (LE)
 	if signed {
 		b1 |= 0x08 // bit 3 = 1 (signed)
 	}
-	err = buf.WriteByte(b1)
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0) // b2
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0) // b3
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, b1)
+	util.MustWriteByte(buf, 0) // b2
+	util.MustWriteByte(buf, 0) // b3
 
 	util.MustWriteLE(buf, uint32(size))
 
@@ -66,8 +54,7 @@ func buildFixedPointDatatype(size int, signed bool) []byte {
 
 func buildFloatingPointDatatype(size int) []byte {
 	buf := new(bytes.Buffer)
-	err := buf.WriteByte(0x11) // version 1, class 1
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, 0x11) // version 1, class 1
 
 	var b1, b2, b3 byte
 	b1 = 0x20 // LE, mantissa norm = 2
@@ -76,63 +63,28 @@ func buildFloatingPointDatatype(size int) []byte {
 	} else {
 		b2 = 63 // sign location 63
 	}
-	err = buf.WriteByte(b1)
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(b2)
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(b3)
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, b1)
+	util.MustWriteByte(buf, b2)
+	util.MustWriteByte(buf, b3)
 
 	util.MustWriteLE(buf, uint32(size))
 
 	if size == 4 {
-
-		util.MustWriteLE(buf, uint16(0)) // bit offset
-
-		util.MustWriteLE(buf, uint16(32)) // precision
-
-		err = buf.WriteByte(23) // exponent location
-
-		thrower.ThrowIfError(err)
-
-		err = buf.WriteByte(8) // exponent size
-
-		thrower.ThrowIfError(err)
-
-		err = buf.WriteByte(0) // mantissa location
-
-		thrower.ThrowIfError(err)
-
-		err = buf.WriteByte(23) // mantissa size
-
-		thrower.ThrowIfError(err)
-
+		util.MustWriteLE(buf, uint16(0))   // bit offset
+		util.MustWriteLE(buf, uint16(32))  // precision
+		util.MustWriteByte(buf, 23)        // exponent location
+		util.MustWriteByte(buf, 8)         // exponent size
+		util.MustWriteByte(buf, 0)         // mantissa location
+		util.MustWriteByte(buf, 23)        // mantissa size
 		util.MustWriteLE(buf, uint32(127)) // bias
-
 	} else {
-
-		util.MustWriteLE(buf, uint16(0)) // bit offset
-
-		util.MustWriteLE(buf, uint16(64)) // precision
-
-		err = buf.WriteByte(52) // exponent location
-
-		thrower.ThrowIfError(err)
-
-		err = buf.WriteByte(11) // exponent size
-
-		thrower.ThrowIfError(err)
-
-		err = buf.WriteByte(0) // mantissa location
-
-		thrower.ThrowIfError(err)
-
-		err = buf.WriteByte(52) // mantissa size
-
-		thrower.ThrowIfError(err)
-
+		util.MustWriteLE(buf, uint16(0))    // bit offset
+		util.MustWriteLE(buf, uint16(64))   // precision
+		util.MustWriteByte(buf, 52)         // exponent location
+		util.MustWriteByte(buf, 11)         // exponent size
+		util.MustWriteByte(buf, 0)          // mantissa location
+		util.MustWriteByte(buf, 52)         // mantissa size
 		util.MustWriteLE(buf, uint32(1023)) // bias
-
 	}
 
 	return buf.Bytes()
@@ -140,24 +92,18 @@ func buildFloatingPointDatatype(size int) []byte {
 
 func buildStringDatatype(size int) []byte {
 	buf := new(bytes.Buffer)
-	err := buf.WriteByte(0x13) // version 1, class 3 (string)
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0x00) // null-terminated, ASCII
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0x00)
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0x00)
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, 0x13) // version 1, class 3 (string)
+	util.MustWriteByte(buf, 0x00) // null-terminated, ASCII
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteByte(buf, 0x00)
 	util.MustWriteLE(buf, uint32(size))
 	return buf.Bytes()
 }
 
 func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 	buf := new(bytes.Buffer)
-	err := buf.WriteByte(1) // version
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0) // reserved
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, 1) // version
+	util.MustWriteByte(buf, 0) // reserved
 
 	nameBytes := append([]byte(name), 0)
 	util.MustWriteLE(buf, uint16(len(nameBytes)))
@@ -169,11 +115,9 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 	dsMsg := buildDataspaceMessage(dims)
 	util.MustWriteLE(buf, uint16(len(dsMsg)))
 	writePadded := func(b []byte) {
-		_, err = buf.Write(b)
-		thrower.ThrowIfError(err)
+		util.MustWriteRaw(buf, b)
 		for (buf.Len() % 8) != 0 {
-			err = buf.WriteByte(0)
-			thrower.ThrowIfError(err)
+			util.MustWriteByte(buf, 0)
 		}
 	}
 
@@ -208,12 +152,10 @@ func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.
 	if rv.Kind() == reflect.String {
 		if maxLen > 0 {
 			str := rv.String()
-			_, err := buf.Write([]byte(str))
-			thrower.ThrowIfError(err)
+			util.MustWriteRaw(buf, []byte(str))
 			// Pad to maxLen
 			for i := len(str); i < maxLen; i++ {
-				err = buf.WriteByte(0)
-				thrower.ThrowIfError(err)
+				util.MustWriteByte(buf, 0)
 			}
 		} else {
 			// VLen string
@@ -272,19 +214,14 @@ func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
 
 func (hw *HDF5Writer) buildVLenStringDatatype() []byte {
 	buf := new(bytes.Buffer)
-	err := buf.WriteByte(0x19) // version 1, class 9
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0x01) // type=1 (string), padding=0, cset=0
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0x00)
-	thrower.ThrowIfError(err)
-	err = buf.WriteByte(0x00)
-	thrower.ThrowIfError(err)
+	util.MustWriteByte(buf, 0x19) // version 1, class 9
+	util.MustWriteByte(buf, 0x01) // type=1 (string), padding=0, cset=0
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteByte(buf, 0x00)
 	util.MustWriteLE(buf, uint32(16)) // seq length
 
 	baseType := buildStringDatatype(1)
-	_, err = buf.Write(baseType)
-	thrower.ThrowIfError(err)
+	util.MustWriteRaw(buf, baseType)
 	return buf.Bytes()
 }
 

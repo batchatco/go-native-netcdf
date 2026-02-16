@@ -23,6 +23,18 @@ func MustWriteBE(w io.Writer, data any) {
 	MustWrite(w, binary.BigEndian, data)
 }
 
+// MustWriteByte wraps WriteByte and throws an error if it fails.
+func MustWriteByte(w io.ByteWriter, c byte) {
+	err := w.WriteByte(c)
+	thrower.ThrowIfError(err)
+}
+
+// MustWriteRaw wraps Write and throws an error if it fails.
+func MustWriteRaw(w io.Writer, p []byte) {
+	_, err := w.Write(p)
+	thrower.ThrowIfError(err)
+}
+
 // MustRead wraps binary.Read and throws an error if it fails.
 func MustRead(r io.Reader, order binary.ByteOrder, data any) {
 	err := binary.Read(r, order, data)

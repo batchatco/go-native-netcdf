@@ -67,8 +67,8 @@ type fletcher struct {
 	readChecksum bool
 }
 
-// newFletcher32reader creates a reader implementing the fletcher32 algorithm.
-func newFletcher32Reader(r io.Reader, size uint64) remReader {
+// fletcher32Reader creates a reader implementing the fletcher32 algorithm.
+func fletcher32Reader(r io.Reader, size uint64) remReader {
 	assert(size >= 4, "bad size for fletcher")
 	return &fletcher{
 		r:            r,
@@ -142,31 +142,6 @@ func (fl *fletcher) Read(b []byte) (int, error) {
 		}
 	}
 	return n, nil
-}
-
-// oldFletcher32reader creates a reader implementing the fletcher32 algorithm.
-// It is inefficient and is here for testing purposes only.
-func oldFletcher32Reader(r io.Reader, size uint64) remReader {
-	assert(size >= 4, "bad size for fletcher")
-	b := make([]byte, size-4)
-	read(r, b)
-	var checksum uint32
-	err := binary.Read(r, binary.LittleEndian, &checksum)
-	thrower.ThrowIfError(err)
-	bf := newResetReaderFromBytes(b)
-	values := make([]uint16, len(b)/2)
-	err = binary.Read(bf, binary.BigEndian, values)
-	thrower.ThrowIfError(err)
-	if len(b)%2 == 1 {
-		last := uint16(b[len(b)-1])
-		values = append(values, last<<8)
-	}
-	calcedSum := fletcher32(values)
-	if calcedSum != checksum {
-		logger.Infof("checksum failure: calced sum=%#x filesum=%#x\n", calcedSum, checksum)
-		thrower.Throw(ErrFletcherChecksum)
-	}
-	return newResetReaderFromBytes(b)
 }
 
 func (r *resetReader) Rem() int64 {

@@ -20,27 +20,9 @@ func TestFletcherOdd(t *testing.T) {
 	r := bytes.NewReader(b)
 
 	// create the Fletcher32 reader and verify we can read from it
-	fl := newFletcher32Reader(r, uint64(len(b)))
+	fl := fletcher32Reader(r, uint64(len(b)))
 	var b2 [nbytes]byte
 	n, err := fl.Read(b2[:])
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	if n != len(b2) {
-		t.Error("Got", n, "expected", len(b2))
-		return
-	}
-	for i := 0; i < nbytes; i++ {
-		if b2[i] != b[i] {
-			t.Error("Got", b2[i], "at offset", i, "expected", b[i])
-		}
-	}
-
-	// try again with the old reader
-	r = bytes.NewReader(b)
-	fl = oldFletcher32Reader(r, uint64(len(b)))
-	n, err = fl.Read(b2[:])
 	if err != nil {
 		t.Error(err)
 		return
@@ -69,27 +51,9 @@ func TestFletcherEven(t *testing.T) {
 	r := bytes.NewReader(b)
 
 	// create the Fletcher32 reader and verify we can read from it
-	fl := newFletcher32Reader(r, uint64(len(b)))
+	fl := fletcher32Reader(r, uint64(len(b)))
 	var b2 [nbytes]byte
 	n, err := fl.Read(b2[:])
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	if n != len(b2) {
-		t.Error("Got", n, "expected", len(b2))
-		return
-	}
-	for i := 0; i < nbytes; i++ {
-		if b2[i] != b[i] {
-			t.Error("Got", b2[i], "at offset", i, "expected", b[i])
-		}
-	}
-
-	// try again with the old reader
-	r = bytes.NewReader(b)
-	fl = oldFletcher32Reader(r, uint64(len(b)))
-	n, err = fl.Read(b2[:])
 	if err != nil {
 		t.Error(err)
 		return
@@ -120,26 +84,8 @@ func TestFletcherFail(t *testing.T) {
 	err := func() (err error) {
 		defer thrower.RecoverError(&err)
 		r := bytes.NewReader(b)
-		fl := newFletcher32Reader(r, uint64(len(b)))
+		fl := fletcher32Reader(r, uint64(len(b)))
 		// create the Fletcher32 reader and verify we can read from it
-		var b2 [nbytes]byte
-		_, err = fl.Read(b2[:])
-		if err != nil {
-			t.Error(err)
-			thrower.Throw(err)
-		}
-		return nil
-	}()
-	if err != ErrFletcherChecksum {
-		t.Error("Got", err, "expected", ErrFletcherChecksum)
-		return
-	}
-
-	// try again with the old reader
-	err = func() (err error) {
-		defer thrower.RecoverError(&err)
-		r := bytes.NewReader(b)
-		fl := oldFletcher32Reader(r, uint64(len(b)))
 		var b2 [nbytes]byte
 		_, err = fl.Read(b2[:])
 		if err != nil {
@@ -167,27 +113,9 @@ func TestFletcherSingle(t *testing.T) {
 	r := bytes.NewReader(b)
 
 	// create the Fletcher32 reader and verify we can read from it
-	fl := newFletcher32Reader(r, uint64(len(b)))
+	fl := fletcher32Reader(r, uint64(len(b)))
 	var b2 [nbytes]byte
 	n, err := fl.Read(b2[:])
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	if n != len(b2) {
-		t.Error("Got", n, "expected", len(b2))
-		return
-	}
-	for i := 0; i < nbytes; i++ {
-		if b2[i] != b[i] {
-			t.Error("Got", b2[i], "at offset", i, "expected", b[i])
-		}
-	}
-
-	// try again with the old reader
-	r = bytes.NewReader(b)
-	fl = oldFletcher32Reader(r, uint64(len(b)))
-	n, err = fl.Read(b2[:])
 	if err != nil {
 		t.Error(err)
 		return

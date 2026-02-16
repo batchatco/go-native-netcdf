@@ -2781,7 +2781,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 			}
 			switch f.kind {
 			case filterFletcher32:
-				bf = newFletcher32Reader(bf, inputSize)
+				bf = fletcher32Reader(bf, inputSize)
 				inputSize -= 4
 			case filterDeflate:
 				zbf, err := zlib.NewReader(bf)

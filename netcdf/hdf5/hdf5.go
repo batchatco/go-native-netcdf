@@ -62,9 +62,6 @@ const (
 // and so the code is disabled.
 // They are vars so they can be unit tested.
 var (
-	// We don't implement any extended types, so we don't allow the superblock extension
-	parseSBExtension = false
-
 	// We have not fully implemented V3 of the superblock.  Enabling this allows some
 	// undocumented things to appear, like datatype V4, which we do not support.
 	superblockV3 = false
@@ -531,14 +528,8 @@ func (h5 *HDF5) readSuperblock() {
 		h5.checkChecksum(0, 44)
 	}
 	if sbExtension != invalidAddress {
-		if parseSBExtension {
-			logger.Warn("parsing unsupported superblock extension")
-			obj := newObject()
-			h5.readDataObjectHeader(obj, sbExtension)
-		} else {
-			logger.Warn("superblock extension not supported")
-			thrower.Throw(ErrSuperblock)
-		}
+		logger.Warn("superblock extension not supported")
+		thrower.Throw(ErrSuperblock)
 	}
 }
 

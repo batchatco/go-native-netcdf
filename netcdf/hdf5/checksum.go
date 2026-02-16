@@ -1,5 +1,9 @@
 package hdf5
 
+import (
+	"encoding/binary"
+)
+
 // Hash function used by HDF5 for checksums (Jenkins lookup3 hash function)
 
 func rot(x uint32, k uint32) uint32 {
@@ -97,4 +101,21 @@ func fletcher32(vals []uint16) uint32 {
 		sum2 = (sum2 + sum1) % 65535
 	}
 	return (uint32(sum2) << 16) | uint32(sum1)
+}
+
+func checksum(data []byte) uint32 {
+	n := len(data)
+	nUint32 := (n + 3) / 4
+	vals := make([]uint32, nUint32)
+	for i := 0; i < nUint32; i++ {
+		start := i * 4
+		end := (i + 1) * 4
+		if end > n {
+			end = n
+		}
+		var b [4]byte
+		copy(b[:], data[start:end])
+		vals[i] = binary.LittleEndian.Uint32(b[:])
+	}
+	return hashInts(vals, uint32(n))
 }

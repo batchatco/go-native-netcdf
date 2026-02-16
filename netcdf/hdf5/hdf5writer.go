@@ -309,14 +309,12 @@ func getDimensionsRecursive(rv reflect.Value) []uint64 {
 	return nil
 }
 
-func (hw *HDF5Writer) AddAttributes(attrs api.AttributeMap) (err error) {
-	defer thrower.RecoverError(&err)
+func (hw *HDF5Writer) AddAttributes(attrs api.AttributeMap) error {
 	hw.root.attributes = attrs
 	return nil
 }
 
-func (hw *HDF5Writer) AddVar(name string, vr api.Variable) (err error) {
-	defer thrower.RecoverError(&err)
+func (hw *HDF5Writer) AddVar(name string, vr api.Variable) error {
 	hw.root.vars[name] = &h5Var{
 		name:       name,
 		val:        vr.Values,
@@ -326,8 +324,7 @@ func (hw *HDF5Writer) AddVar(name string, vr api.Variable) (err error) {
 	return nil
 }
 
-func (hw *HDF5Writer) CreateGroup(name string) (w api.Writer, err error) {
-	defer thrower.RecoverError(&err)
+func (hw *HDF5Writer) CreateGroup(name string) (api.Writer, error) {
 	if g, ok := hw.root.groups[name]; ok {
 		return &groupWriter{hw: hw, group: g}, nil
 	}
@@ -349,14 +346,12 @@ func (gw *groupWriter) Close() error {
 	return nil
 }
 
-func (gw *groupWriter) AddAttributes(attrs api.AttributeMap) (err error) {
-	defer thrower.RecoverError(&err)
+func (gw *groupWriter) AddAttributes(attrs api.AttributeMap) error {
 	gw.group.attributes = attrs
 	return nil
 }
 
-func (gw *groupWriter) AddVar(name string, vr api.Variable) (err error) {
-	defer thrower.RecoverError(&err)
+func (gw *groupWriter) AddVar(name string, vr api.Variable) error {
 	gw.group.vars[name] = &h5Var{
 		name:       name,
 		val:        vr.Values,
@@ -366,8 +361,7 @@ func (gw *groupWriter) AddVar(name string, vr api.Variable) (err error) {
 	return nil
 }
 
-func (gw *groupWriter) CreateGroup(name string) (w api.Writer, err error) {
-	defer thrower.RecoverError(&err)
+func (gw *groupWriter) CreateGroup(name string) (api.Writer, error) {
 	if g, ok := gw.group.groups[name]; ok {
 		return &groupWriter{hw: gw.hw, group: g}, nil
 	}

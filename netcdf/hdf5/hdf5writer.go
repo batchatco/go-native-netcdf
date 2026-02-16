@@ -147,20 +147,27 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 }
 
 func (hw *HDF5Writer) writeSuperblockV2() {
-	hw.buf.Write([]byte(magic))
-	hw.buf.WriteByte(2)
-	hw.buf.WriteByte(8)
-	hw.buf.WriteByte(8)
-	hw.buf.WriteByte(0)
+	_, err := hw.buf.Write([]byte(magic))
+	thrower.ThrowIfError(err)
+	err = hw.buf.WriteByte(2)
+	thrower.ThrowIfError(err)
+	err = hw.buf.WriteByte(8)
+	thrower.ThrowIfError(err)
+	err = hw.buf.WriteByte(8)
+	thrower.ThrowIfError(err)
+	err = hw.buf.WriteByte(0)
+	thrower.ThrowIfError(err)
 	
 	temp := make([]byte, 32)
 	binary.LittleEndian.PutUint64(temp[0:], 0)              // Base Address
 	binary.LittleEndian.PutUint64(temp[8:], 0xffffffffffffffff) // Superblock Extension Address (invalidAddress)
 	binary.LittleEndian.PutUint64(temp[16:], 0)             // End of File Address
 	binary.LittleEndian.PutUint64(temp[24:], 0)             // Root Group Object Header Address
-	hw.buf.Write(temp)
+	_, err = hw.buf.Write(temp)
+	thrower.ThrowIfError(err)
 	
-	binary.Write(hw.buf, binary.LittleEndian, uint32(0)) // Checksum
+	err = binary.Write(hw.buf, binary.LittleEndian, uint32(0)) // Checksum
+	thrower.ThrowIfError(err)
 }
 
 func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize uint64) {
@@ -206,30 +213,42 @@ func (hw *HDF5Writer) buildLayoutMessageV2(addr uint64, size uint64) []byte {
 
 func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 	ohBuf := new(bytes.Buffer)
-	ohBuf.Write([]byte("OHDR"))
-	ohBuf.WriteByte(2)
-	ohBuf.WriteByte(0x02) // flags: 4-byte size of chunk 0
+	_, err := ohBuf.Write([]byte("OHDR"))
+	thrower.ThrowIfError(err)
+	err = ohBuf.WriteByte(2)
+	thrower.ThrowIfError(err)
+	err = ohBuf.WriteByte(0x02) // flags: 4-byte size of chunk 0
+	thrower.ThrowIfError(err)
 	
 	msgBuf := new(bytes.Buffer)
 	for _, m := range messages {
-		msgBuf.WriteByte(byte(m.mType))
-		binary.Write(msgBuf, binary.LittleEndian, uint16(len(m.data)))
-		msgBuf.WriteByte(m.flags)
-		msgBuf.Write(m.data)
+		err = msgBuf.WriteByte(byte(m.mType))
+		thrower.ThrowIfError(err)
+		err = binary.Write(msgBuf, binary.LittleEndian, uint16(len(m.data)))
+		thrower.ThrowIfError(err)
+		err = msgBuf.WriteByte(m.flags)
+		thrower.ThrowIfError(err)
+		_, err = msgBuf.Write(m.data)
+		thrower.ThrowIfError(err)
 	}
 	
 	// Pad the entire message block to 8 bytes
 	for (msgBuf.Len() % 8) != 0 {
-		msgBuf.WriteByte(0) // Type 0 (NIL message) would be better, but padding is just zeros
+		err = msgBuf.WriteByte(0) // Type 0 (NIL message) would be better, but padding is just zeros
+		thrower.ThrowIfError(err)
 	}
 	
-	binary.Write(ohBuf, binary.LittleEndian, uint32(msgBuf.Len()))
-	ohBuf.Write(msgBuf.Bytes())
+	err = binary.Write(ohBuf, binary.LittleEndian, uint32(msgBuf.Len()))
+	thrower.ThrowIfError(err)
+	_, err = ohBuf.Write(msgBuf.Bytes())
+	thrower.ThrowIfError(err)
 	
 	ohChecksum := checksum(ohBuf.Bytes())
-	binary.Write(ohBuf, binary.LittleEndian, ohChecksum)
+	err = binary.Write(ohBuf, binary.LittleEndian, ohChecksum)
+	thrower.ThrowIfError(err)
 	
-	hw.buf.Write(ohBuf.Bytes())
+	_, err = hw.buf.Write(ohBuf.Bytes())
+	thrower.ThrowIfError(err)
 }
 
 func (hw *HDF5Writer) writeData(val interface{}) {
@@ -257,10 +276,12 @@ func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 	}
 	if rv.Kind() == reflect.String {
 		str := rv.String()
-		hw.buf.Write([]byte(str))
+		_, err := hw.buf.Write([]byte(str))
+		thrower.ThrowIfError(err)
 		// Pad to fixedLen
 		for i := len(str); i < fixedLen; i++ {
-			hw.buf.WriteByte(0)
+			err = hw.buf.WriteByte(0)
+			thrower.ThrowIfError(err)
 		}
 		return
 	}
@@ -288,12 +309,14 @@ func getDimensionsRecursive(rv reflect.Value) []uint64 {
 	return nil
 }
 
-func (hw *HDF5Writer) AddAttributes(attrs api.AttributeMap) error {
+func (hw *HDF5Writer) AddAttributes(attrs api.AttributeMap) (err error) {
+	defer thrower.RecoverError(&err)
 	hw.root.attributes = attrs
 	return nil
 }
 
-func (hw *HDF5Writer) AddVar(name string, vr api.Variable) error {
+func (hw *HDF5Writer) AddVar(name string, vr api.Variable) (err error) {
+	defer thrower.RecoverError(&err)
 	hw.root.vars[name] = &h5Var{
 		name:       name,
 		val:        vr.Values,
@@ -303,7 +326,8 @@ func (hw *HDF5Writer) AddVar(name string, vr api.Variable) error {
 	return nil
 }
 
-func (hw *HDF5Writer) CreateGroup(name string) (api.Writer, error) {
+func (hw *HDF5Writer) CreateGroup(name string) (w api.Writer, err error) {
+	defer thrower.RecoverError(&err)
 	if g, ok := hw.root.groups[name]; ok {
 		return &groupWriter{hw: hw, group: g}, nil
 	}
@@ -325,12 +349,14 @@ func (gw *groupWriter) Close() error {
 	return nil
 }
 
-func (gw *groupWriter) AddAttributes(attrs api.AttributeMap) error {
+func (gw *groupWriter) AddAttributes(attrs api.AttributeMap) (err error) {
+	defer thrower.RecoverError(&err)
 	gw.group.attributes = attrs
 	return nil
 }
 
-func (gw *groupWriter) AddVar(name string, vr api.Variable) error {
+func (gw *groupWriter) AddVar(name string, vr api.Variable) (err error) {
+	defer thrower.RecoverError(&err)
 	gw.group.vars[name] = &h5Var{
 		name:       name,
 		val:        vr.Values,
@@ -340,7 +366,8 @@ func (gw *groupWriter) AddVar(name string, vr api.Variable) error {
 	return nil
 }
 
-func (gw *groupWriter) CreateGroup(name string) (api.Writer, error) {
+func (gw *groupWriter) CreateGroup(name string) (w api.Writer, err error) {
+	defer thrower.RecoverError(&err)
 	if g, ok := gw.group.groups[name]; ok {
 		return &groupWriter{hw: gw.hw, group: g}, nil
 	}

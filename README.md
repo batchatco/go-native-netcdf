@@ -165,7 +165,7 @@ import (
 )
 
 func main() {
-    // Create a new CDF file (or netcdf.KindHDF5 for NetCDF4)
+    // Create a new CDF file (use netcdf.KindHDF5 for HDF5)
     cw, err := netcdf.OpenWriter("newdata.nc", netcdf.KindCDF)
     if err != nil {
         panic(err)
@@ -192,6 +192,8 @@ func main() {
     group, err := cw.CreateGroup("raw")
     if err == nil {
         group.AddVar("latitude", variable)
+    } else {
+        fmt.Println("CDF cannot create groups")
     }
 
     // Close will write out the data and close the file
@@ -216,7 +218,7 @@ The HDF5 code has been optimized for performance, especially when using the slic
 APIs (`GetSlice` and `GetSliceMD`). These APIs only read the required data from disk, making
 it possible to work with very large datasets that can otherwise exceed available memory.
 
-The implementation is pure Go and has good test coverage. 
+The implementation is pure Go and has good test coverage.
 
 This implementation focuses on supporting NetCDF4 only. While it uses HDF5 as the
 underlying format for NetCDF4, it does not aim to support every feature or exotic
@@ -224,14 +226,13 @@ data type available in the full HDF5 specification that is not typically used in
 NetCDF4 files.
 
 ### HDF5 Writer Storage
-The native HDF5 writer currently stores all data using **contiguous** storage. 
-Advanced HDF5 features such as **chunking**, **deflate (compression)**, **shuffle**, and **Fletcher32** are not yet supported for writing.
+The native HDF5 writer currently stores all data using **contiguous** storage.
+Advanced HDF5 features such as **chunking**, **deflate (compression)**, **shuffle**, and **Fletcher32** are not supported for writing.
+The utility *h5repack* can be used if these features are important to you.
 
-
-Benchmarks (both using this library and the official NetCDF C API) have shown that 
-contiguous storage performs just as well as uncompressed chunked storage for common 
-NetCDF access patterns. The primary advantage of chunking is enabling compression, 
-which may be implemented in a future release.
+Benchmarks (both using this library and the official NetCDF C API) have shown that
+contiguous storage performs just as well as uncompressed chunked storage for common
+NetCDF access patterns. Though, your mileage may vary.
 
 If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically,
 the *ncdump* and *ncgen* commands. You will also need the HDF5 package, and specifically the

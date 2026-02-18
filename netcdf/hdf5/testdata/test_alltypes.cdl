@@ -1,0 +1,127 @@
+netcdf test_alltypes {
+dimensions:
+  x = 3 ;
+  y = 4 ;
+  z = 2 ;
+  single = 1 ;
+
+variables:
+  // All integer types - scalars
+  byte scalar_i8 ;
+  ubyte scalar_u8 ;
+  short scalar_i16 ;
+  ushort scalar_u16 ;
+  int scalar_i32 ;
+  uint scalar_u32 ;
+  int64 scalar_i64 ;
+  uint64 scalar_u64 ;
+  float scalar_f32 ;
+  double scalar_f64 ;
+  string scalar_str ;
+
+  // 1D arrays of each type
+  byte arr1d_i8(x) ;
+  ubyte arr1d_u8(x) ;
+  short arr1d_i16(x) ;
+  ushort arr1d_u16(x) ;
+  int arr1d_i32(x) ;
+  uint arr1d_u32(x) ;
+  int64 arr1d_i64(x) ;
+  uint64 arr1d_u64(x) ;
+  float arr1d_f32(x) ;
+  double arr1d_f64(x) ;
+  string arr1d_str(x) ;
+
+  // 2D arrays
+  byte arr2d_i8(x, y) ;
+  short arr2d_i16(x, y) ;
+  int arr2d_i32(x, y) ;
+  float arr2d_f32(x, y) ;
+  double arr2d_f64(x, y) ;
+  string arr2d_str(x, y) ;
+
+  // 3D array
+  int arr3d_i32(z, x, y) ;
+
+  // Variables sharing dimensions
+  float temp(x, y) ;
+    temp:units = "kelvin" ;
+    temp:long_name = "temperature" ;
+  float pressure(y) ;
+    pressure:units = "hPa" ;
+  int station_id(x) ;
+    station_id:long_name = "station identifier" ;
+
+// global attributes:
+  :title = "comprehensive type test" ;
+  :history = "created for HDF5 writer validation" ;
+  :version = 42 ;
+
+data:
+  scalar_i8 = -100 ;
+  scalar_u8 = 200 ;
+  scalar_i16 = -30000 ;
+  scalar_u16 = 60000 ;
+  scalar_i32 = -2000000000 ;
+  scalar_u32 = 4000000000 ;
+  scalar_i64 = -9000000000000 ;
+  scalar_u64 = 18000000000000 ;
+  scalar_f32 = 3.14159 ;
+  scalar_f64 = 2.718281828459045 ;
+  scalar_str = "hello world" ;
+
+  arr1d_i8 = -1, 0, 1 ;
+  arr1d_u8 = 0, 128, 255 ;
+  arr1d_i16 = -32768, 0, 32767 ;
+  arr1d_u16 = 0, 32768, 65535 ;
+  arr1d_i32 = -2147483648, 0, 2147483647 ;
+  arr1d_u32 = 0, 2147483648, 4294967295 ;
+  arr1d_i64 = -9223372036854775808, 0, 9223372036854775807 ;
+  arr1d_u64 = 0, 9223372036854775808, 18446744073709551615 ;
+  arr1d_f32 = -1.5, 0.0, 1.5 ;
+  arr1d_f64 = -1.23456789012345, 0.0, 1.23456789012345 ;
+  arr1d_str = "alpha", "beta", "gamma" ;
+
+  arr2d_i8 =
+    -10, -20, -30, -40,
+    10, 20, 30, 40,
+    -1, 0, 1, 2 ;
+
+  arr2d_i16 =
+    -1000, -2000, -3000, -4000,
+    1000, 2000, 3000, 4000,
+    -100, 0, 100, 200 ;
+
+  arr2d_i32 =
+    -100000, -200000, -300000, -400000,
+    100000, 200000, 300000, 400000,
+    -10000, 0, 10000, 20000 ;
+
+  arr2d_f32 =
+    1.1, 2.2, 3.3, 4.4,
+    5.5, 6.6, 7.7, 8.8,
+    9.9, 10.1, 11.11, 12.12 ;
+
+  arr2d_f64 =
+    1.111111111, 2.222222222, 3.333333333, 4.444444444,
+    5.555555555, 6.666666666, 7.777777777, 8.888888888,
+    9.999999999, 10.10101010, 11.11111111, 12.12121212 ;
+
+  arr2d_str =
+    "aa", "bb", "cc", "dd",
+    "ee", "ff", "gg", "hh",
+    "ii", "jj", "kk", "ll" ;
+
+  arr3d_i32 =
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 ;
+
+  temp =
+    293.15, 294.25, 295.35, 296.45,
+    283.15, 284.25, 285.35, 286.45,
+    273.15, 274.25, 275.35, 276.45 ;
+
+  pressure = 1013.25, 850.0, 500.0, 250.0 ;
+
+  station_id = 101, 202, 303 ;
+}

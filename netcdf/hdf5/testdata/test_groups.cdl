@@ -1,0 +1,62 @@
+netcdf test_groups {
+dimensions:
+  x = 3 ;
+
+variables:
+  int root_var(x) ;
+    root_var:description = "root level variable" ;
+
+// global attributes:
+  :title = "group hierarchy test" ;
+
+data:
+  root_var = 1, 2, 3 ;
+
+  group: surface {
+    dimensions:
+      station = 4 ;
+
+    variables:
+      float temperature(station) ;
+        temperature:units = "celsius" ;
+      float humidity(station) ;
+        humidity:units = "percent" ;
+
+    // group attributes
+      :description = "surface observations" ;
+
+    data:
+      temperature = 20.5, 22.3, 18.1, 25.7 ;
+      humidity = 65.0, 70.2, 80.5, 55.3 ;
+
+    group: metadata {
+      dimensions:
+        nchar = 2 ;
+
+      variables:
+        int station_id(nchar) ;
+          station_id:long_name = "station identifier" ;
+
+      data:
+        station_id = 1001, 1002 ;
+    }
+  }
+
+  group: upper_air {
+    dimensions:
+      level = 5 ;
+
+    variables:
+      double pressure(level) ;
+        pressure:units = "hPa" ;
+      double height(level) ;
+        height:units = "meters" ;
+
+    // group attributes
+      :description = "upper air soundings" ;
+
+    data:
+      pressure = 1013.25, 850.0, 700.0, 500.0, 300.0 ;
+      height = 0.0, 1500.0, 3000.0, 5500.0, 9000.0 ;
+  }
+}

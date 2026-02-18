@@ -3,6 +3,7 @@ package hdf5
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -18,6 +19,7 @@ type h5Var struct {
 	dimensions []string
 	attributes api.AttributeMap
 	addr       uint64
+	isDimScale bool
 }
 
 type h5Group struct {
@@ -35,11 +37,12 @@ type h5GlobalHeap struct {
 }
 
 type HDF5Writer struct {
-	file   *os.File
-	buf    *bytes.Buffer
-	root   *h5Group
-	heap   *h5GlobalHeap
-	closed bool
+	file     *os.File
+	buf      *bytes.Buffer
+	root     *h5Group
+	heap     *h5GlobalHeap
+	closed   bool
+	dimAddrs map[string]uint64 // dimension name → dim scale variable OH address
 }
 
 func (hw *HDF5Writer) Close() (err error) {
@@ -49,34 +52,37 @@ func (hw *HDF5Writer) Close() (err error) {
 	}
 	hw.closed = true
 
+	// 0. Add NetCDF4 metadata
+	hw.addNCProperties()
+	hw.createDimensionScales(hw.root)
+	hw.dimAddrs = make(map[string]uint64)
+
 	// 1. Write Superblock V2 (48 bytes)
 	hw.writeSuperblockV2()
 
-	// 1.5 Collect and write global heap if needed
+	// 2. Write dimension scale variable data and OHs first,
+	//    so we know their addresses for DIMENSION_LIST references.
+	hw.writeDimScaleContents(hw.root)
+
+	// 3. Collect strings and dimension references, then write global heap
 	hw.heap = &h5GlobalHeap{indices: make(map[string]uint32)}
 	hw.collectStrings(hw.root)
+	hw.collectDimReferences(hw.root)
 	if len(hw.heap.objects) > 0 {
 		hw.writeGlobalHeap()
 	}
 
-	// 2. Write variables and subgroups recursively
+	// 4. Write data variables and subgroups
 	hw.writeGroupContents(hw.root)
 
-	// 3. Write Root Group OH V2
+	// 5. Write Root Group OH V2
 	rootAddr := uint64(hw.buf.Len())
 	hw.writeGroupObjectHeaderV2(hw.root)
 
-	// 4. Finalize Superblock
+	// 6. Finalize Superblock
 	eofAddr := uint64(hw.buf.Len())
 	data := hw.buf.Bytes()
 
-	// Superblock V2 offsets:
-	// Magic (8), Version (1), Offsets Size (1), Lengths Size (1), Flags (1) = 12 bytes
-	// Base Address (8): 12-19
-	// SB Extension (8): 20-27
-	// EOF Address (8): 28-35
-	// Root OH Address (8): 36-43
-	// Checksum (4): 44-47
 	binary.LittleEndian.PutUint64(data[28:], eofAddr)
 	binary.LittleEndian.PutUint64(data[36:], rootAddr)
 
@@ -91,20 +97,184 @@ func (hw *HDF5Writer) Close() (err error) {
 	return err
 }
 
+// addNCProperties adds the _NCProperties hidden attribute to the root group.
+func (hw *HDF5Writer) addNCProperties() {
+	const ncpValue = "version=2,github.com/batchatco/go-native-netcdf=1.0"
+	keys := hw.root.attributes.Keys()
+	keys = append(keys, ncpKey)
+	vals := make(map[string]any)
+	for _, k := range hw.root.attributes.Keys() {
+		v, _ := hw.root.attributes.Get(k)
+		vals[k] = v
+	}
+	vals[ncpKey] = ncpValue
+	hw.root.attributes, _ = util.NewOrderedMap(keys, vals)
+}
+
+// createDimensionScales collects all unique dimensions from variables
+// and creates dimension scale variables for each one.
+func (hw *HDF5Writer) createDimensionScales(g *h5Group) {
+	type dimInfo struct {
+		name string
+		size uint64
+	}
+	// Collect unique dimensions in order
+	seen := make(map[string]bool)
+	var dims []dimInfo
+
+	var collectDims func(grp *h5Group)
+	collectDims = func(grp *h5Group) {
+		var names []string
+		for name := range grp.vars {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		for _, name := range names {
+			v := grp.vars[name]
+			if v.isDimScale {
+				continue
+			}
+			shape := hw.getDimensions(v.val)
+			for i, dname := range v.dimensions {
+				if dname == "" || seen[dname] {
+					continue
+				}
+				seen[dname] = true
+				var size uint64
+				if i < len(shape) {
+					size = shape[i]
+				}
+				dims = append(dims, dimInfo{dname, size})
+			}
+		}
+		var groupNames []string
+		for name := range grp.groups {
+			groupNames = append(groupNames, name)
+		}
+		slices.Sort(groupNames)
+		for _, name := range groupNames {
+			collectDims(grp.groups[name])
+		}
+	}
+	collectDims(g)
+
+	// Create or promote dimension scale variables.
+	// If a variable already exists with the same name as a dimension
+	// (a "coordinate variable"), promote it to a dimension scale by
+	// adding the required attributes. Otherwise create a synthetic one.
+	for i, d := range dims {
+		if existing, ok := g.vars[d.name]; ok && !existing.isDimScale {
+			// Promote existing coordinate variable to dimension scale
+			existing.isDimScale = true
+			// Prepend CLASS, NAME, _Netcdf4Dimid to existing attributes
+			nameVal := fmt.Sprintf("%s", d.name)
+			keys := []string{"CLASS", "NAME", "_Netcdf4Dimid"}
+			vals := map[string]any{
+				"CLASS":         "DIMENSION_SCALE",
+				"NAME":          nameVal,
+				"_Netcdf4Dimid": int32(i),
+			}
+			if existing.attributes != nil {
+				for _, k := range existing.attributes.Keys() {
+					v, _ := existing.attributes.Get(k)
+					keys = append(keys, k)
+					vals[k] = v
+				}
+			}
+			existing.attributes, _ = util.NewOrderedMap(keys, vals)
+		} else {
+			// Create synthetic dimension scale variable
+			nameVal := fmt.Sprintf("This is a netCDF dimension but not a netCDF variable.%10d", d.size)
+			dimAttrs, _ := util.NewOrderedMap(
+				[]string{"CLASS", "NAME", "_Netcdf4Dimid"},
+				map[string]any{
+					"CLASS":         "DIMENSION_SCALE",
+					"NAME":          nameVal,
+					"_Netcdf4Dimid": int32(i),
+				},
+			)
+			g.vars[d.name] = &h5Var{
+				name:       d.name,
+				val:        make([]int8, d.size),
+				dimensions: []string{d.name},
+				attributes: dimAttrs,
+				isDimScale: true,
+			}
+		}
+	}
+}
+
+// writeDimScaleContents writes dimension scale variables' data and OHs.
+func (hw *HDF5Writer) writeDimScaleContents(g *h5Group) {
+	var dimNames []string
+	for name, v := range g.vars {
+		if v.isDimScale {
+			dimNames = append(dimNames, name)
+		}
+	}
+	slices.Sort(dimNames)
+	for _, name := range dimNames {
+		v := g.vars[name]
+		dataAddr := uint64(hw.buf.Len())
+		dataSize := hw.writeData(v.val)
+
+		v.addr = uint64(hw.buf.Len())
+		hw.writeVarObjectHeaderV2(v, dataAddr, dataSize)
+		hw.dimAddrs[name] = v.addr
+	}
+
+	// Recurse into subgroups
+	for _, sub := range g.groups {
+		hw.writeDimScaleContents(sub)
+	}
+}
+
+// collectDimReferences adds global heap entries for dimension references
+// needed by DIMENSION_LIST attributes.
+func (hw *HDF5Writer) collectDimReferences(g *h5Group) {
+	for _, v := range g.vars {
+		if v.isDimScale {
+			continue
+		}
+		for _, dname := range v.dimensions {
+			if dname == "" {
+				continue
+			}
+			if _, ok := hw.heap.indices["__dimref:"+dname]; ok {
+				continue
+			}
+			addr, ok := hw.dimAddrs[dname]
+			if !ok {
+				continue
+			}
+			// Store the 8-byte object reference in the global heap
+			ref := make([]byte, 8)
+			binary.LittleEndian.PutUint64(ref, addr)
+			hw.heap.objects = append(hw.heap.objects, ref)
+			hw.heap.indices["__dimref:"+dname] = uint32(len(hw.heap.objects))
+		}
+	}
+	for _, sub := range g.groups {
+		hw.collectDimReferences(sub)
+	}
+}
+
 func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
 	// Write children's data and object headers first
+	// (Dimension scale variables were already written in writeDimScaleContents)
 
-	// Variables
+	// Data variables (skip dimension scales)
 	var varNames []string
-	for name := range g.vars {
-		varNames = append(varNames, name)
+	for name, v := range g.vars {
+		if !v.isDimScale {
+			varNames = append(varNames, name)
+		}
 	}
 	slices.Sort(varNames)
 	for _, name := range varNames {
 		v := g.vars[name]
 		dataAddr := uint64(hw.buf.Len())
-		hw.writeData(v.val)
-		dataSize := uint64(hw.buf.Len()) - dataAddr
+		dataSize := hw.writeData(v.val)
 
 		v.addr = uint64(hw.buf.Len())
 		hw.writeVarObjectHeaderV2(v, dataAddr, dataSize)
@@ -200,6 +370,14 @@ func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize
 		}
 	}
 
+	// Add DIMENSION_LIST attribute for data variables (not dim scales)
+	if !v.isDimScale && len(v.dimensions) > 0 && hw.heap != nil {
+		dimListMsg := hw.buildDimensionListAttribute(v.dimensions)
+		if dimListMsg != nil {
+			messages = append(messages, *dimListMsg)
+		}
+	}
+
 	hw.writeObjectHeaderV2(messages)
 }
 
@@ -273,7 +451,9 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 	util.MustWriteLE(ohBuf, ohChecksum)
 	util.MustWriteRaw(hw.buf, ohBuf.Bytes())
 }
-func (hw *HDF5Writer) writeData(val any) {
+// writeData writes variable data to the buffer and returns the logical
+// data size (before alignment padding).
+func (hw *HDF5Writer) writeData(val any) uint64 {
 	rv := reflect.ValueOf(val)
 	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
@@ -285,10 +465,13 @@ func (hw *HDF5Writer) writeData(val any) {
 			fixedLen++ // include null terminator
 		}
 	}
+	start := hw.buf.Len()
 	hw.writeDataRecursive(rv, fixedLen)
+	dataSize := uint64(hw.buf.Len() - start)
 	for (hw.buf.Len() % 8) != 0 {
 		util.MustWriteByte(hw.buf, 0)
 	}
+	return dataSize
 }
 
 func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
@@ -384,6 +567,12 @@ func (hw *HDF5Writer) collectStringsRecursiveActual(rv reflect.Value) {
 
 func (hw *HDF5Writer) writeGlobalHeap() {
 	gh := hw.heap
+
+	// Align to 8 bytes so that objects within the collection are
+	// properly aligned when using absolute buffer position for padding.
+	for (hw.buf.Len() % 8) != 0 {
+		util.MustWriteByte(hw.buf, 0)
+	}
 	gh.addr = uint64(hw.buf.Len())
 
 	// Collection Header
@@ -406,10 +595,30 @@ func (hw *HDF5Writer) writeGlobalHeap() {
 		}
 	}
 
+	// The HDF5 library requires global heap collections to be at least
+	// 4096 bytes (H5HG_MINSIZE). Pad with free space to meet this minimum.
+	// The free space entry (index 0) size field includes its own 16-byte
+	// header — it represents the total remaining bytes from the start of
+	// the entry to the end of the collection.
+	const minGCOLSize = 4096
+	currentSize := hw.buf.Len() - int(gh.addr)
+	totalSize := currentSize + 16 // at least room for the free space header
+	if totalSize < minGCOLSize {
+		totalSize = minGCOLSize
+	}
+	freeEntrySize := totalSize - currentSize // includes the 16-byte header
+	util.MustWriteLE(hw.buf, uint16(0))               // index 0 = free space
+	util.MustWriteLE(hw.buf, uint16(0))               // ref count
+	util.MustWriteLE(hw.buf, uint32(0))               // reserved
+	util.MustWriteLE(hw.buf, uint64(freeEntrySize))   // total free space (incl header)
+	for range freeEntrySize - 16 {
+		util.MustWriteByte(hw.buf, 0)
+	}
+
 	// Final size
-	totalSize := uint64(hw.buf.Len()) - gh.addr
+	finalSize := uint64(hw.buf.Len()) - gh.addr
 	data := hw.buf.Bytes()
-	binary.LittleEndian.PutUint64(data[sizeAddr:], totalSize)
+	binary.LittleEndian.PutUint64(data[sizeAddr:], finalSize)
 }
 
 func (hw *HDF5Writer) getDimensions(val any) []uint64 {

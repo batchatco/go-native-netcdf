@@ -223,6 +223,76 @@ func (hw *HDF5Writer) buildVLenStringDatatype() []byte {
 	return buf.Bytes()
 }
 
+func buildReferenceDatatype() []byte {
+	buf := new(bytes.Buffer)
+	util.MustWriteByte(buf, 0x17) // version 1, class 7 (reference)
+	util.MustWriteByte(buf, 0x00) // object reference (type 0)
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteLE(buf, uint32(8)) // 8 bytes for object reference
+	return buf.Bytes()
+}
+
+func buildVLenReferenceDatatype() []byte {
+	buf := new(bytes.Buffer)
+	util.MustWriteByte(buf, 0x19) // version 1, class 9 (vlen)
+	util.MustWriteByte(buf, 0x00) // type=0 (sequence), padding=0, cset=0
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteLE(buf, uint32(16)) // vlen descriptor size: uint32 + uint64 + uint32
+	util.MustWriteRaw(buf, buildReferenceDatatype())
+	return buf.Bytes()
+}
+
+// buildDimensionListAttribute builds the DIMENSION_LIST attribute message
+// for a variable with the given dimension names.
+func (hw *HDF5Writer) buildDimensionListAttribute(dimNames []string) *h5Message {
+	// Check that all dimensions have addresses and heap entries
+	for _, dname := range dimNames {
+		if dname == "" {
+			return nil
+		}
+		if _, ok := hw.dimAddrs[dname]; !ok {
+			return nil
+		}
+	}
+
+	buf := new(bytes.Buffer)
+	util.MustWriteByte(buf, 1) // version
+	util.MustWriteByte(buf, 0) // reserved
+
+	nameBytes := append([]byte("DIMENSION_LIST"), 0)
+	util.MustWriteLE(buf, uint16(len(nameBytes)))
+
+	dtMsg := buildVLenReferenceDatatype()
+	util.MustWriteLE(buf, uint16(len(dtMsg)))
+
+	dsMsg := buildDataspaceMessage([]uint64{uint64(len(dimNames))})
+	util.MustWriteLE(buf, uint16(len(dsMsg)))
+
+	writePadded := func(b []byte) {
+		util.MustWriteRaw(buf, b)
+		for (buf.Len() % 8) != 0 {
+			util.MustWriteByte(buf, 0)
+		}
+	}
+
+	writePadded(nameBytes)
+	writePadded(dtMsg)
+	writePadded(dsMsg)
+
+	// Write VLEN descriptors: for each dimension, one reference
+	for _, dname := range dimNames {
+		heapIdx := hw.heap.indices["__dimref:"+dname]
+		util.MustWriteLE(buf, uint32(1))       // length: 1 reference
+		util.MustWriteLE(buf, hw.heap.addr)    // global heap address
+		util.MustWriteLE(buf, heapIdx)         // global heap object index
+	}
+
+	msg := h5Message{mType: 12, data: buf.Bytes()}
+	return &msg
+}
+
 func findMaxLen(rv reflect.Value, maxLen *int) {
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
 		for i := range rv.Len() {

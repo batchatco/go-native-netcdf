@@ -1,0 +1,54 @@
+netcdf test_strings {
+dimensions:
+  x = 3 ;
+  y = 2 ;
+
+variables:
+  // Scalar string
+  string single_str ;
+
+  // 1D string array
+  string names(x) ;
+    names:long_name = "station names" ;
+
+  // 2D string array
+  string grid_labels(x, y) ;
+
+  // Variable with string attribute
+  int data_var(x) ;
+    data_var:description = "a data variable with string attributes" ;
+    data_var:source = "synthetic test data" ;
+
+  // Empty string test
+  string empty_str ;
+
+  // Long string test
+  string long_str ;
+
+  // String with special characters (but safe for CDL)
+  string special_str ;
+
+// global attributes:
+  :title = "string handling test" ;
+  :institution = "Test Lab" ;
+  :conventions = "CF-1.8" ;
+  :multi_line_note = "line one; line two; line three" ;
+
+data:
+  single_str = "standalone string value" ;
+
+  names = "Station Alpha", "Station Beta", "Station Gamma" ;
+
+  grid_labels =
+    "NW", "NE",
+    "W",  "E",
+    "SW", "SE" ;
+
+  data_var = 100, 200, 300 ;
+
+  empty_str = "" ;
+
+  long_str = "This is a much longer string that tests the handling of strings that exceed the typical short string length used in most netCDF files." ;
+
+  special_str = "tabs\tand\tnewlines" ;
+}

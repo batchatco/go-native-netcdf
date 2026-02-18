@@ -1,0 +1,68 @@
+netcdf test_fillvalues {
+dimensions:
+  x = 3 ;
+  y = 2 ;
+
+variables:
+  // Variables with explicit fill values
+  byte i8_fill(x) ;
+    i8_fill:_FillValue = -99b ;
+  ubyte u8_fill(x) ;
+    u8_fill:_FillValue = 255ub ;
+  short i16_fill(x) ;
+    i16_fill:_FillValue = -9999s ;
+  ushort u16_fill(x) ;
+    u16_fill:_FillValue = 65534us ;
+  int i32_fill(x) ;
+    i32_fill:_FillValue = -999999 ;
+  uint u32_fill(x) ;
+    u32_fill:_FillValue = 4294967294u ;
+  int64 i64_fill(x) ;
+    i64_fill:_FillValue = -999999999999 ;
+  uint64 u64_fill(x) ;
+    u64_fill:_FillValue = 18446744073709551614 ;
+  float f32_fill(x) ;
+    f32_fill:_FillValue = -999.0f ;
+  double f64_fill(x) ;
+    f64_fill:_FillValue = -9999.0 ;
+
+  // 2D with fill value
+  double matrix(x, y) ;
+    matrix:_FillValue = -1.0e30 ;
+    matrix:units = "meters" ;
+    matrix:long_name = "height matrix" ;
+
+  // Multiple attributes of different types
+  int multi_attr(x) ;
+    multi_attr:int_attr = 42 ;
+    multi_attr:float_attr = 3.14f ;
+    multi_attr:double_attr = 2.71828 ;
+    multi_attr:string_attr = "test attribute" ;
+    multi_attr:byte_attr = 7b ;
+    multi_attr:short_attr = 1000s ;
+
+// global attributes:
+  :title = "fill value test file" ;
+  :int_global = 100 ;
+  :float_global = 1.5f ;
+  :double_global = 2.5 ;
+
+data:
+  i8_fill = -10, 20, -30 ;
+  u8_fill = 10, 128, 200 ;
+  i16_fill = -1000, 0, 1000 ;
+  u16_fill = 100, 32768, 60000 ;
+  i32_fill = -100000, 0, 100000 ;
+  u32_fill = 100000, 2000000000, 4000000000 ;
+  i64_fill = -1000000000000, 0, 1000000000000 ;
+  u64_fill = 1000000000000, 9000000000000000000, 18000000000000000000 ;
+  f32_fill = -1.5, 0.0, 1.5 ;
+  f64_fill = -1.23456789, 0.0, 1.23456789 ;
+
+  matrix =
+    1.0, 2.0,
+    3.0, 4.0,
+    5.0, 6.0 ;
+
+  multi_attr = 10, 20, 30 ;
+}

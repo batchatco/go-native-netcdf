@@ -125,7 +125,7 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 
 	// Value
 	rv := reflect.ValueOf(val)
-	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
 	}
 	maxLen := 0
@@ -171,7 +171,7 @@ func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.
 func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
 	rv := reflect.ValueOf(val)
 	t := rv.Type()
-	for t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
@@ -201,7 +201,7 @@ func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
 			return hw.buildVLenStringDatatype()
 		}
 		maxLen := 0
-		for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
 			rv = rv.Elem()
 		}
 		findMaxLen(rv, &maxLen)

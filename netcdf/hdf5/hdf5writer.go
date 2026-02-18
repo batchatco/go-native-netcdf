@@ -461,7 +461,7 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 // data size (before alignment padding).
 func (hw *HDF5Writer) writeData(val any) uint64 {
 	rv := reflect.ValueOf(val)
-	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
 	}
 	fixedLen := 0
@@ -510,7 +510,7 @@ func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 
 func (hw *HDF5Writer) shouldUseVLen(rv reflect.Value) bool {
 	t := rv.Type()
-	for t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.String {
@@ -518,7 +518,7 @@ func (hw *HDF5Writer) shouldUseVLen(rv reflect.Value) bool {
 	}
 	// Heuristic: if it's a slice or array of strings, use vlen.
 	// If it's a single string, use fixed-length (for compatibility and simplicity).
-	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
 	}
 	return rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array
@@ -553,7 +553,7 @@ func (hw *HDF5Writer) collectStringsRecursive(rv reflect.Value) {
 }
 
 func (hw *HDF5Writer) collectStringsRecursiveActual(rv reflect.Value) {
-	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
 	}
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
@@ -629,7 +629,7 @@ func (hw *HDF5Writer) writeGlobalHeap() {
 
 func (hw *HDF5Writer) getDimensions(val any) []uint64 {
 	rv := reflect.ValueOf(val)
-	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
 	}
 	return getDimensionsRecursive(rv)

@@ -127,6 +127,11 @@ func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
 func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 	var messages []h5Message
 
+	// Link Info Message (type 2) - required for the HDF5 library to
+	// recognize this object header as a new-style group.
+	// Use compact storage (links stored directly in OH).
+	messages = append(messages, hw.buildLinkInfoMessage())
+
 	// Group Info Message (type 10)
 	messages = append(messages, h5Message{mType: 10, data: []byte{0, 0}})
 
@@ -198,6 +203,15 @@ func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize
 	hw.writeObjectHeaderV2(messages)
 }
 
+func (hw *HDF5Writer) buildLinkInfoMessage() h5Message {
+	buf := new(bytes.Buffer)
+	util.MustWriteByte(buf, 0)                      // version
+	util.MustWriteByte(buf, 0)                      // flags (no creation order tracking)
+	util.MustWriteLE(buf, uint64(invalidAddress))   // fractal heap address (undefined = compact)
+	util.MustWriteLE(buf, uint64(invalidAddress))   // name index v2 B-tree address (undefined = compact)
+	return h5Message{mType: 2, data: buf.Bytes()}
+}
+
 func (hw *HDF5Writer) buildLinkMessage(name string, addr uint64) h5Message {
 	buf := new(bytes.Buffer)
 	util.MustWriteByte(buf, 1) // version
@@ -232,9 +246,25 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 		util.MustWriteRaw(msgBuf, m.data)
 	}
 
-	// Pad the entire message block to 8 bytes
-	for (msgBuf.Len() % 8) != 0 {
-		util.MustWriteByte(msgBuf, 0) // Type 0 (NIL message) would be better, but padding is just zeros
+	// Pad the message block to 8 bytes using a proper null message.
+	// The HDF5 spec requires that any unused space >= 4 bytes in a
+	// chunk be a proper null message (type 0). Space < 4 bytes is a
+	// "gap" which is only valid if preceded by a null message.
+	remainder := msgBuf.Len() % 8
+	if remainder != 0 {
+		pad := 8 - remainder
+		if pad < 4 {
+			// Not enough room for a null message header alone,
+			// so extend to 8 more bytes to fit a null message.
+			pad += 8
+		}
+		// Write a null message (type 0) with data size = pad - 4
+		util.MustWriteByte(msgBuf, 0)                      // type 0 (nil)
+		util.MustWriteLE(msgBuf, uint16(pad-4))            // data size
+		util.MustWriteByte(msgBuf, 0)                      // flags
+		for range pad - 4 {
+			util.MustWriteByte(msgBuf, 0) // null data
+		}
 	}
 
 	util.MustWriteLE(ohBuf, uint32(msgBuf.Len()))

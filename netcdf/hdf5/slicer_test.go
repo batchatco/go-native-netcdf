@@ -43,7 +43,7 @@ func TestSlicer(t *testing.T) {
 	}
 	baseType := slicer.Type()
 	// Grab slices of various sizes (including 0 and 4) and see if they match expected.
-	for sliceSize := 0; sliceSize <= 4; sliceSize++ {
+	for sliceSize := range 5 {
 		for i := range 4 - sliceSize {
 			slice, err := slicer.GetSlice(int64(i), int64(i+sliceSize))
 			if err != nil {

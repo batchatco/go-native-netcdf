@@ -950,11 +950,7 @@ func OpenWriter(fileName string) (api.Writer, error) {
 		return nil, err
 	}
 	bf := bufio.NewWriter(file)
-	globalAttrs, err := util.NewOrderedMap(
-		[]string{ncpKey},
-		map[string]any{
-			ncpKey: "version=2,github.com/batchatco/go-native-netcdf=1.0",
-		})
+	globalAttrs, err := util.NewOrderedMap(nil, nil)
 	thrower.ThrowIfError(err)
 	cw := &CDFWriter{
 		file:        file,

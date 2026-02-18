@@ -7,17 +7,39 @@ import (
 	"testing"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
+	"github.com/batchatco/go-native-netcdf/netcdf/util"
 )
 
 const (
 	ncdumpBinary = "ncdump"
 )
 
+// filterAttributes removes underscore-prefixed names from the attribute map,
+// as they are reserved for system use and not allowed for users.
+func filterAttributes(am api.AttributeMap) api.AttributeMap {
+	if am == nil {
+		return nil
+	}
+	keys := []string{}
+	values := map[string]any{}
+	for _, k := range am.Keys() {
+		if strings.HasPrefix(k, "_") {
+			continue
+		}
+		val, _ := am.Get(k)
+		keys = append(keys, k)
+		values[k] = val
+	}
+	res, _ := util.NewOrderedMap(keys, values)
+	return res
+}
+
 // copyGroup recursively copies variables, attributes, and subgroups
 // from a reader group to a writer group.
 func copyGroup(t *testing.T, r api.Group, w api.Writer) {
 	t.Helper()
 	attrs := r.Attributes()
+	attrs = filterAttributes(attrs)
 	if attrs != nil && len(attrs.Keys()) > 0 {
 		err := w.AddAttributes(attrs)
 		if err != nil {
@@ -33,7 +55,7 @@ func copyGroup(t *testing.T, r api.Group, w api.Writer) {
 		err = w.AddVar(name, api.Variable{
 			Values:     vr.Values,
 			Dimensions: vr.Dimensions,
-			Attributes: vr.Attributes,
+			Attributes: filterAttributes(vr.Attributes),
 		})
 		if err != nil {
 			t.Fatalf("AddVar(%s): %v", name, err)

@@ -831,9 +831,9 @@ func TestFill(t *testing.T) {
 	for i, v := range fills {
 		val := reflect.ValueOf(v.val.Values)
 		om, err := util.NewOrderedMap(
-			[]string{"_FillValue"},
+			[]string{"TestFill"},
 			map[string]any{
-				"_FillValue": val.Index(0).Interface()})
+				"TestFill": val.Index(0).Interface()})
 		if err != nil {
 			t.Error(err)
 			return
@@ -1183,7 +1183,7 @@ func TestReservedName(t *testing.T) {
 		}
 	}
 	// Underscore-prefixed names are system-reserved attributes,
-	// so they are allowed as attribute names.
+	// and they are NOT allowed from users.
 	for _, name := range invalidNames {
 		attrs, err := util.NewOrderedMap([]string{name},
 			map[string]any{
@@ -1194,8 +1194,8 @@ func TestReservedName(t *testing.T) {
 			return
 		}
 		err = cw.AddAttributes(attrs)
-		if err != nil {
-			t.Errorf("System attribute name %q should be allowed: %v", name, err)
+		if err == nil {
+			t.Errorf("System attribute name %q should be rejected", name)
 			return
 		}
 	}

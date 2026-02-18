@@ -3,14 +3,20 @@ package hdf5
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"slices"
 
+	"github.com/batchatco/go-native-netcdf/internal"
 	"github.com/batchatco/go-native-netcdf/netcdf/api"
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
+)
+
+var (
+	ErrInvalidName = errors.New("invalid name")
 )
 
 type h5Var struct {
@@ -648,11 +654,20 @@ func getDimensionsRecursive(rv reflect.Value) []uint64 {
 }
 
 func (hw *HDF5Writer) AddAttributes(attrs api.AttributeMap) error {
+	if !hasValidNames(attrs) {
+		return ErrInvalidName
+	}
 	hw.root.attributes = attrs
 	return nil
 }
 
 func (hw *HDF5Writer) AddVar(name string, vr api.Variable) error {
+	if !internal.IsValidNetCDFName(name) {
+		return ErrInvalidName
+	}
+	if !hasValidNames(vr.Attributes) {
+		return ErrInvalidName
+	}
 	hw.root.vars[name] = &h5Var{
 		name:       name,
 		val:        vr.Values,
@@ -663,6 +678,9 @@ func (hw *HDF5Writer) AddVar(name string, vr api.Variable) error {
 }
 
 func (hw *HDF5Writer) CreateGroup(name string) (api.Writer, error) {
+	if !internal.IsValidNetCDFName(name) {
+		return nil, ErrInvalidName
+	}
 	if g, ok := hw.root.groups[name]; ok {
 		return &groupWriter{hw: hw, group: g}, nil
 	}
@@ -685,11 +703,20 @@ func (gw *groupWriter) Close() error {
 }
 
 func (gw *groupWriter) AddAttributes(attrs api.AttributeMap) error {
+	if !hasValidNames(attrs) {
+		return ErrInvalidName
+	}
 	gw.group.attributes = attrs
 	return nil
 }
 
 func (gw *groupWriter) AddVar(name string, vr api.Variable) error {
+	if !internal.IsValidNetCDFName(name) {
+		return ErrInvalidName
+	}
+	if !hasValidNames(vr.Attributes) {
+		return ErrInvalidName
+	}
 	gw.group.vars[name] = &h5Var{
 		name:       name,
 		val:        vr.Values,
@@ -700,6 +727,9 @@ func (gw *groupWriter) AddVar(name string, vr api.Variable) error {
 }
 
 func (gw *groupWriter) CreateGroup(name string) (api.Writer, error) {
+	if !internal.IsValidNetCDFName(name) {
+		return nil, ErrInvalidName
+	}
 	if g, ok := gw.group.groups[name]; ok {
 		return &groupWriter{hw: gw.hw, group: g}, nil
 	}
@@ -710,6 +740,18 @@ func (gw *groupWriter) CreateGroup(name string) (api.Writer, error) {
 	}
 	gw.group.groups[name] = g
 	return &groupWriter{hw: gw.hw, group: g}, nil
+}
+
+func hasValidNames(am api.AttributeMap) bool {
+	if am == nil {
+		return true
+	}
+	for _, key := range am.Keys() {
+		if !internal.IsValidNetCDFName(key) {
+			return false
+		}
+	}
+	return true
 }
 
 func OpenWriter(fileName string) (api.Writer, error) {

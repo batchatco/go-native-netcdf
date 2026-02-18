@@ -36,6 +36,12 @@ type h5GlobalHeap struct {
 	indices map[string]uint32
 }
 
+type h5Message struct {
+	mType uint16
+	data  []byte
+	flags uint8
+}
+
 type HDF5Writer struct {
 	file     *os.File
 	buf      *bytes.Buffer
@@ -723,10 +729,4 @@ func OpenWriter(fileName string) (api.Writer, error) {
 		},
 	}
 	return hw, nil
-}
-
-type h5Message struct {
-	mType uint16
-	data  []byte
-	flags uint8
 }

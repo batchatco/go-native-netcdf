@@ -14,7 +14,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"path"
 	"reflect"
 	"sort"
 	"strconv"
@@ -230,6 +229,8 @@ type HDF5 struct {
 	sharedAttrs   map[uint64]*attribute
 	registrations map[string]any
 	addrs         map[uint64]bool
+	heapCache     map[uint64]map[uint32][]byte // cache for global heap object lookups
+	addrToName    map[uint64]string            // lazy cache: object address → name
 }
 
 type linkInfo struct {
@@ -1242,40 +1243,56 @@ func checkVal(expected, actual any, comment string) {
 }
 
 func (h5 *HDF5) readGlobalHeap(heapAddress uint64, index uint32) (remReader, uint64) {
-	bf := h5.newSeek(heapAddress, 16) // adjust size later
+	// Return from cache on subsequent calls to the same heap collection.
+	if cache, ok := h5.heapCache[heapAddress]; ok {
+		if data, ok := cache[index]; ok {
+			return newResetReaderFromBytes(data), uint64(len(data))
+		}
+		return nil, 0
+	}
+
+	// First visit: parse the entire collection and cache every object.
+	cache := make(map[uint32][]byte)
+	h5.heapCache[heapAddress] = cache
+
+	bf := h5.newSeek(heapAddress, 16) // header is 16 bytes
 	checkMagic(bf, 4, "GCOL")
 	version := read8(bf)
 	checkVal(1, version, "version")
 	checkZeroes(bf, 3)
-	csize := read64(bf) // collection size, including these fields
+	csize := read64(bf) // collection size including these 16 header bytes
 	csize -= 16
 	bf = h5.newSeek(heapAddress+uint64(bf.Count()), int64(csize))
 	for csize >= 16 {
 		hoi := read16(bf) // heap object index
-		rc := read16(bf)  // reference count
+		// Index 0 is the free-space sentinel whose osize covers the header itself,
+		// so reading it would trip the osize<=csize assertion.  No valid data
+		// object ever has index 0, so we stop here.
+		if hoi == 0 {
+			break
+		}
+		rc := read16(bf) // reference count
 		checkVal(0, rc, "refcount")
 		zero := read32(bf) // reserved
 		checkVal(0, zero, "zero")
-		osize := read64(bf) // object size)
+		osize := read64(bf) // object size
 		csize -= 16
 		assert(osize <= csize, "object size invalid")
 		if osize > 0 {
-			// adjust size
-			// round up to 8-byte boundary
-			asize := (osize + 7) & ^uint64(0x7)
+			asize := (osize + 7) & ^uint64(0x7) // round up to 8-byte boundary
 			assert(asize <= csize, "adjusted size too big")
 			csize -= asize
-			if hoi == uint16(index) {
-				return newResetReader(bf, int64(osize)), osize
+			b := make([]byte, osize)
+			read(bf, b)
+			cache[uint32(hoi)] = b
+			if rem := asize - osize; rem > 0 {
+				skip(bf, int64(rem))
 			}
-			skip(bf, int64(osize))
-			l := osize
-			if l > 8 {
-				l = 8
-			}
-			rem := asize - osize
-			skip(bf, int64(rem))
 		}
+	}
+
+	if data, ok := cache[index]; ok {
+		return newResetReaderFromBytes(data), uint64(len(data))
 	}
 	return nil, 0
 }
@@ -2548,6 +2565,7 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		sharedAttrs:   make(map[uint64]*attribute),
 		registrations: make(map[string]any),
 		addrs:         make(map[uint64]bool),
+		heapCache:     make(map[uint64]map[uint32][]byte),
 	}
 	h5.readSuperblock()
 	assert(h5.rootAddr != invalidAddress, "No root address")
@@ -3023,32 +3041,47 @@ func (h5 *HDF5) hasAddr(addr uint64) bool {
 	return h5.addrs[addr]
 }
 
+// objectKind holds the results of scanning an object's NetCDF4 metadata attributes.
+type objectKind struct {
+	hasClass       bool // CLASS attribute present
+	hasName        bool // NAME attribute present with a non-dimension-marker value
+	hasCoordinates bool // _Netcdf4Coordinates attribute present
+}
+
+// classifyObject scans attrlist for the three NetCDF4 metadata attributes that
+// distinguish dimension scales, coordinate variables, and regular variables.
+// String attribute values are set immediately during parsing, so this is safe to
+// call before sortAttrList.
+func classifyObject(attrlist []*attribute) objectKind {
+	var k objectKind
+	for _, a := range attrlist {
+		switch a.name {
+		case "CLASS":
+			k.hasClass = true
+		case "NAME":
+			if v, ok := a.value.(string); ok && !strings.HasPrefix(v, "This is a netCDF dimension") {
+				k.hasName = true
+			}
+		case "_Netcdf4Coordinates":
+			k.hasCoordinates = true
+		}
+	}
+	return k
+}
+
+// isDimensionScale returns true for pure dimension scales: objects that carry the
+// CLASS attribute but are not also coordinate variables (hasCoordinates or hasName).
+func (k objectKind) isDimensionScale() bool {
+	return k.hasClass && !k.hasCoordinates && !k.hasName
+}
+
 func (h5 *HDF5) findVariable(varName string) *object {
 	obj, has := h5.groupObject.children[varName]
 	if !has {
 		return nil
 	}
 	logger.Info("Found variable", varName, "group", h5.groupName, "child=", obj.name)
-	hasClass := false
-	hasCoordinates := false
-	hasName := false
-	for _, a := range obj.attrlist {
-		switch a.name {
-		case "CLASS":
-			hasClass = true
-		case "NAME":
-			nameValue := a.value.(string)
-			if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
-				logger.Info("found name", nameValue)
-				hasName = true
-			}
-		case "_Netcdf4Coordinates":
-			logger.Info("Found _Netcdf4Coordinates")
-			hasCoordinates = true
-		}
-	}
-	if hasClass && !hasCoordinates && !hasName {
-		logger.Info("doesn't have name")
+	if classifyObject(obj.attrlist).isDimensionScale() {
 		return nil
 	}
 	if obj.objAttr.dimensions == nil {
@@ -3167,25 +3200,7 @@ func (h5 *HDF5) ListTypes() []string {
 		if obj.isGroup {
 			continue
 		}
-		hasClass := false
-		hasCoordinates := false
-		hasName := false
-		for _, a := range obj.attrlist {
-			switch a.name {
-			case "CLASS":
-				hasClass = true
-			case "NAME":
-				nameValue := a.value.(string)
-				if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
-					logger.Info("found name", nameValue)
-					hasName = true
-				}
-			case "_Netcdf4Coordinates":
-				logger.Info("Found _Netcdf4Coordinates")
-				hasCoordinates = true
-			}
-		}
-		if hasClass && !hasCoordinates && !hasName {
+		if classifyObject(obj.attrlist).isDimensionScale() {
 			continue
 		}
 		if obj.objAttr.dimensions != nil {
@@ -3205,25 +3220,8 @@ func (h5 *HDF5) ListDimensions() []string {
 		if obj.isGroup {
 			continue
 		}
-		hasClass := false
-		hasCoordinates := false
-		hasName := false
-		for _, a := range obj.attrlist {
-			switch a.name {
-			case "CLASS":
-				hasClass = true
-			case "NAME":
-				nameValue := a.value.(string)
-				if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
-					logger.Info("found name", nameValue)
-					hasName = true
-				}
-			case "_Netcdf4Coordinates":
-				logger.Info("Found _Netcdf4Coordinates")
-				hasCoordinates = true
-			}
-		}
-		if hasClass && (hasName || !hasCoordinates) {
+		k := classifyObject(obj.attrlist)
+		if k.hasClass && (k.hasName || !k.hasCoordinates) {
 			ret = append(ret, obj.name)
 		}
 	}
@@ -3237,28 +3235,9 @@ func (h5 *HDF5) GetDimension(name string) (uint64, bool) {
 		if obj.isGroup {
 			continue
 		}
-		hasClass := false
-		hasCoordinates := false
-		hasName := false
-		for _, a := range obj.attrlist {
-			switch a.name {
-			case "CLASS":
-				hasClass = true
-			case "NAME":
-				nameValue := a.value.(string)
-				if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
-					logger.Info("found name", nameValue)
-					hasName = true
-				}
-			case "_Netcdf4Coordinates":
-				logger.Info("Found _Netcdf4Coordinates")
-				hasCoordinates = true
-			}
-		}
-		if hasClass && (hasName || !hasCoordinates) {
-			if obj.name == name {
-				return obj.objAttr.dimensions[0], true
-			}
+		k := classifyObject(obj.attrlist)
+		if k.hasClass && (k.hasName || !k.hasCoordinates) && obj.name == name {
+			return obj.objAttr.dimensions[0], true
 		}
 	}
 	return 0, false
@@ -3269,31 +3248,10 @@ func (h5 *HDF5) findSignature(signature string, name string, origNames map[strin
 		return ""
 	}
 	for varName, obj := range h5.groupObject.children {
-		if obj.isGroup {
+		if obj.isGroup || origNames[varName] {
 			continue
 		}
-		if origNames[varName] {
-			continue
-		}
-		hasClass := false
-		hasCoordinates := false
-		hasName := false
-		for _, a := range obj.attrlist {
-			switch a.name {
-			case "CLASS":
-				hasClass = true
-			case "NAME":
-				nameValue := a.value.(string)
-				if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
-					logger.Info("found name", nameValue)
-					hasName = true
-				}
-			case "_Netcdf4Coordinates":
-				logger.Info("Found _Netcdf4Coordinates")
-				hasCoordinates = true
-			}
-		}
-		if hasClass && !hasCoordinates && !hasName {
+		if classifyObject(obj.attrlist).isDimensionScale() {
 			continue
 		}
 		if obj.objAttr.dimensions != nil {
@@ -3385,23 +3343,24 @@ func undoScalarAttribute(value any) any {
 	return v.Interface()
 }
 
-// TODO: make this smarter by finding the group first
-func findDim(obj *object, oaddr uint64, group string) string {
-	prefix := ""
-	if len(group) > 0 {
-		prefix = group + "/"
+// addrIndex builds and caches a flat map from every object's address to its name.
+// This replaces the previous recursive findDim which did an O(N) tree traversal
+// for each dimension lookup; with the map, each lookup is O(1) after one O(N) build.
+func (h5 *HDF5) addrIndex() map[uint64]string {
+	if h5.addrToName != nil {
+		return h5.addrToName
 	}
-	for _, o := range obj.children {
-		if o.addr == oaddr {
-			logger.Info("dim found", o.name)
-			return prefix + o.name
-		}
-		dim := findDim(o, oaddr, prefix+o.name)
-		if dim != "" {
-			return dim
+	m := make(map[uint64]string)
+	var walk func(*object)
+	walk = func(obj *object) {
+		m[obj.addr] = obj.name
+		for _, child := range obj.children {
+			walk(child)
 		}
 	}
-	return ""
+	walk(h5.rootObject)
+	h5.addrToName = m
+	return m
 }
 
 func (h5 *HDF5) getDimensions(obj *object) []string {
@@ -3415,17 +3374,15 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 		}
 		logger.Infof("DIMENSION_LIST=%T 0x%x", a.value, a.value)
 		varLen := a.value.([][]uint64)
+		addrToName := h5.addrIndex()
 		for _, v := range varLen {
 			for i, addr := range v {
 				// Each dimension in the dimension list points to an object address in the global heap
 				// TODO: fix this hack to get full 64-bit addresses
 				logger.Infof("dimension list %d 0x%x)", i, addr)
-				oaddr := uint64(addr)
-
-				dim := findDim(h5.rootObject, oaddr, "")
-				if dim != "" {
-					base := path.Base(dim)
-					dimNames = append(dimNames, base)
+				if name := addrToName[addr]; name != "" {
+					logger.Info("dim found", name)
+					dimNames = append(dimNames, name)
 				}
 			}
 		}
@@ -3645,34 +3602,10 @@ func (h5 *HDF5) ListVariables() []string {
 		children := obj.sortChildren()
 		for _, o := range children {
 			if group == h5.groupName && o.name != "" {
-				hasClass := false
-				hasCoordinates := false
-				hasName := false
-				for _, a := range o.attrlist {
-					switch a.name {
-					case "CLASS":
-						hasClass = true
-					case "NAME":
-						nameValue := a.value.(string)
-						if !strings.HasPrefix(nameValue, "This is a netCDF dimension") {
-							logger.Info("found name", nameValue)
-							hasName = true
-						}
-					case "_Netcdf4Coordinates":
-						logger.Info("Found _Netcdf4Coordinates")
-						hasCoordinates = true
-					}
-					if hasClass && !hasCoordinates && !hasName {
-						logger.Info("skip because", o.name, "is a dimension=", o.objAttr.dimensions)
-						continue
-					}
+				if h5.findVariable(o.name) != nil {
+					logger.Info("append", o.name)
+					ret = append(ret, o.name)
 				}
-				found := h5.findVariable(o.name)
-				if found == nil {
-					continue
-				}
-				logger.Info("append", o.name)
-				ret = append(ret, o.name)
 				continue
 			}
 			descend(o, group+o.name+"/")

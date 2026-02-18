@@ -173,7 +173,7 @@ func (hw *HDF5Writer) createDimensionScales(g *h5Group) {
 			// Promote existing coordinate variable to dimension scale
 			existing.isDimScale = true
 			// Prepend CLASS, NAME, _Netcdf4Dimid to existing attributes
-			nameVal := fmt.Sprintf("%s", d.name)
+			nameVal := d.name
 			keys := []string{"CLASS", "NAME", "_Netcdf4Dimid"}
 			vals := map[string]any{
 				"CLASS":         "DIMENSION_SCALE",

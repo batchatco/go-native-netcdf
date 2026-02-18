@@ -56,7 +56,8 @@ func (floatingPointManagerType) alloc(hr heapReader, c caster, bf io.Reader, att
 	return values // already converted
 }
 
-func (floatingPointManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {
+func (floatingPointManagerType) defaultFillValue(obj *object, _ []byte, undefinedFillValue bool) []byte {
+	var objFillValue []byte
 	switch obj.objAttr.length {
 	case 4:
 		var fv float32

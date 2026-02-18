@@ -57,11 +57,6 @@ func fail(msg string) {
 	failError(ErrInternal, msg)
 }
 
-// Warns with message
-func warn(msg string) {
-	logger.Warn(msg)
-}
-
 // Panics with specified error and message
 func failError(err error, msg string) {
 	logger.Error(msg)

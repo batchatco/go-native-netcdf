@@ -153,6 +153,15 @@ var myMap = map[string]any{
 	// 3-dimensional
 	"i23": i23,
 }
+// Reference fields that are intentionally present to define the type shape
+// tested in TestGoType, but are never read by name in other code.
+var (
+	_ = n.s
+	_ = n12[0].f
+	_ = i22.member
+	_ = i23.member
+)
+
 var om *OrderedMap
 
 func initMaps(t *testing.T) {

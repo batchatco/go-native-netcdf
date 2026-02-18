@@ -86,8 +86,6 @@ const (
 	typeReference
 	typeEnumerated
 	typeVariableLength
-	// 10
-	typeArray
 )
 
 // data type names
@@ -2603,14 +2601,6 @@ func makeSlices(ty reflect.Type, dimLengths []uint64) reflect.Value {
 	return reflect.MakeSlice(sliceType, int(dimLengths[0]), int(dimLengths[0]))
 }
 
-// Strings are already slices, so special case them
-func makeStringSlices(dimLengths []uint64) reflect.Value {
-	sliceType := reflect.TypeOf("")
-	for i := 1; i < len(dimLengths); i++ {
-		sliceType = reflect.SliceOf(sliceType)
-	}
-	return reflect.MakeSlice(sliceType, int(dimLengths[0]), int(dimLengths[0]))
-}
 
 func readAll(bf io.Reader, b []byte) (uint64, error) {
 	tot := uint64(0)
@@ -2735,7 +2725,7 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 				canSeek = false
 			case filterShuffle:
 				shuffleParam := uint32(0)
-				if f.cdv != nil && len(f.cdv) > 0 {
+				if len(f.cdv) > 0 {
 					shuffleParam = f.cdv[0]
 				}
 				bf = newUnshuffleReader(bf, targetSize[j], shuffleParam)

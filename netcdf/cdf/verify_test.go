@@ -3,7 +3,6 @@ package cdf
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,7 +13,7 @@ import (
 
 func getFiles(t *testing.T, path string, suffix string) map[string]bool {
 	names := make(map[string]bool)
-	files, err := ioutil.ReadDir(path)
+	files, err := os.ReadDir(path)
 	if err != nil {
 		t.Log("Error opening", path, err)
 		return nil
@@ -75,7 +74,7 @@ func ncDump(t *testing.T, fname string) (success bool) {
 		t.Log(err)
 		return false
 	}
-	errText, r := ioutil.ReadAll(stderr)
+	errText, r := io.ReadAll(stderr)
 	if r == nil {
 		if string(errText) != "" {
 			t.Log(string(errText))

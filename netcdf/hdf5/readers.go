@@ -40,7 +40,6 @@ type raFile struct {
 // resetreader takes a file and a size (or a byte array), and
 // returns a remReader for it.
 type resetReader struct {
-	remReader
 	lr    *io.LimitedReader
 	size  int64
 	bytes []byte

@@ -93,16 +93,6 @@ func hashInts(vals []uint32, nBytes uint32) uint32 {
 	return c
 }
 
-func fletcher32(vals []uint16) uint32 {
-	sum1 := uint32(0)
-	sum2 := uint32(0)
-	for _, v := range vals {
-		sum1 = (sum1 + uint32(v)) % 65535
-		sum2 = (sum2 + sum1) % 65535
-	}
-	return (uint32(sum2) << 16) | uint32(sum1)
-}
-
 func checksum(data []byte) uint32 {
 	n := len(data)
 	a := uint32(0xdeadbeef + n)

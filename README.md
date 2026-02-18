@@ -234,9 +234,13 @@ Benchmarks (both using this library and the official NetCDF C API) have shown th
 contiguous storage performs just as well as uncompressed chunked storage for common
 NetCDF access patterns. Though, your mileage may vary.
 
-If you want to run the HDF5 unit tests, you will need *netcdf* installed and specifically,
-the *ncdump* and *ncgen* commands. You will also need the HDF5 package, and specifically the
-*h5dump* and *h5repack* commands. These are both available as an Ubuntu packages.
+If you want to run the HDF5 unit tests, you will need the *netcdf* package (for *ncgen*
+and *ncdump*) and the HDF5 tools package (for *h5dump* and *h5repack*). Both are available
+as Ubuntu packages.
+
+*ncgen* generates NetCDF4 test files from CDL templates. The writer roundtrip tests use
+*ncdump* to verify that written files are valid NetCDF4, *h5dump* to check HDF5 structural
+validity, and *h5repack* to roundtrip files through the HDF5 C library.
 
 ```console
 $ sudo apt-get install netcdf-bin

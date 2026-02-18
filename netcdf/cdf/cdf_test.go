@@ -1192,8 +1192,8 @@ func TestInvalidName(t *testing.T) {
 	}
 }
 
-func TestReservedWord(t *testing.T) {
-	fileName := "testdata/testreservedword.nc"
+func TestReservedName(t *testing.T) {
+	fileName := "testdata/testreservedname.nc"
 	_ = os.Remove(fileName)
 	cw, err := OpenWriter(fileName)
 	defer os.Remove(fileName)
@@ -1202,65 +1202,55 @@ func TestReservedWord(t *testing.T) {
 		return
 	}
 	defer closeCW(t, &cw, fileName) // okay to call this twice, sets cw to nil
-	reservedWords := []string{
-		"byte", "ubyte",
-		"char", "string",
-		"short", "ushort",
-		"int", "uint",
-		"int64", "uint64",
-		"float", "double",
+
+	// Names starting with underscore are reserved for system use
+	invalidNames := []string{
+		"_reserved",
+		"_FillValue",
 	}
-	reservedVals := []any{
-		int8(0), uint8(0),
-		"c", "s",
-		int16(0), uint16(0),
-		int32(0), uint32(0),
-		int64(0), uint64(0),
-		float32(0), float64(0),
-	}
-	// invalid variable name
-	for i, word := range reservedWords {
-		err = cw.AddVar(word, api.Variable{
-			Values:     reservedVals[i],
+	// Invalid variable name
+	for _, name := range invalidNames {
+		err = cw.AddVar(name, api.Variable{
+			Values:     int32(0),
 			Dimensions: nil,
 			Attributes: nil})
 		if err != ErrInvalidName {
-			t.Error("Invalid name not detected", err)
+			t.Errorf("Invalid variable name %q not detected: %v", name, err)
 			return
 		}
 	}
-	// Invalid local attribute name
-	for i, word := range reservedWords {
-		attrs, err := util.NewOrderedMap([]string{word},
+	// Underscore-prefixed names are system-reserved attributes,
+	// so they are allowed as attribute names.
+	for _, name := range invalidNames {
+		attrs, err := util.NewOrderedMap([]string{name},
 			map[string]any{
-				word: reservedVals[i],
+				name: int32(0),
 			})
 		if err != nil {
 			t.Error("Error creating attribute map", err)
 			return
 		}
-		err = cw.AddVar("valid", api.Variable{
-			Values:     []int32{222},
-			Dimensions: []string{"d1"},
-			Attributes: attrs})
-		if err != ErrInvalidName {
-			t.Error("Invalid name not detected", err)
-			return
-		}
-	}
-	for i, word := range reservedWords {
-		attrs, err := util.NewOrderedMap([]string{word},
-			map[string]any{
-				word: reservedVals[i],
-			})
-		if err != nil {
-			t.Error("Error creating attribute map", err)
-			return
-		}
-		// Invalid global attribute name
 		err = cw.AddAttributes(attrs)
-		if err != ErrInvalidName {
-			t.Error(err)
+		if err != nil {
+			t.Errorf("System attribute name %q should be allowed: %v", name, err)
+			return
+		}
+	}
+
+	// Type names are valid NetCDF names (only reserved in CDL syntax)
+	typeNames := []string{
+		"byte", "char", "string", "short", "int", "float", "double",
+	}
+	typeVals := []any{
+		int8(0), "c", "s", int16(0), int32(0), float32(0), float64(0),
+	}
+	for i, name := range typeNames {
+		err = cw.AddVar(name, api.Variable{
+			Values:     typeVals[i],
+			Dimensions: nil,
+			Attributes: nil})
+		if err != nil {
+			t.Errorf("Type name %q should be valid as variable name: %v", name, err)
 			return
 		}
 	}

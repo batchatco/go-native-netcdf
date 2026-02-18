@@ -4,11 +4,16 @@ import "testing"
 
 func TestGood(t *testing.T) {
 	var goodStrings = []string{
-		"_",
 		"a",
 		"1",
 		"0°",
 		"byter",
+		// Type names are valid NetCDF names (only reserved in CDL syntax)
+		"byte", "char", "string",
+		"short", "int", "int64",
+		"ushort", "uint", "uint64",
+		"float", "double",
+		"enum", "opaque", "compound",
 	}
 	for i := range goodStrings {
 		if !IsValidNetCDFName(goodStrings[i]) {
@@ -28,10 +33,10 @@ func TestBad(t *testing.T) {
 		"°",
 		"°C",
 		"\x08",
-		"byte", "char", "string",
-		"short", "int", "int64", "int64",
-		"ushort", "uint", "uint64", "uint64",
-		"float", "double",
+		// Names starting with underscore are reserved for system use
+		"_",
+		"_FillValue",
+		"_NCProperties",
 	}
 	for i := range badStrings {
 		if IsValidNetCDFName(badStrings[i]) {

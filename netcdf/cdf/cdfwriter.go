@@ -377,6 +377,12 @@ func hasValidNames(am api.AttributeMap) bool {
 		return true
 	}
 	for _, key := range am.Keys() {
+		// Skip underscore-prefixed names: they are system-reserved
+		// attributes (e.g. _FillValue) and not subject to user name
+		// validation.
+		if len(key) > 0 && key[0] == '_' {
+			continue
+		}
 		if !internal.IsValidNetCDFName(key) {
 			return false
 		}

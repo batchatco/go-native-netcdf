@@ -5,11 +5,12 @@ import (
 )
 
 const (
-	// A valid name must start with a letter, digit or underscore.
+	// A valid name must start with a letter or digit (not underscore,
+	// which is reserved for system use like _FillValue, _NCProperties).
 	// It may contain any character after that except control and slash.
-	pattern = `^[\pL\pN_][^\pC/]*$`
-	// It may not end with a whitespace character, or be a reserved word.
-	antiPattern = `(\pZ|^(u?byte|char|string|u?short|u?int|u?int64|uint64|float|double|enum|opaque|compound))$`
+	pattern = `^[\pL\pN][^\pC/]*$`
+	// It may not end with a whitespace character.
+	antiPattern = `\pZ$`
 )
 
 var (

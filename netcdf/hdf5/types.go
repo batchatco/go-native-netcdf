@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sync"
 
 	"github.com/batchatco/go-thrower"
 )
@@ -33,22 +34,25 @@ type sigHelper interface {
 type printerType func(class uint8, helper sigHelper, name string, attr *attribute,
 	origNames map[string]bool) string
 
-var dispatch = []typeManager{
-	// 0-4
-	fixedPointManager,
-	floatingPointManager,
-	timeManager,
-	stringManager,
-	unsupportedManager{typeBitField}, // bitfield
-	// 5-9
-	opaqueManager,
-	compoundManager,
-	referenceManager,
-	enumManager,
-	vlenManager,
-	// 10
-	arrayManager,
-}
+var (
+	warnOnce sync.Once
+	dispatch = []typeManager{
+		// 0-4
+		fixedPointManager,
+		floatingPointManager,
+		unsupportedManager{typeTime},
+		stringManager,
+		unsupportedManager{typeBitField}, // bitfield
+		// 5-9
+		opaqueManager,
+		compoundManager,
+		referenceManager,
+		enumManager,
+		vlenManager,
+		// 10
+		arrayManager,
+	}
+)
 
 type unsupportedManager struct {
 	class int
@@ -58,6 +62,13 @@ func (um unsupportedManager) parse(hr heapReader, c caster, attr *attribute, bit
 	switch um.class {
 	case typeBitField:
 		thrower.Throw(ErrBitfield)
+	case typeTime:
+		warnOnce.Do(func() {
+			logger.Warn("HDF5 time type is obsolete and ignored")
+		})
+		if d != nil {
+			skip(d, d.Rem())
+		}
 	default:
 		thrower.Throw(ErrUnsupportedDataTypeVersion)
 	}

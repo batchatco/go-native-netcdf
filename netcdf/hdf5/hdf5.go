@@ -49,8 +49,6 @@ const (
 // Constants for some specific things that don't seem to happen, and we don't need to unit test.
 // Kept around just in case.
 const (
-	// The time class appears to be obsolete.
-	parseTime = false
 	// The same with the creation order for indexed groups; it never appears in files.
 	parseCreationOrder = false
 	// Enums only ever seem to be ints, though the spec hints they don't have to be.

@@ -124,6 +124,8 @@ func printDatatype(hr heapReader, c caster, bf remReader, df remReader, objCount
 		logger.Info("Array-encoded datatype")
 	case dtversionPacked:
 		logger.Info("VAX and/or packed datatype")
+	case dtversionV4:
+		logger.Info("Version 4 datatype (superblock v3)")
 	default:
 		logger.Error(fmt.Sprint("Unknown datatype version: ", dtversion))
 		thrower.Throw(ErrUnsupportedDataTypeVersion)

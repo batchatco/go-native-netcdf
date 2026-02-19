@@ -41,6 +41,7 @@ const (
 	dtversionStandard = iota + 1 // not what the doc calls it
 	dtversionArray
 	dtversionPacked
+	dtversionV4 // undocumented; used when superblock v3 is enabled
 )
 
 // For disabling/enabling code
@@ -56,8 +57,8 @@ const (
 	floatEnums = false
 )
 
-// undocumented datatype version 4 is enabled with superblockV3
-const maxDTVersion byte = 3
+// dtversionV4 is used when superblock v3 (SOHM) is enabled
+const maxDTVersion byte = 4
 
 // The hidden attribute which identifies what software wrote the file out.
 const ncpKey = "_NCProperties"
@@ -180,7 +181,6 @@ type attribute struct {
 	children      []*attribute // for variable, compound, enums, vlen.
 	enumNames     []string
 	enumValues    []any
-	shared        bool   // if shared
 	length        uint32 // datatype length
 	layout        []uint64
 	dimensions    []uint64 // for compound
@@ -224,7 +224,6 @@ type HDF5 struct {
 	attribute     *linkInfo
 	rootObject    *object
 	groupObject   *object
-	sharedAttrs   map[uint64]*attribute
 	registrations map[string]any
 	addrs         map[uint64]bool
 	heapCache     map[uint64]map[uint32][]byte // cache for global heap object lookups
@@ -404,7 +403,7 @@ func (h5 *HDF5) readSuperblock() {
 		bf = h5.newSeek(uint64(bf.Count()), v0SBSize-bf.Count())
 	case 1:
 		bf = h5.newSeek(uint64(bf.Count()), v1SBSize-bf.Count())
-	case 2:
+	case 2, 3:
 		break
 	default:
 		thrower.Throw(ErrVersion)
@@ -515,8 +514,8 @@ func (h5 *HDF5) readSuperblock() {
 		h5.checkChecksum(0, 44)
 	}
 	if sbExtension != invalidAddress {
-		logger.Warn("superblock extension not supported")
-		thrower.Throw(ErrSuperblock)
+		extObj := newObject()
+		h5.readDataObjectHeader(extObj, sbExtension)
 	}
 }
 
@@ -588,20 +587,12 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 	logger.Infof("* attr version=%d", version)
 	assert(version >= 1 && version <= 3, "not an Attribute")
 	flags := read8(bf) // reserved in version 1
-	sharedType := false
-	sharedSpace := false
 	switch version {
 	case 1:
 		checkVal(0, flags, "reserved field must be zero")
 	case 2, 3:
-		if hasFlag8(flags, 0) {
-			logger.Info("shared datatype")
-			sharedType = true
-		}
-		if hasFlag8(flags, 1) {
-			// This flag never seems to be set
-			logger.Info("shared dataspace")
-			sharedSpace = true
+		if hasFlag8(flags, 0) || hasFlag8(flags, 1) {
+			assertError(false, ErrUnsupportedDataTypeVersion, "shared attribute types/dataspaces not supported")
 		}
 		logger.Infof("* attr flags=0x%x (%s)", flags, binaryToString(uint64(flags)))
 	}
@@ -639,94 +630,17 @@ func (h5 *HDF5) readAttribute(obj *object, obf io.Reader, creationOrder uint64) 
 			checkVal(0, z, "zero pad")
 		}
 	}
-	var dims []uint64
-	var count int64
-	if sharedSpace {
-		// This flag does't seem to ever get set.
-		checkVal(datatypeSize, 10, "datatype size must be 10 for shared")
-		sVersion := read8(bf)
-		sType := read8(bf)
-		addr := read64(bf)
-		logger.Infof("shared space version=%v type=%v addr=%x", sVersion, sType, addr)
-		fail("don't handle shared dataspaces")
-	} else {
-		dims, count = h5.readDataspace(newResetReader(bf, int64(dataspaceSize)))
-		if version == 1 {
-			padBytes(bf, 7)
-		}
-		logger.Info("dimensions were", attr.dimensions)
-		attr.dimensions = dims
-		logger.Info("dimensions are", dims)
-		logger.Info("count objects=", count)
+	dims, count := h5.readDataspace(newResetReader(bf, int64(dataspaceSize)))
+	if version == 1 {
+		padBytes(bf, 7)
 	}
+	logger.Info("dimensions are", dims)
+	logger.Info("count objects=", count)
+	attr.dimensions = dims
 	logger.Info("sizeRem=", bf.Rem())
-	if !sharedType {
-		pf := newResetReaderFromBytes(dtb)
-		printDatatype(h5, h5, pf, bf, count, attr)
-	} else {
-		checkVal(datatypeSize, 10, "datatype size must be 10 for shared")
-		bff := newResetReaderFromBytes(dtb)
-		sVersion := read8(bff)
-		sType := read8(bff)
-		logger.Infof("shared type version=%v type=%v", sVersion, sType)
-		switch sVersion {
-		case 0, 1: // 0 is also version 1
-
-			// Warn because this version has never been seen by this code
-			logger.Warn("version 1 shared message encountered")
-			checkVal(sType, 0, "type must be zero")
-			checkZeroes(bff, 6)
-		case 2:
-			// the type is supposed to be zero for version 2, but is sometimes 2
-			assert(sType == 0 || sType == 2, "type must be 0 or 2")
-		case 3:
-			// Warn because this version has never been seen by this code
-			// The code here may not be correct.
-			logger.Warn("version 3 shared message encountered")
-			switch sType {
-			case 0:
-				logger.Info("not actually shared")
-			case 1:
-				logger.Info("message in heap")
-			case 2:
-				logger.Info("messsage in an object")
-			case 3:
-				logger.Info("message not shared, but sharable")
-			default:
-				fail("Unimplemented shared message feature")
-			}
-		}
-		addr := read64(bff)
-		logger.Infof("shared type addr=0x%x", addr)
-		oa := h5.getSharedAttr(obj, addr)
-		oa.dimensions = dims
-		oa.name = name
-		attr = oa
-		if bf.Rem() > 0 {
-			oa.df = newResetReaderSave(bf, bf.Rem())
-		}
-	}
+	pf := newResetReaderFromBytes(dtb)
+	printDatatype(h5, h5, pf, bf, count, attr)
 	obj.attrlist = append(obj.attrlist, attr)
-}
-
-func (h5 *HDF5) getSharedAttr(obj *object, addr uint64) *attribute {
-	oa := h5.sharedAttrs[addr]
-	if oa == nil {
-		oa = obj.objAttr
-		h5.sharedAttrs[addr] = oa
-		h5.readDataObjectHeader(obj, addr)
-		oa.shared = true
-		if oa.df != nil {
-			oa.noDf = true // don't reparse
-		}
-		return oa
-	}
-	if oa.df == nil && !oa.noDf {
-		oa.noDf = true // avoids loop
-		h5.readDataObjectHeader(obj, addr)
-		oa.noDf = true // avoids loop
-	}
-	return oa
 }
 
 type doublerCallback func(obj *object, bnum uint64, offset uint64, length uint16,
@@ -2075,22 +1989,6 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		}
 		assert(uint64(size) <= (chunkSize-uint64(nReadSave)),
 			fmt.Sprint("too big: ", size, chunkSize, nReadSave))
-		if hasFlag8(hFlags, 1) {
-			// var d = make([]byte, size)
-			// read(bf, d)
-			f := newResetReader(bf, int64(size))
-			length := read16(f)
-			logger.Info("shared message length", length)
-			addr := read64(f)
-			logger.Infof("shared message addr = 0x%x", addr)
-			_ = h5.getSharedAttr(obj, addr)
-			checkZeroes(f, int(f.Rem()))
-
-			// TODO: we need to store addr and dtb somewhere, it will get used later
-			logger.Info("shared attr dtversion", obj.objAttr.dtversion)
-			// TODO: what else might we need to copy? dimensions?
-			continue
-		}
 		if version == 1 {
 			logger.Info("About to read v=", version)
 		}
@@ -2119,7 +2017,6 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			save := obj.objAttr.dimensions
 			noDf := obj.objAttr.noDf
 			obj.objAttr = h5.readDatatype(obj, f)
-			h5.sharedAttrs[obj.addr] = obj.objAttr
 			logger.Info("dimensions are", obj.objAttr.dimensions)
 			obj.objAttr.dimensions = save
 			obj.objAttr.noDf = noDf
@@ -2193,7 +2090,8 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 			logger.Infof("Old mod time %s-%s-%s %s:%s:%s", year, month, day, hour, minute, second)
 
 		case typeSharedMessageTable:
-			assertError(false, ErrSuperblock, "shared message table not handled")
+			skip(f, int64(size))
+			logger.Info("Shared message table (skipped)")
 
 		case typeObjectHeaderContinuation:
 			h5.readContinuation(obj, f, version, ohFlags)
@@ -2560,7 +2458,6 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		attribute:     nil,
 		rootObject:    nil,
 		groupObject:   nil,
-		sharedAttrs:   make(map[uint64]*attribute),
 		registrations: make(map[string]any),
 		addrs:         make(map[uint64]bool),
 		heapCache:     make(map[uint64]map[uint32][]byte),
@@ -3262,7 +3159,6 @@ func (h5 *HDF5) parseAttr(obj *object, a *attribute) {
 	if a.df != nil {
 		a.df = makeFillValueReader(obj, a.df, int64(calcAttrSize(a)))
 		logger.Infof("Reparsing attribute %s %s %p", a.name, typeNames[a.class], a)
-		assert(!a.shared, "shared attr unexpected here")
 		// very hacky
 		save := h5.registrations
 		switch a.name {

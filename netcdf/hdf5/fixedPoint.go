@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"math"
 	"reflect"
 
+	"github.com/batchatco/go-native-netcdf/internal"
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
 	"github.com/batchatco/go-thrower"
 )
@@ -79,26 +79,45 @@ func (fixedPointManagerType) defaultFillValue(obj *object, objFillValue []byte, 
 	switch obj.objAttr.length {
 	case 1:
 		if undefinedFillValue {
-			fv := math.MinInt8 + 1
-			objFillValue = []byte{byte(fv)}
+			if obj.objAttr.signed {
+				fv := int8(internal.FillByte)
+				objFillValue = []byte{byte(fv)}
+			} else {
+				objFillValue = []byte{internal.FillUByte}
+			}
 		}
 	case 2:
 		if undefinedFillValue {
-			fv := int16(math.MinInt16 + 1)
+			var fv any
+			if obj.objAttr.signed {
+				fv = internal.FillShort
+			} else {
+				fv = internal.FillUShort
+			}
 			var bb bytes.Buffer
 			util.MustWrite(&bb, obj.objAttr.endian, fv)
 			objFillValue = bb.Bytes()
 		}
 	case 4:
 		if undefinedFillValue {
-			fv := int32(math.MinInt32 + 1)
+			var fv any
+			if obj.objAttr.signed {
+				fv = internal.FillInt
+			} else {
+				fv = internal.FillUInt
+			}
 			var bb bytes.Buffer
 			util.MustWrite(&bb, obj.objAttr.endian, fv)
 			objFillValue = bb.Bytes()
 		}
 	case 8:
 		if undefinedFillValue {
-			fv := int64(math.MinInt64 + 1)
+			var fv any
+			if obj.objAttr.signed {
+				fv = internal.FillInt64
+			} else {
+				fv = internal.FillUInt64
+			}
 			var bb bytes.Buffer
 			util.MustWrite(&bb, obj.objAttr.endian, fv)
 			objFillValue = bb.Bytes()

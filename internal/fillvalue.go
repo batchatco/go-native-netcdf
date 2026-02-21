@@ -5,6 +5,23 @@ import (
 	"io"
 )
 
+const (
+	// NetCDF default fill values as defined in the NetCDF4 specification
+	FillByte   int8   = -127
+	FillChar   uint8  = 0
+	FillShort  int16  = -32767
+	FillInt    int32  = -2147483647
+	FillFloat  uint32 = 0x7cf00000
+	FillDouble uint64 = 0x479e000000000000
+
+	// NetCDF additions defined in the CDF-5 specification
+	FillUByte  uint8  = 255
+	FillUShort uint16 = 65535
+	FillUInt   uint32 = 4294967295
+	FillInt64  int64  = -9223372036854775806
+	FillUInt64 uint64 = 0xfffffffffffffffe
+)
+
 type FillValueReader struct {
 	repeat      []byte
 	repeatIndex int

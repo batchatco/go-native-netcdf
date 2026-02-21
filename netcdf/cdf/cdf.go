@@ -1183,79 +1183,102 @@ func makeFillValueReader(v variable, bf io.Reader) io.Reader {
 	var fillValue []byte
 	switch v.vType {
 	case typeFloat:
-		fv := math.Float32frombits(0x7cf00000)
+		var fv float32
 		if hasUserFV {
 			fv = userFV.(float32)
+		} else {
+			fv = math.Float32frombits(internal.FillFloat)
 		}
 		fillValue = makeFillValueFloat(fv)
 
 	case typeDouble:
-		fv := math.Float64frombits(0x479e000000000000)
+		var fv float64
 		if hasUserFV {
 			fv = userFV.(float64)
+		} else {
+			fv = math.Float64frombits(internal.FillDouble)
 		}
 		fillValue = makeFillValueDouble(fv)
 
 	case typeByte:
-		fv := byte(0x81)
+		var fv byte
 		if hasUserFV {
 			fv = byte(userFV.(int8))
+		} else {
+			fb := internal.FillByte
+			fv = byte(fb)
 		}
 		fillValue = []byte{fv}
 
 	case typeUByte:
-		fv := byte(0xff)
+		var fv byte
 		if hasUserFV {
 			fv = byte(userFV.(uint8))
+		} else {
+			fv = internal.FillUByte
 		}
 		fillValue = []byte{fv}
 
 	case typeShort:
-		fv := uint16(0x8001)
+		var fv int16
 		if hasUserFV {
-			fv = uint16(userFV.(int16))
+			fv = userFV.(int16)
+		} else {
+			fv = internal.FillShort
 		}
-		fillValue = makeFillValueShort(int16(fv))
+		fillValue = makeFillValueShort(fv)
 
 	case typeUShort:
-		fv := uint16(0xffff)
+		var fv uint16
 		if hasUserFV {
 			fv = userFV.(uint16)
+		} else {
+			fv = internal.FillUShort
 		}
 		fillValue = makeFillValueShort(int16(fv))
 
 	case typeInt:
-		fv := uint32(0x80000001)
+		var fv int32
 		if hasUserFV {
-			fv = uint32(userFV.(int32))
+			fv = userFV.(int32)
+		} else {
+			fv = int32(internal.FillInt)
 		}
-		fillValue = makeFillValueInt(int32(fv))
+		fillValue = makeFillValueInt(fv)
 
 	case typeUInt:
-		fv := uint32(0xffffffff)
+		var fv uint32
 		if hasUserFV {
 			fv = userFV.(uint32)
+		} else {
+			fv = internal.FillUInt
 		}
 		fillValue = makeFillValueInt(int32(fv))
 
 	case typeInt64:
-		fv := uint64(0x8000000000000002)
+		var fv int64
 		if hasUserFV {
-			fv = uint64(userFV.(int64))
+			fv = userFV.(int64)
+		} else {
+			fv = internal.FillInt64
 		}
-		fillValue = makeFillValueInt64(int64(fv))
+		fillValue = makeFillValueInt64(fv)
 
 	case typeUInt64:
-		fv := uint64(0xfffffffffffffffe)
+		var fv uint64
 		if hasUserFV {
 			fv = userFV.(uint64)
+		} else {
+			fv = internal.FillUInt64
 		}
 		fillValue = makeFillValueInt64(int64(fv))
 
 	case typeChar:
-		fv := byte(0x00)
+		var fv byte
 		if hasUserFV {
 			fv = userFV.(byte)
+		} else {
+			fv = byte(internal.FillChar)
 		}
 		fillValue = []byte{fv}
 

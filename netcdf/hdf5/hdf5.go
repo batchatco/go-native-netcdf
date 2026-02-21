@@ -66,9 +66,6 @@ const (
 	filterDeflate = iota + 1 // zlib
 	filterShuffle
 	filterFletcher32
-	filterSzip        // not supported
-	filterNbit        // not supported
-	filterScaleOffset // not supported
 )
 
 // data types
@@ -233,12 +230,10 @@ type linkInfo struct {
 	btreeAddress uint64
 	block        []uint64
 	iBlock             []uint64
-	heapIDLength       int
 	maxHeapSize        int
 	blockSize          uint64
 	tableWidth         uint16
-	maximumBlockSize   uint64
-	rowsRootIndirect   uint16
+	maximumBlockSize uint64
 }
 
 type object struct {
@@ -694,7 +689,7 @@ func (h5 *HDF5) doDoubling(obj *object, link *linkInfo, offset uint64, length ui
 	logger.Infof("Read indirect block 0x%x %d", blockToUse, blockSize)
 	nrows := log2(blockSize) - log2(link.blockSize*uint64(width)) + 1
 	logger.Info("calculated rows=", nrows, "blocksize=", blockSize)
-	h5.readRootBlock(&nextLink, blockToUse, 0, uint16(nrows))
+	h5.readRootBlock(&nextLink, blockToUse, uint16(nrows))
 
 	h5.readLinkData(obj, &nextLink, offset, length, creationOrder, callback)
 }
@@ -1044,7 +1039,7 @@ func log2(v uint64) int {
 	return r
 }
 
-func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, flags uint8, nrows uint16) {
+func (h5 *HDF5) readRootBlock(link *linkInfo, bta uint64, nrows uint16) {
 	width := link.tableWidth
 	startBlockSize := link.blockSize
 	maxBlockSize := link.maximumBlockSize
@@ -1211,7 +1206,6 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 	version := read8(bf)
 	logger.Info("fractal heap version=", version)
 	heapIDLen := read16(bf)
-	link.heapIDLength = int(heapIDLen)
 	logger.Info("heap ID length=", heapIDLen)
 	filterLen := read16(bf)
 	logger.Info("filter length=", filterLen)
@@ -1267,11 +1261,10 @@ func (h5 *HDF5) readHeap(link *linkInfo) {
 	logger.Infof("root block address=0x%x", rootBlockAddress)
 	rowsRootIndirect := read16(bf)
 	logger.Infof("rows in root indirect block=%d", rowsRootIndirect)
-	link.rowsRootIndirect = rowsRootIndirect
 	h5.checkChecksum(link.heapAddress, 142)
 	if rowsRootIndirect > 0 {
 		logger.Info("Reading indirect heap block")
-		h5.readRootBlock(link, rootBlockAddress, flags, rowsRootIndirect)
+		h5.readRootBlock(link, rootBlockAddress, rowsRootIndirect)
 	} else {
 		logger.Info("Adding direct heap block")
 		assert(link.block == nil, "don't overwrite direct heap block")
@@ -1874,7 +1867,7 @@ func (h5 *HDF5) readFillValue(bf io.Reader) []byte {
 	return b
 }
 
-func (h5 *HDF5) readDatatype(obj *object, bf io.Reader) *attribute {
+func (h5 *HDF5) readDatatype(bf io.Reader) *attribute {
 	size := bf.(remReader).Rem()
 	logger.Infof("going to read %v bytes", size)
 	logger.Info("print datatype with properties from chunk")
@@ -1990,7 +1983,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 
 			save := obj.objAttr.dimensions
 			noDf := obj.objAttr.noDf
-			obj.objAttr = h5.readDatatype(obj, f)
+			obj.objAttr = h5.readDatatype(f)
 			logger.Info("dimensions are", obj.objAttr.dimensions)
 			obj.objAttr.dimensions = save
 			obj.objAttr.noDf = noDf
@@ -2493,8 +2486,7 @@ func readAll(bf io.Reader, b []byte) (uint64, error) {
 	return tot, nil
 }
 
-func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
-	shuffleFound bool, shuffleParam uint32, fletcher32Found bool) remReader {
+func (h5 *HDF5) newRecordReader(obj *object) remReader {
 	nBlocks := len(obj.dataBlocks)
 	size := uint64(calcAttrSize(obj.objAttr))
 	if size == 0 {
@@ -2652,9 +2644,8 @@ func (h5 *HDF5) newRecordReader(obj *object, zlibFound bool, zlibParam uint32,
 	return newResetReader(io.MultiReader(readers...), int64(size))
 }
 
-func (h5 *HDF5) newMaybeLayoutRecordReader(obj *object, zlibFound bool, zlibParam uint32, shuffleFound bool, shuffleParam uint32, fletcher32Found bool) io.Reader {
-	r := h5.newRecordReader(obj, zlibFound, zlibParam, shuffleFound,
-		shuffleParam, fletcher32Found)
+func (h5 *HDF5) newMaybeLayoutRecordReader(obj *object) io.Reader {
+	r := h5.newRecordReader(obj)
 	if needsLayoutReader(obj.objAttr) {
 		return newLayoutReader(r, obj)
 	}
@@ -2713,34 +2704,9 @@ func makeFillValueReader(obj *object, bf io.Reader, length int64) remReader {
 }
 
 func (h5 *HDF5) getData(obj *object) any {
-	zlibFound := false
-	shuffleFound := false
-	fletcher32Found := false
-	var shuffleParam uint32
-	zlibParam := uint32(0)
-	for _, val := range obj.filters {
-		switch val.kind {
-		case filterDeflate:
-			zlibFound = true
-			if val.cdv != nil {
-				checkVal(1, len(val.cdv), "expected at most one zlib param")
-				zlibParam = val.cdv[0]
-			}
-		case filterShuffle:
-			shuffleFound = true
-			checkVal(1, len(val.cdv), "expected one shuffle param")
-			shuffleParam = val.cdv[0]
-
-		case filterFletcher32:
-			fletcher32Found = true
-		}
-	}
-	// TODO if !zlibFound && !shuffleFound && !fletcher32Found && isSlice {
-	// we can seek first to save time.  Otherwise, it is slow inefficent reading to get to the
-	// place we want (or some complicated algorithm).
 	attr := obj.objAttr
 	sz := calcAttrSize(obj.objAttr)
-	bf := h5.newMaybeLayoutRecordReader(obj, zlibFound, zlibParam, shuffleFound, shuffleParam, fletcher32Found)
+	bf := h5.newMaybeLayoutRecordReader(obj)
 	logger.Info("about to getdataattr rem=", bf.(remReader).Rem(), "size=", sz)
 	if int64(sz) > bf.(remReader).Rem() {
 		length := int64(sz) - bf.(remReader).Rem()

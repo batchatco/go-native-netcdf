@@ -46,7 +46,7 @@ data:
 		flag string
 	}{
 		{"NetCDF4", "-4"},
-		// {"NetCDF5", "-5"}, // ncgen -5 currently uses int32 for int64, skip until investigated
+		{"NetCDF5", "-5"},
 	}
 
 	for _, fmt := range formats {
@@ -59,13 +59,10 @@ data:
 				t.Fatal(err)
 			}
 
-			// Use ncgen to create the file
+			// Use ncgen to create the file.
 			cmd := exec.Command("ncgen", fmt.flag, "-o", ncPath, cdlPath)
 			if out, err := cmd.CombinedOutput(); err != nil {
-				// Some formats might not support all types (e.g. classic doesn't support ubyte/int64)
-				// We'll skip those errors for now or refine the CDL
-				t.Logf("ncgen skipped for format %s: %v\n%s", fmt.name, err, out)
-				return
+				t.Fatalf("ncgen failed for format %s: %v\n%s", fmt.name, err, out)
 			}
 
 			nc, err := Open(ncPath)
@@ -93,11 +90,13 @@ data:
 
 			for _, tc := range expected {
 				t.Run(tc.name, func(t *testing.T) {
+					if fmt.name == "NetCDF5" && tc.name == "i64" {
+						t.Skip("ncgen -5 incorrectly writes int64 as int32 (vType 4)")
+					}
+
 					v, err := nc.GetVariable(tc.name)
 					if err != nil {
-						// Classic might not have the variable if ncgen failed to create it
-						t.Skipf("Variable %s not present in format %s", tc.name, fmt.name)
-						return
+						t.Fatal(err)
 					}
 					
 					match := reflect.DeepEqual(v.Values, tc.want)
@@ -129,31 +128,10 @@ data:
 					}
 
 					if !match {
-						t.Errorf("Format %s, Variable %s: got %v (bits %x), want %v (bits %x)", 
-							fmt.name, tc.name, v.Values, getBits(v.Values), tc.want, getBits(tc.want))
-					} else if tc.name == "f" || tc.name == "d" {
-						t.Logf("Format %s, Variable %s: bits match (%x)", fmt.name, tc.name, getBits(v.Values))
+						t.Errorf("Format %s, Variable %s: got %v, want %v", fmt.name, tc.name, v.Values, tc.want)
 					}
 				})
 			}
 		})
 	}
-}
-
-func getBits(v any) any {
-	switch val := v.(type) {
-	case []float32:
-		res := make([]uint32, len(val))
-		for i := range val {
-			res[i] = math.Float32bits(val[i])
-		}
-		return res
-	case []float64:
-		res := make([]uint64, len(val))
-		for i := range val {
-			res[i] = math.Float64bits(val[i])
-		}
-		return res
-	}
-	return v
 }

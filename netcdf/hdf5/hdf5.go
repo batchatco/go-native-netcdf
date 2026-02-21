@@ -229,11 +229,9 @@ type HDF5 struct {
 }
 
 type linkInfo struct {
-	creationIndex      uint64
-	heapAddress        uint64
-	btreeAddress       uint64
-	creationOrderIndex uint64
-	block              []uint64
+	heapAddress  uint64
+	btreeAddress uint64
+	block        []uint64
 	iBlock             []uint64
 	heapIDLength       int
 	maxHeapSize        int
@@ -1439,30 +1437,19 @@ func (h5 *HDF5) readLinkInfo(bf io.Reader) *linkInfo {
 	logger.Info("link info version=", version)
 	flags := read8(bf)
 	logger.Infof("flags=%s", binaryToString(uint64(flags)))
-	ci := invalidAddress
 	if hasFlag8(flags, 0) {
-		ci = read64(bf)
-		logger.Infof("ci=%x", ci)
+		read64(bf) // max creation index, unused
 	}
 	fha := read64(bf)
 	logger.Infof("fda=0x%x", fha)
 	bta := read64(bf)
 	logger.Infof("bta=0x%x", bta)
-	coi := invalidAddress
 	if hasFlag8(flags, 1) {
-		coi = read64(bf)
-		logger.Infof("coi=0x%x", coi)
+		read64(bf) // creation order index, unused
 	}
 	return &linkInfo{
-		creationIndex:      ci,
-		heapAddress:        fha,
-		btreeAddress:       bta,
-		creationOrderIndex: coi,
-		block:              nil,
-		iBlock:             nil,
-		heapIDLength:       0,
-		maxHeapSize:        0,
-		blockSize:          0,
+		heapAddress:  fha,
+		btreeAddress: bta,
 	}
 }
 
@@ -1485,37 +1472,26 @@ func (h5 *HDF5) isMagic(magic string, addr uint64) bool {
 	return bs == magic
 }
 
-// This is the same as LinkInfo?
+// Similar structure to readLinkInfo, but max creation index is 16-bit (not 64-bit).
 func (h5 *HDF5) readAttributeInfo(bf io.Reader) *linkInfo {
 	version := read8(bf)
 	logger.Info("attribute version=", version)
 	checkVal(0, version, "attribute version")
 	flags := read8(bf)
 	logger.Infof("flags=%s", binaryToString(uint64(flags)))
-	ci := invalidAddress
 	if hasFlag8(flags, 0) {
-		ci := read16(bf)
-		logger.Infof("ci=0x%x", ci)
+		read16(bf) // max creation index, unused
 	}
 	fha := read64(bf)
 	logger.Infof("fda=0x%x", fha)
 	bta := read64(bf)
 	logger.Infof("bta=0x%x", bta)
-	co := invalidAddress
 	if hasFlag8(flags, 1) {
-		co = read64(bf)
-		logger.Infof("co=0x%x", co)
+		read64(bf) // creation order index, unused
 	}
 	return &linkInfo{
-		creationIndex:      ci,
-		heapAddress:        fha,
-		btreeAddress:       bta,
-		creationOrderIndex: co,
-		block:              nil,
-		iBlock:             nil,
-		heapIDLength:       0,
-		maxHeapSize:        0,
-		blockSize:          0,
+		heapAddress:  fha,
+		btreeAddress: bta,
 	}
 }
 

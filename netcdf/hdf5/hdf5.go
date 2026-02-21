@@ -1513,8 +1513,10 @@ func (h5 *HDF5) readGroupInfo(obf io.Reader) {
 		fail("group info esimated numbers not supported")
 	}
 	if bf.Rem() > 0 {
-		// Due to a bug with ncgen, extra bytes can appear here.
-		// Allow them
+		// Pre-release HDF5 1.8.0 (before March 2007) always wrote a
+		// fixed 10-byte Group Info message; the current format is
+		// variable-length with a 2-byte minimum. Tolerate the extra
+		// zero bytes for compatibility with those old files.
 		n := bf.Rem()
 		checkZeroes(bf, int(n))
 		logger.Info("ignore", n, "remaining bytes in Group Info message.",

@@ -194,10 +194,9 @@ type attribute struct {
 }
 
 type dataBlock struct {
-	offset     uint64 // offset of data
-	length     uint64 // size in bytes of data
-	dsOffset   uint64 // byte offset in dataset
-	dsLength   uint64 // size in byte of dataset chunk
+	offset   uint64 // offset of data
+	length   uint64 // size in bytes of data
+	dsLength uint64 // size in byte of dataset chunk
 	filterMask uint32
 	offsets    []uint64
 	rawData    []byte
@@ -210,7 +209,6 @@ type filter struct {
 
 // HDF5 implements api.Group for HDF5
 type HDF5 struct {
-	fname         string
 	fileSize      int64
 	file          *raFile
 	groupName     string // fully-qualified
@@ -1022,8 +1020,7 @@ func (h5 *HDF5) readBTreeNodeAny(parent *object, bta uint64, isTop bool,
 			continue
 		}
 
-		pending := dataBlock{entries[i].addr, uint64(entries[i].sizeChunk), 0, 0, entries[i].filterMask, nil, nil}
-		pending.dsOffset = low
+		pending := dataBlock{offset: entries[i].addr, length: uint64(entries[i].sizeChunk), filterMask: entries[i].filterMask}
 		pending.dsLength = numberOfElements * dtSize
 		pending.offsets = entries[i].offsets
 		parent.dataBlocks = append(parent.dataBlocks, pending)
@@ -1668,13 +1665,9 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 		read(bf, b)
 		parent.dataBlocks = append(parent.dataBlocks,
 			dataBlock{
-				offset:     0,
-				length:     uint64(len(b)),
-				dsOffset:   0,
-				dsLength:   uint64(len(b)),
-				filterMask: 0,
-				offsets:    nil,
-				rawData:    b,
+				length:   uint64(len(b)),
+				dsLength: uint64(len(b)),
+				rawData:  b,
 			})
 	case classContiguous:
 		address := read64(bf)
@@ -1683,7 +1676,7 @@ func (h5 *HDF5) readDataLayout(parent *object, obf io.Reader) {
 		if address != invalidAddress {
 			logger.Infof("alloc blocks")
 			parent.dataBlocks = append(parent.dataBlocks,
-				dataBlock{address, uint64(size), 0, uint64(size), 0, nil, nil})
+				dataBlock{offset: address, length: uint64(size), dsLength: uint64(size)})
 		}
 	case classChunked:
 		var flags uint8 // v4 only
@@ -2410,14 +2403,11 @@ func Open(fname string) (nc api.Group, err error) {
 func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 	defer thrower.RecoverError(&err)
 	fileSize := fileSize(file)
-	var fname string
 	if f, ok := file.(*os.File); ok {
-		fname = f.Name()
-		logger.Info("Opened", fname)
+		logger.Info("Opened", f.Name())
 	}
 	h5 := &HDF5{
-		fname:         fname,
-		fileSize:      fileSize,
+		fileSize: fileSize,
 		groupName:     "/",
 		file:          newRaFile(file),
 		rootAddr:      0,
@@ -3233,7 +3223,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 				v1, has := vals2[1].Val.(int32)
 				if !has {
 					// Recent versions of netcdf tools generate unsigned for the dimension.
-					logger.Infof("Unsigned reference dimension in %v", h5.fname)
+					logger.Info("Unsigned reference dimension")
 					uv1 := vals2[1].Val.(uint32)
 					v1 = int32(uv1)
 				}

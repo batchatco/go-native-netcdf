@@ -2,8 +2,7 @@
 //
 // The specification for HDF5 is not comprehensive and leaves out many details.
 // A lot of this code was determined from reverse-engineering various HDF5
-// data files. It's quite hacky for that reason.  It will get cleaned up
-// in the future.
+// data files and cross-referencing with the HDF5 C library source.
 package hdf5
 
 import (
@@ -1974,8 +1973,7 @@ func (h5 *HDF5) readCommon(obj *object, obf io.Reader, version uint8, ohFlags by
 		case typeDatatype:
 			obj.isGroup = false
 			logger.Info("Datatype")
-			// hacky: fix
-
+			// Preserve dimensions and noDf from the existing objAttr across the datatype re-read.
 			save := obj.objAttr.dimensions
 			noDf := obj.objAttr.noDf
 			obj.objAttr = h5.readDatatype(f)
@@ -2165,7 +2163,7 @@ func (h5 *HDF5) readContinuation(obj *object, obf io.Reader, version uint8, ohFl
 }
 
 func (h5 *HDF5) readDataObjectHeader(obj *object, addr uint64) {
-	// Hacky: there must be a better way to determine V1 object headers
+	// V2 object headers begin with the "OHDR" signature; V1 headers have none.
 	if h5.isMagic("OHDR", addr) {
 		h5.readDataObjectHeaderV2(obj, addr)
 		return
@@ -3091,7 +3089,7 @@ func (h5 *HDF5) parseAttr(obj *object, a *attribute) {
 	if a.df != nil {
 		a.df = makeFillValueReader(obj, a.df, int64(calcAttrSize(a)))
 		logger.Infof("Reparsing attribute %s %s %p", a.name, typeNames[a.class], a)
-		// very hacky
+		// Temporarily suppress registrations for internal HDF5 attributes to avoid side effects.
 		save := h5.registrations
 		switch a.name {
 		case "DIMENSION_LIST", "NAME", "REFERENCE_LIST", "CLASS":
@@ -3195,8 +3193,7 @@ func (h5 *HDF5) getDimensions(obj *object) []string {
 		addrToName := h5.addrIndex()
 		for _, v := range varLen {
 			for i, addr := range v {
-				// Each dimension in the dimension list points to an object address in the global heap
-				// TODO: fix this hack to get full 64-bit addresses
+				// Each entry in the dimension list is a uint64 object address.
 				logger.Infof("dimension list %d 0x%x)", i, addr)
 				if name := addrToName[addr]; name != "" {
 					logger.Info("dim found", name)

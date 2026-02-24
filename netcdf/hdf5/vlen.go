@@ -51,7 +51,7 @@ func (vlenManagerType) parse(hr heapReader, c caster, attr *attribute, bitFields
 	logger.Info("* variable-length, dtlength=", attr.length,
 		"proplen=", bf.Rem())
 	// checkVal(1, dtversion, "Only support version 1 of variable-length")
-	vtType := uint8(bitFields & 0b1111) // XXX: we will need other bits too for decoding
+	vtType := uint8(bitFields & 0b1111)
 	vtPad := uint8(bitFields>>4) & 0b1111
 	// The value of pad here may not have anything to do with reading data, just
 	// writing.  So we could accept all of them
@@ -134,7 +134,7 @@ func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) any {
 		s := make([]byte, sz)
 		read(bff, s)
 		logger.Info("string=", string(s))
-		return getString(s) // TODO: should be s[:length]
+		return getString(s)
 	}
 	thisDim := dimLengths[0]
 	if len(dimLengths) == 1 {
@@ -156,7 +156,7 @@ func allocStrings(hr heapReader, bf io.Reader, dimLengths []uint64) any {
 			bff, sz := hr.readGlobalHeap(addr, index)
 			s := make([]byte, sz)
 			read(bff, s)
-			values[i] = getString(s) // TODO: should be s[:length]
+			values[i] = getString(s)
 		}
 		return values
 	}

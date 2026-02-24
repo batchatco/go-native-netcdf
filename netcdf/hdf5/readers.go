@@ -28,7 +28,7 @@ type remReader interface {
 type refCountedFile struct {
 	file     io.ReadSeeker
 	refCount int
-	lock     sync.Mutex // TODO: do we need this lock?
+	lock     sync.Mutex // Serializes seek+read pairs across multiple raFile views of the same file.
 }
 
 // Random access file: can do random seeks

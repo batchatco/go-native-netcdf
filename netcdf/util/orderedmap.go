@@ -259,7 +259,7 @@ func (om *OrderedMap) pType(val any) (string, bool) {
 		}
 		rep, has := replacements[kind]
 		if !has {
-			return kind, true // XXX
+			return kind, true // named or complex type: return as-is
 		}
 		return rep, true
 	}

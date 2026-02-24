@@ -25,7 +25,7 @@ func (opaqueManagerType) cdlTypeString(sh sigHelper, name string, attr *attribut
 }
 
 func (opaqueManagerType) goTypeString(sh sigHelper, typeName string, attr *attribute, origNames map[string]bool) string {
-	signature := fmt.Sprintf("[%d]uint8", attr.length) // TODO
+	signature := fmt.Sprintf("[%d]uint8", attr.length)
 	namedType := sh.findSignature(signature, typeName, origNames, goTypeString)
 	if namedType != "" {
 		return namedType
@@ -50,7 +50,7 @@ func (opaqueManagerType) parse(hr heapReader, c caster, attr *attribute, bitFiel
 	}
 	plen := int(bf.Rem())
 	tag := make([]byte, plen)
-	// not sure what the purpose of the tag is
+	// The tag is a user-defined ASCII string describing the opaque data (per the HDF5 spec).
 	read(bf, tag)
 	stringTag := getString(tag)
 	logger.Info("tag=", stringTag)

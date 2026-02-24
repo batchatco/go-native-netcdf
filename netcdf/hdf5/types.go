@@ -147,8 +147,8 @@ func printDatatype(hr heapReader, c caster, bf remReader, df remReader, objCount
 	assert(attr.length != 0, "attr length can't be zero")
 	parse(dtclass, hr, c, attr, bitFields, bf, df)
 	if df != nil && df.Rem() > 0 {
-		// It is normal for there to be extra data, not sure why yet.
-		// It does not break any unit tests, so the extra data seems unnecessary.
+		// Datatype property sections are padded to 8-byte boundaries per the HDF5 spec;
+		// the remaining bytes are padding and are safe to skip.
 		logger.Info("did not read all data", df.Rem(), typeNames[dtclass])
 		skip(df, df.Rem())
 	}

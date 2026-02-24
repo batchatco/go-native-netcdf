@@ -443,7 +443,7 @@ func (cdf *CDF) getVar(bf io.Reader) variable {
 func (cdf *CDF) readNumber(bf io.Reader) uint64 {
 	if cdf.version < 5 {
 		n := read32(bf)
-		// Weird casts are to do sign extension
+		// Sign-extend the 32-bit value to 64-bit before returning as uint64.
 		return uint64(int64(int32(n)))
 	}
 	return read64(bf)

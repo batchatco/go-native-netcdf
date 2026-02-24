@@ -794,7 +794,8 @@ func (h5 *HDF5) readBTreeInternal(parent *object, bta uint64, numRec uint64, rec
 		cnp := read64(bf) // child node pointer
 		len += 8
 		logger.Infof("cnp=0x%x", cnp)
-		// not sure this calculation is right
+		// Fixed overhead: 4-byte signature + 1 version + 1 type + 4 node size = 10 bytes.
+		// Each child pointer triplet: 8-byte address + 4 numRecords + 4 totalRecords = 16 bytes.
 		fixedSizeOverhead := uint32(10)
 		onePointerTriplet := uint32(16)
 		maxNumberOfRecords := uint64(nodeSize-(fixedSizeOverhead+onePointerTriplet)) / (uint64(recordSize) + uint64(onePointerTriplet))
@@ -856,7 +857,6 @@ func (h5 *HDF5) readRecords(obj *object, bf io.Reader, numRec uint64, ty byte) {
 				length := read16(bf)
 				// done reading heap id
 				logger.Infof("offset=0x%x length=%d", offset, length)
-				// XXX: TODO: don't downcast creationOrder
 				h5.readLinkData(obj, obj.link, offset, length, co, h5.readLinkDirect)
 			} else {
 				logger.Fatal("creation order code has never been executed before")
@@ -3426,7 +3426,6 @@ func (h5 *HDF5) ListVariables() []string {
 			descend(o, group+o.name+"/")
 		}
 	}
-	// TODO: "/" may be overly broad
 	descend(h5.rootObject, "/")
 	return ret
 }

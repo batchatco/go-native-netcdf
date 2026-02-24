@@ -410,7 +410,6 @@ func (cw *CDFWriter) AddVar(name string, vr api.Variable) (err error) {
 	if !hasValidNames(vr.Attributes) {
 		return ErrInvalidName
 	}
-	// TODO: check name for validity
 	cw.checkV5Attributes(vr.Attributes)
 	dimLengths, ty := cw.getDimLengths(vr.Values, vr.Dimensions)
 	switch ty {

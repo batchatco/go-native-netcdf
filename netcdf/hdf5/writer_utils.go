@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
+	"github.com/batchatco/go-thrower"
 )
 
 func buildDataspaceMessage(dimensions []uint64) []byte {
@@ -104,6 +105,213 @@ func buildStringDatatype(size int) []byte {
 	return buf.Bytes()
 }
 
+// calcFieldSize computes the byte size of a value as stored in a compound field.
+func calcFieldSize(val any) int {
+	switch v := val.(type) {
+	case int8, uint8:
+		return 1
+	case int16, uint16:
+		return 2
+	case int32, uint32, float32:
+		return 4
+	case int64, uint64, float64:
+		return 8
+	case string:
+		return 16 // vlen string descriptor
+	case compound:
+		size := 0
+		for _, f := range v {
+			size += calcFieldSize(f.Val)
+		}
+		return size
+	case opaque:
+		return len(v)
+	case enumerated:
+		// Size of the underlying scalar
+		rv := reflect.ValueOf(v.values)
+		for rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+			if rv.Len() > 0 {
+				rv = rv.Index(0)
+			} else {
+				rv = reflect.Zero(rv.Type().Elem())
+			}
+		}
+		return calcFieldSize(rv.Interface())
+	}
+	// Slice = vlen descriptor
+	rv := reflect.ValueOf(val)
+	if rv.Kind() == reflect.Slice {
+		return 16
+	}
+	thrower.Throw(ErrUnsupportedType)
+	return 0
+}
+
+// writeEnc writes a 1, 2, or 4 byte encoded integer for compound byte offsets.
+func writeEnc(buf *bytes.Buffer, val uint32, totalSize uint32) {
+	switch {
+	case totalSize < 256:
+		util.MustWriteByte(buf, byte(val))
+	case totalSize < 65536:
+		util.MustWriteLE(buf, uint16(val))
+	default:
+		util.MustWriteLE(buf, val)
+	}
+}
+
+// navigateToFirst descends through slice levels to reach the first element
+// at the given depth. Returns a zero value if any slice along the way is empty.
+func navigateToFirst(rv reflect.Value, depth int) reflect.Value {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	for range depth {
+		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+			break
+		}
+		if rv.Len() == 0 {
+			return reflect.Zero(rv.Type().Elem())
+		}
+		rv = rv.Index(0)
+	}
+	return rv
+}
+
+func buildOpaqueDatatype(size int) []byte {
+	buf := new(bytes.Buffer)
+	util.MustWriteByte(buf, 0x15) // version 1, class 5 (opaque)
+	util.MustWriteByte(buf, 0x00) // tag length = 0
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteLE(buf, uint32(size))
+	return buf.Bytes()
+}
+
+func (hw *HDF5Writer) buildCompoundDatatype(val compound) []byte {
+	buf := new(bytes.Buffer)
+
+	// Compute total compound size
+	totalSize := 0
+	for _, f := range val {
+		totalSize += calcFieldSize(f.Val)
+	}
+
+	// Header: version 3, class 6
+	nMembers := len(val)
+	util.MustWriteByte(buf, 0x36)
+	util.MustWriteByte(buf, byte(nMembers&0xFF))
+	util.MustWriteByte(buf, byte((nMembers>>8)&0xFF))
+	util.MustWriteByte(buf, byte((nMembers>>16)&0xFF))
+	util.MustWriteLE(buf, uint32(totalSize))
+
+	// Members
+	offset := uint32(0)
+	for _, f := range val {
+		// Name (null-terminated, no padding for version 3)
+		util.MustWriteRaw(buf, append([]byte(f.Name), 0))
+		// Byte offset (encoded)
+		writeEnc(buf, offset, uint32(totalSize))
+		// Member datatype
+		var dt []byte
+		if _, ok := f.Val.(string); ok {
+			// Strings in compounds are always vlen
+			dt = hw.buildVLenStringDatatype()
+		} else {
+			// For compound members, nDims=0: any remaining slice is vlen
+			dt = hw.buildDatatypeMessage(f.Val, 0)
+		}
+		util.MustWriteRaw(buf, dt)
+		offset += uint32(calcFieldSize(f.Val))
+	}
+
+	return buf.Bytes()
+}
+
+func (hw *HDF5Writer) buildEnumDatatype(e enumerated) []byte {
+	buf := new(bytes.Buffer)
+
+	// Determine base integer type from the inner values
+	rv := reflect.ValueOf(e.values)
+	for rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		if rv.Len() > 0 {
+			rv = rv.Index(0)
+		} else {
+			rv = reflect.Zero(rv.Type().Elem())
+		}
+	}
+
+	var baseSize int
+	var signed bool
+	switch rv.Interface().(type) {
+	case int8:
+		baseSize, signed = 1, true
+	case uint8:
+		baseSize, signed = 1, false
+	case int16:
+		baseSize, signed = 2, true
+	case uint16:
+		baseSize, signed = 2, false
+	case int32:
+		baseSize, signed = 4, true
+	case uint32:
+		baseSize, signed = 4, false
+	case int64:
+		baseSize, signed = 8, true
+	case uint64:
+		baseSize, signed = 8, false
+	}
+
+	nMembers := len(e.names)
+
+	// Header: version 3, class 8
+	util.MustWriteByte(buf, 0x38)
+	util.MustWriteByte(buf, byte(nMembers&0xFF))
+	util.MustWriteByte(buf, byte((nMembers>>8)&0xFF))
+	util.MustWriteByte(buf, byte((nMembers>>16)&0xFF))
+	util.MustWriteLE(buf, uint32(baseSize))
+
+	// Base type (fixed-point)
+	baseDt := buildFixedPointDatatype(baseSize, signed, hw.byteOrder)
+	util.MustWriteRaw(buf, baseDt)
+
+	// Member names (null-terminated, no padding for version 3)
+	for _, name := range e.names {
+		util.MustWriteRaw(buf, append([]byte(name), 0))
+	}
+
+	// Member values
+	for _, val := range e.memberVals {
+		util.MustWrite(buf, hw.byteOrder, val)
+	}
+
+	return buf.Bytes()
+}
+
+func (hw *HDF5Writer) buildVlenSequenceDatatype(rv reflect.Value) []byte {
+	buf := new(bytes.Buffer)
+	util.MustWriteByte(buf, 0x19) // version 1, class 9
+	util.MustWriteByte(buf, 0x00) // type=0 (sequence), padding=0, cset=0
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteByte(buf, 0x00)
+	util.MustWriteLE(buf, uint32(16)) // vlen descriptor size
+
+	// Build element datatype: all nesting within the element is array dimensions
+	var elemVal any
+	if rv.Len() > 0 {
+		elemVal = rv.Index(0).Interface()
+	} else {
+		elemVal = reflect.Zero(rv.Type().Elem()).Interface()
+	}
+	elemRv := reflect.ValueOf(elemVal)
+	for elemRv.Kind() == reflect.Pointer || elemRv.Kind() == reflect.Interface {
+		elemRv = elemRv.Elem()
+	}
+	allDims := getDimensionsRecursive(elemRv)
+	elemDt := hw.buildDatatypeMessage(elemVal, len(allDims))
+	util.MustWriteRaw(buf, elemDt)
+	return buf.Bytes()
+}
+
 func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 	buf := new(bytes.Buffer)
 	util.MustWriteByte(buf, 1) // version
@@ -112,10 +320,10 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 	nameBytes := append([]byte(name), 0)
 	util.MustWriteLE(buf, uint16(len(nameBytes)))
 
-	dtMsg := hw.buildDatatypeMessage(val)
+	dims, nDims := hw.getAttributeDimensions(val)
+	dtMsg := hw.buildDatatypeMessage(val, nDims)
 	util.MustWriteLE(buf, uint16(len(dtMsg)))
 
-	dims := hw.getDimensions(val)
 	dsMsg := buildDataspaceMessage(dims)
 	util.MustWriteLE(buf, uint16(len(dsMsg)))
 	writePadded := func(b []byte) {
@@ -141,15 +349,37 @@ func (hw *HDF5Writer) buildAttributeMessage(name string, val any) h5Message {
 			maxLen++ // include null terminator
 		}
 	}
-	hw.writeAttributeDataRecursive(buf, rv, maxLen)
+	hw.writeAttributeDataRecursive(buf, rv, maxLen, nDims)
 
 	return h5Message{mType: 12, data: buf.Bytes()}
 }
 
-func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.Value, maxLen int) {
+func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.Value, maxLen int, dimRemaining int) {
+	// Handle special types before general slice processing
+	switch v := rv.Interface().(type) {
+	case compound:
+		hw.writeCompoundValue(buf, v)
+		return
+	case opaque:
+		util.MustWriteRaw(buf, []byte(v))
+		return
+	case enumerated:
+		hw.writeAttributeDataRecursive(buf, reflect.ValueOf(v.values), maxLen, dimRemaining)
+		return
+	}
+
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		// When dimRemaining == 0, this slice is vlen: write descriptor
+		if dimRemaining <= 0 {
+			idx := hw.vlenHeapIndices[hw.vlenPos]
+			util.MustWriteLE(buf, uint32(rv.Len()))
+			util.MustWriteLE(buf, hw.heap.addr)
+			util.MustWriteLE(buf, idx)
+			hw.vlenPos++
+			return
+		}
 		for i := range rv.Len() {
-			hw.writeAttributeDataRecursive(buf, rv.Index(i), maxLen)
+			hw.writeAttributeDataRecursive(buf, rv.Index(i), maxLen, dimRemaining-1)
 		}
 		return
 	}
@@ -171,16 +401,97 @@ func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.
 		}
 		return
 	}
-	util.MustWrite(buf, hw.byteOrder, rv.Interface())
+	switch rv.Kind() {
+	case reflect.Int8, reflect.Uint8,
+		reflect.Int16, reflect.Uint16,
+		reflect.Int32, reflect.Uint32,
+		reflect.Int64, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		util.MustWrite(buf, hw.byteOrder, rv.Interface())
+	default:
+		thrower.Throw(ErrUnsupportedType)
+	}
 }
 
-func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
-	rv := reflect.ValueOf(val)
-	t := rv.Type()
-	for t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Pointer {
-		t = t.Elem()
+// writeCompoundValue writes all fields of a compound value.
+func (hw *HDF5Writer) writeCompoundValue(buf *bytes.Buffer, val compound) {
+	for _, f := range val {
+		switch v := f.Val.(type) {
+		case int8, uint8, int16, uint16, int32, uint32, int64, uint64, float32, float64:
+			util.MustWrite(buf, hw.byteOrder, v)
+		case string:
+			// Vlen string descriptor
+			idx := hw.heap.indices[v]
+			util.MustWriteLE(buf, uint32(len(v)))
+			util.MustWriteLE(buf, hw.heap.addr)
+			util.MustWriteLE(buf, idx)
+		case compound:
+			hw.writeCompoundValue(buf, v)
+		case opaque:
+			util.MustWriteRaw(buf, []byte(v))
+		case enumerated:
+			util.MustWrite(buf, hw.byteOrder, v.values)
+		default:
+			// Vlen sequence descriptor
+			rv := reflect.ValueOf(v)
+			if rv.Kind() == reflect.Slice {
+				idx := hw.vlenHeapIndices[hw.vlenPos]
+				util.MustWriteLE(buf, uint32(rv.Len()))
+				util.MustWriteLE(buf, hw.heap.addr)
+				util.MustWriteLE(buf, idx)
+				hw.vlenPos++
+			} else {
+				thrower.Throw(ErrUnsupportedType)
+			}
+		}
+	}
+}
+
+func (hw *HDF5Writer) buildDatatypeMessage(val any, nDims int) []byte {
+	// Handle enumerated (struct wrapper) at top level
+	if e, ok := val.(enumerated); ok {
+		return hw.buildEnumDatatype(e)
 	}
 
+	rv := reflect.ValueOf(val)
+	origRv := rv // keep original for string vlen detection
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+
+	// Navigate through nDims array dimensions to find element type
+	t := rv.Type()
+	dimsStripped := 0
+	for dimsStripped < nDims && (t.Kind() == reflect.Slice || t.Kind() == reflect.Array) {
+		if t == reflect.TypeOf(compound{}) || t == reflect.TypeOf(opaque{}) {
+			break
+		}
+		t = t.Elem()
+		dimsStripped++
+	}
+
+	// Check for special types at element level
+	if t == reflect.TypeOf(enumerated{}) {
+		elem := navigateToFirst(rv, dimsStripped)
+		return hw.buildEnumDatatype(elem.Interface().(enumerated))
+	}
+	if t == reflect.TypeOf(compound{}) {
+		elem := navigateToFirst(rv, dimsStripped)
+		return hw.buildCompoundDatatype(elem.Interface().(compound))
+	}
+	if t == reflect.TypeOf(opaque{}) {
+		elem := navigateToFirst(rv, dimsStripped)
+		o := elem.Interface().(opaque)
+		return buildOpaqueDatatype(len(o))
+	}
+
+	// If still a slice after consuming declared dims, it's vlen
+	if t.Kind() == reflect.Slice {
+		elem := navigateToFirst(rv, dimsStripped)
+		return hw.buildVlenSequenceDatatype(elem)
+	}
+
+	// Scalar types
 	switch t.Kind() {
 	case reflect.Int8:
 		return buildFixedPointDatatype(1, true, hw.byteOrder)
@@ -203,17 +514,18 @@ func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
 	case reflect.Float64:
 		return buildFloatingPointDatatype(8, hw.byteOrder)
 	case reflect.String:
-		if hw.shouldUseVLen(rv) {
+		if hw.shouldUseVLen(origRv) {
 			return hw.buildVLenStringDatatype()
 		}
-		maxLen := 0
-		for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
-			rv = rv.Elem()
+		for origRv.Kind() == reflect.Pointer || origRv.Kind() == reflect.Interface {
+			origRv = origRv.Elem()
 		}
-		findMaxLen(rv, &maxLen)
+		maxLen := 0
+		findMaxLen(origRv, &maxLen)
 		return buildStringDatatype(maxLen + 1)
 	}
-	return buildFixedPointDatatype(4, true, hw.byteOrder)
+	thrower.Throw(ErrUnsupportedType)
+	return nil
 }
 
 func (hw *HDF5Writer) buildVLenStringDatatype() []byte {

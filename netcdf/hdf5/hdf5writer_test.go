@@ -1,6 +1,7 @@
 package hdf5
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -232,4 +233,115 @@ func TestWriterRoundtripStrings(t *testing.T) {
 
 func TestWriterRoundtripMultiDim(t *testing.T) {
 	roundtrip(t, "test_multidim")
+}
+
+func TestWriterRoundtripCompound(t *testing.T) {
+	roundtrip(t, "testcompounds")
+}
+
+func TestWriterRoundtripEnum(t *testing.T) {
+	roundtrip(t, "testenum")
+}
+
+func TestWriterRoundtripOpaque(t *testing.T) {
+	roundtrip(t, "testopaque")
+}
+
+func TestWriterRoundtripVlen(t *testing.T) {
+	roundtrip(t, "testvlen")
+}
+
+func TestWriterRejectsUnsupportedTypes(t *testing.T) {
+	outFile := "testdata/unsupported_type_test.h5"
+	w, err := OpenWriter(outFile)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	defer os.Remove(outFile)
+	defer w.Close()
+
+	unsupported := []struct {
+		name string
+		val  any
+	}{
+		{"bool", true},
+		{"int", int(42)},
+		{"uint", uint(42)},
+		{"complex64", complex64(1 + 2i)},
+		{"complex128", complex128(1 + 2i)},
+		{"bools", []bool{true, false}},
+		{"complex128s", []complex128{1 + 2i}},
+		{"ints", []int{1, 2, 3}},
+	}
+
+	for _, tc := range unsupported {
+		err := w.AddVar(tc.name, api.Variable{Values: tc.val})
+		if err == nil {
+			t.Errorf("AddVar(%s) should have returned an error for type %T", tc.name, tc.val)
+			continue
+		}
+		if !errors.Is(err, ErrUnsupportedType) {
+			t.Errorf("AddVar(%s) error should wrap ErrUnsupportedType, got: %v", tc.name, err)
+		}
+	}
+
+	// Verify supported types are still accepted
+	supported := []struct {
+		name string
+		val  any
+	}{
+		{"i8", int8(1)},
+		{"u8", uint8(1)},
+		{"i16", int16(1)},
+		{"u16", uint16(1)},
+		{"i32", int32(1)},
+		{"u32", uint32(1)},
+		{"i64", int64(1)},
+		{"u64", uint64(1)},
+		{"f32", float32(1.0)},
+		{"f64", float64(1.0)},
+		{"str", "hello"},
+		{"sliceI32", []int32{1, 2, 3}},
+		{"sliceF64", []float64{1.0, 2.0}},
+		{"sliceStr", []string{"a", "b"}},
+	}
+
+	for _, tc := range supported {
+		err := w.AddVar(tc.name, api.Variable{Values: tc.val})
+		if err != nil {
+			t.Errorf("AddVar(%s) should have accepted type %T, got: %v", tc.name, tc.val, err)
+		}
+	}
+}
+
+func TestWriterRejectsUnsupportedAttributeTypes(t *testing.T) {
+	outFile := "testdata/unsupported_attr_test.h5"
+	w, err := OpenWriter(outFile)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	defer os.Remove(outFile)
+	defer w.Close()
+
+	attrs, _ := util.NewOrderedMap(
+		[]string{"bad"},
+		map[string]any{"bad": true},
+	)
+	err = w.AddAttributes(attrs)
+	if err == nil {
+		t.Error("AddAttributes should have returned an error for bool attribute")
+	} else if !errors.Is(err, ErrUnsupportedType) {
+		t.Errorf("AddAttributes error should wrap ErrUnsupportedType, got: %v", err)
+	}
+
+	// Also test via AddVar attribute
+	err = w.AddVar("x", api.Variable{
+		Values:     int32(1),
+		Attributes: attrs,
+	})
+	if err == nil {
+		t.Error("AddVar should have returned an error for bool attribute")
+	} else if !errors.Is(err, ErrUnsupportedType) {
+		t.Errorf("AddVar error should wrap ErrUnsupportedType, got: %v", err)
+	}
 }

@@ -20,20 +20,23 @@ var (
 )
 
 type h5Var struct {
-	name       string
-	val        any
-	dimensions []string
-	attributes api.AttributeMap
-	addr       uint64
-	isDimScale bool
+	name            string
+	val             any
+	dimensions      []string
+	attributes      api.AttributeMap
+	addr            uint64
+	isDimScale      bool
+	vlenHeapIndices []uint32            // heap indices for vlen elements
+	attrVlenIndices map[string][]uint32 // per-attribute vlen heap indices
 }
 
 type h5Group struct {
-	name       string
-	groups     map[string]*h5Group
-	vars       map[string]*h5Var
-	attributes api.AttributeMap
-	addr       uint64
+	name            string
+	groups          map[string]*h5Group
+	vars            map[string]*h5Var
+	attributes      api.AttributeMap
+	addr            uint64
+	attrVlenIndices map[string][]uint32 // per-attribute vlen heap indices
 }
 
 type h5GlobalHeap struct {
@@ -49,13 +52,15 @@ type h5Message struct {
 }
 
 type HDF5Writer struct {
-	file      *os.File
-	buf       *bytes.Buffer
-	root      *h5Group
-	heap      *h5GlobalHeap
-	closed    bool
-	dimAddrs  map[string]uint64 // dimension name → dim scale variable OH address
-	byteOrder binary.ByteOrder
+	file            *os.File
+	buf             *bytes.Buffer
+	root            *h5Group
+	heap            *h5GlobalHeap
+	closed          bool
+	dimAddrs        map[string]uint64 // dimension name → dim scale variable OH address
+	byteOrder       binary.ByteOrder
+	vlenHeapIndices []uint32 // per-variable vlen heap indices during data write
+	vlenPos         int      // counter into vlenHeapIndices during data write
 }
 
 func (hw *HDF5Writer) Close() (err error) {
@@ -77,9 +82,11 @@ func (hw *HDF5Writer) Close() (err error) {
 	//    so we know their addresses for DIMENSION_LIST references.
 	hw.writeDimScaleContents(hw.root)
 
-	// 3. Collect strings and dimension references, then write global heap
+	// 3. Collect strings, vlen data, and dimension references, then write global heap
 	hw.heap = &h5GlobalHeap{indices: make(map[string]uint32)}
 	hw.collectStrings(hw.root)
+	hw.collectVlenData(hw.root)
+	hw.collectAttrVlenData(hw.root)
 	hw.collectDimReferences(hw.root)
 	if len(hw.heap.objects) > 0 {
 		hw.writeGlobalHeap()
@@ -229,7 +236,7 @@ func (hw *HDF5Writer) writeDimScaleContents(g *h5Group) {
 	for _, name := range dimNames {
 		v := g.vars[name]
 		dataAddr := uint64(hw.buf.Len())
-		dataSize := hw.writeData(v.val)
+		dataSize := hw.writeDataVar(v)
 
 		v.addr = uint64(hw.buf.Len())
 		hw.writeVarObjectHeaderV2(v, dataAddr, dataSize)
@@ -287,7 +294,7 @@ func (hw *HDF5Writer) writeGroupContents(g *h5Group) {
 	for _, name := range varNames {
 		v := g.vars[name]
 		dataAddr := uint64(hw.buf.Len())
-		dataSize := hw.writeData(v.val)
+		dataSize := hw.writeDataVar(v)
 
 		v.addr = uint64(hw.buf.Len())
 		hw.writeVarObjectHeaderV2(v, dataAddr, dataSize)
@@ -341,6 +348,12 @@ func (hw *HDF5Writer) writeGroupObjectHeaderV2(g *h5Group) {
 	if g.attributes != nil {
 		for _, k := range g.attributes.Keys() {
 			val, _ := g.attributes.Get(k)
+			if indices, ok := g.attrVlenIndices[k]; ok {
+				hw.vlenHeapIndices = indices
+				hw.vlenPos = 0
+			} else {
+				hw.vlenHeapIndices = nil
+			}
 			messages = append(messages, hw.buildAttributeMessage(k, val))
 		}
 	}
@@ -366,8 +379,13 @@ func (hw *HDF5Writer) writeSuperblockV2() {
 }
 
 func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize uint64) {
-	dtMsg := hw.buildDatatypeMessage(v.val)
-	dsMsg := buildDataspaceMessage(hw.getDimensions(v.val))
+	nDims := len(v.dimensions)
+	dtMsg := hw.buildDatatypeMessage(v.val, nDims)
+	rv := reflect.ValueOf(v.val)
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	dsMsg := buildDataspaceMessage(getDimensionsLimited(rv, nDims))
 	layoutMsg := hw.buildLayoutMessageV2(dataAddr, dataSize)
 
 	messages := []h5Message{
@@ -379,6 +397,12 @@ func (hw *HDF5Writer) writeVarObjectHeaderV2(v *h5Var, dataAddr uint64, dataSize
 	if v.attributes != nil {
 		for _, k := range v.attributes.Keys() {
 			val, _ := v.attributes.Get(k)
+			if indices, ok := v.attrVlenIndices[k]; ok {
+				hw.vlenHeapIndices = indices
+				hw.vlenPos = 0
+			} else {
+				hw.vlenHeapIndices = nil
+			}
 			messages = append(messages, hw.buildAttributeMessage(k, val))
 		}
 	}
@@ -466,8 +490,8 @@ func (hw *HDF5Writer) writeObjectHeaderV2(messages []h5Message) {
 }
 // writeData writes variable data to the buffer and returns the logical
 // data size (before alignment padding).
-func (hw *HDF5Writer) writeData(val any) uint64 {
-	rv := reflect.ValueOf(val)
+func (hw *HDF5Writer) writeDataVar(v *h5Var) uint64 {
+	rv := reflect.ValueOf(v.val)
 	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
 	}
@@ -478,8 +502,13 @@ func (hw *HDF5Writer) writeData(val any) uint64 {
 			fixedLen++ // include null terminator
 		}
 	}
+	// Set up vlen state for this variable
+	hw.vlenHeapIndices = v.vlenHeapIndices
+	hw.vlenPos = 0
+
+	nDims := len(v.dimensions)
 	start := hw.buf.Len()
-	hw.writeDataRecursive(rv, fixedLen)
+	hw.writeDataRecursive(rv, fixedLen, nDims)
 	dataSize := uint64(hw.buf.Len() - start)
 	for (hw.buf.Len() % 8) != 0 {
 		util.MustWriteByte(hw.buf, 0)
@@ -487,10 +516,32 @@ func (hw *HDF5Writer) writeData(val any) uint64 {
 	return dataSize
 }
 
-func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
+func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int, dimRemaining int) {
+	// Handle special types before general slice processing
+	switch v := rv.Interface().(type) {
+	case compound:
+		hw.writeCompoundValue(hw.buf, v)
+		return
+	case opaque:
+		util.MustWriteRaw(hw.buf, []byte(v))
+		return
+	case enumerated:
+		hw.writeDataRecursive(reflect.ValueOf(v.values), fixedLen, dimRemaining)
+		return
+	}
+
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		// When dimRemaining == 0, this slice is vlen data: write descriptor
+		if dimRemaining <= 0 {
+			idx := hw.vlenHeapIndices[hw.vlenPos]
+			util.MustWriteLE(hw.buf, uint32(rv.Len()))
+			util.MustWriteLE(hw.buf, hw.heap.addr)
+			util.MustWriteLE(hw.buf, idx)
+			hw.vlenPos++
+			return
+		}
 		for i := range rv.Len() {
-			hw.writeDataRecursive(rv.Index(i), fixedLen)
+			hw.writeDataRecursive(rv.Index(i), fixedLen, dimRemaining-1)
 		}
 		return
 	}
@@ -512,7 +563,16 @@ func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 		}
 		return
 	}
-	util.MustWrite(hw.buf, hw.byteOrder, rv.Interface())
+	switch rv.Kind() {
+	case reflect.Int8, reflect.Uint8,
+		reflect.Int16, reflect.Uint16,
+		reflect.Int32, reflect.Uint32,
+		reflect.Int64, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		util.MustWrite(hw.buf, hw.byteOrder, rv.Interface())
+	default:
+		thrower.Throw(ErrUnsupportedType)
+	}
 }
 
 func (hw *HDF5Writer) shouldUseVLen(rv reflect.Value) bool {
@@ -553,29 +613,332 @@ func (hw *HDF5Writer) collectStrings(g *h5Group) {
 }
 
 func (hw *HDF5Writer) collectStringsRecursive(rv reflect.Value) {
-	if !hw.shouldUseVLen(rv) {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+
+	// Walk into compound values to collect string fields
+	if c, ok := rv.Interface().(compound); ok {
+		for _, f := range c {
+			// Strings in compounds are always vlen → add to heap directly
+			if s, ok := f.Val.(string); ok {
+				hw.addStringToHeap(s)
+			} else {
+				hw.collectStringsRecursive(reflect.ValueOf(f.Val))
+			}
+		}
 		return
 	}
-	hw.collectStringsRecursiveActual(rv)
+
+	// Walk into enumerated to check inner values
+	if e, ok := rv.Interface().(enumerated); ok {
+		hw.collectStringsRecursive(reflect.ValueOf(e.values))
+		return
+	}
+
+	// Skip opaque (no strings inside)
+	if _, ok := rv.Interface().(opaque); ok {
+		return
+	}
+
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		// For vlen strings, collect them
+		if hw.shouldUseVLen(rv) {
+			hw.collectStringsActual(rv)
+			return
+		}
+		// Recurse into slices to find compound/enum elements
+		for i := range rv.Len() {
+			hw.collectStringsRecursive(rv.Index(i))
+		}
+		return
+	}
+
+	// Single string: collect if it's a standalone vlen string
+	// (scalar strings in attributes are fixed-length, not collected)
 }
 
-func (hw *HDF5Writer) collectStringsRecursiveActual(rv reflect.Value) {
+func (hw *HDF5Writer) collectStringsActual(rv reflect.Value) {
 	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
 	}
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
 		for i := range rv.Len() {
-			hw.collectStringsRecursiveActual(rv.Index(i))
+			hw.collectStringsActual(rv.Index(i))
 		}
 		return
 	}
 	if rv.Kind() == reflect.String {
-		s := rv.String()
-		if _, ok := hw.heap.indices[s]; !ok {
-			hw.heap.objects = append(hw.heap.objects, []byte(s))
-			hw.heap.indices[s] = uint32(len(hw.heap.objects))
+		hw.addStringToHeap(rv.String())
+	}
+}
+
+func (hw *HDF5Writer) addStringToHeap(s string) {
+	if _, ok := hw.heap.indices[s]; !ok {
+		hw.heap.objects = append(hw.heap.objects, []byte(s))
+		hw.heap.indices[s] = uint32(len(hw.heap.objects))
+	}
+}
+
+// collectVlenData walks all variables and serializes vlen elements into the global heap.
+func (hw *HDF5Writer) collectVlenData(g *h5Group) {
+	for _, v := range g.vars {
+		nDims := len(v.dimensions)
+		rv := reflect.ValueOf(v.val)
+		for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+			rv = rv.Elem()
+		}
+		// Check if this variable has vlen data (more nesting than declared dims)
+		if hw.hasVlenData(rv, nDims) {
+			hw.collectVlenElements(rv, nDims, v)
 		}
 	}
+	for _, sub := range g.groups {
+		hw.collectVlenData(sub)
+	}
+}
+
+// hasVlenData checks if a value has more nesting levels than nDims,
+// meaning it contains vlen data.
+func (hw *HDF5Writer) hasVlenData(rv reflect.Value, nDims int) bool {
+	if e, ok := rv.Interface().(enumerated); ok {
+		return hw.hasVlenData(reflect.ValueOf(e.values), nDims)
+	}
+	for range nDims {
+		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+			return false
+		}
+		if rv.Type() == reflect.TypeOf(compound{}) || rv.Type() == reflect.TypeOf(opaque{}) {
+			return false
+		}
+		if rv.Len() == 0 {
+			// Check type: if element type is still a slice, it's vlen
+			elemType := rv.Type().Elem()
+			return elemType.Kind() == reflect.Slice &&
+				elemType != reflect.TypeOf(compound{}) &&
+				elemType != reflect.TypeOf(opaque{})
+		}
+		rv = rv.Index(0)
+	}
+	// After consuming nDims, check if there's still a slice (= vlen)
+	if rv.Kind() == reflect.Slice && rv.Type() != reflect.TypeOf(compound{}) && rv.Type() != reflect.TypeOf(opaque{}) {
+		return true
+	}
+	// Also check within compound fields
+	if c, ok := rv.Interface().(compound); ok {
+		for _, f := range c {
+			frv := reflect.ValueOf(f.Val)
+			if frv.Kind() == reflect.Slice && frv.Type() != reflect.TypeOf(compound{}) && frv.Type() != reflect.TypeOf(opaque{}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// collectVlenElements walks through the array dimensions and serializes
+// each vlen element into the global heap.
+func (hw *HDF5Writer) collectVlenElements(rv reflect.Value, dimsLeft int, v *h5Var) {
+	if e, ok := rv.Interface().(enumerated); ok {
+		hw.collectVlenElements(reflect.ValueOf(e.values), dimsLeft, v)
+		return
+	}
+	if dimsLeft > 0 && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) {
+		for i := range rv.Len() {
+			hw.collectVlenElements(rv.Index(i), dimsLeft-1, v)
+		}
+		return
+	}
+	// At the vlen level: serialize this element's data
+	if rv.Kind() == reflect.Slice {
+		hw.serializeVlenElement(rv, v)
+		return
+	}
+	// Check compound fields for vlen
+	if c, ok := rv.Interface().(compound); ok {
+		for _, f := range c {
+			frv := reflect.ValueOf(f.Val)
+			if frv.Kind() == reflect.Slice && frv.Type() != reflect.TypeOf(compound{}) && frv.Type() != reflect.TypeOf(opaque{}) {
+				hw.serializeVlenElement(frv, v)
+			}
+		}
+	}
+}
+
+// collectAttrVlenData walks all attributes (on variables and groups) and
+// serializes vlen elements into the global heap.
+func (hw *HDF5Writer) collectAttrVlenData(g *h5Group) {
+	for _, v := range g.vars {
+		if v.attributes != nil {
+			for _, k := range v.attributes.Keys() {
+				val, _ := v.attributes.Get(k)
+				var indices []uint32
+				hw.collectVlenFromValue(reflect.ValueOf(val), &indices)
+				if len(indices) > 0 {
+					if v.attrVlenIndices == nil {
+						v.attrVlenIndices = make(map[string][]uint32)
+					}
+					v.attrVlenIndices[k] = indices
+				}
+			}
+		}
+	}
+	if g.attributes != nil {
+		for _, k := range g.attributes.Keys() {
+			val, _ := g.attributes.Get(k)
+			var indices []uint32
+			hw.collectVlenFromValue(reflect.ValueOf(val), &indices)
+			if len(indices) > 0 {
+				if g.attrVlenIndices == nil {
+					g.attrVlenIndices = make(map[string][]uint32)
+				}
+				g.attrVlenIndices[k] = indices
+			}
+		}
+	}
+	for _, sub := range g.groups {
+		hw.collectAttrVlenData(sub)
+	}
+}
+
+// collectVlenFromValue recursively walks a value and serializes any vlen
+// elements (varying-length slices) to the global heap.
+func (hw *HDF5Writer) collectVlenFromValue(rv reflect.Value, indices *[]uint32) {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+
+	switch v := rv.Interface().(type) {
+	case compound:
+		for _, f := range v {
+			frv := reflect.ValueOf(f.Val)
+			if frv.Kind() == reflect.Slice &&
+				frv.Type() != reflect.TypeOf(compound{}) &&
+				frv.Type() != reflect.TypeOf(opaque{}) {
+				// Vlen field in compound: serialize it
+				hw.serializeVlenToHeap(frv, indices)
+			} else {
+				hw.collectVlenFromValue(frv, indices)
+			}
+		}
+		return
+	case opaque:
+		return
+	case enumerated:
+		hw.collectVlenFromValue(reflect.ValueOf(v.values), indices)
+		return
+	}
+
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		if rv.Type() == reflect.TypeOf(compound{}) || rv.Type() == reflect.TypeOf(opaque{}) {
+			return
+		}
+		// Check if elements are slices with varying lengths (vlen)
+		if rv.Len() > 0 && rv.Index(0).Kind() == reflect.Slice {
+			isVlen := false
+			if rv.Len() > 1 {
+				firstLen := rv.Index(0).Len()
+				for i := 1; i < rv.Len(); i++ {
+					if rv.Index(i).Len() != firstLen {
+						isVlen = true
+						break
+					}
+				}
+			}
+			if isVlen {
+				for i := range rv.Len() {
+					hw.serializeVlenToHeap(rv.Index(i), indices)
+				}
+				return
+			}
+		}
+		// Regular array: recurse into elements
+		for i := range rv.Len() {
+			hw.collectVlenFromValue(rv.Index(i), indices)
+		}
+	}
+}
+
+// serializeVlenToHeap serializes a single vlen slice and adds it to the heap.
+func (hw *HDF5Writer) serializeVlenToHeap(rv reflect.Value, indices *[]uint32) {
+	buf := new(bytes.Buffer)
+	for i := range rv.Len() {
+		elem := rv.Index(i)
+		switch val := elem.Interface().(type) {
+		case compound:
+			hw.writeCompoundValue(buf, val)
+		case opaque:
+			util.MustWriteRaw(buf, []byte(val))
+		case enumerated:
+			util.MustWrite(buf, hw.byteOrder, val.values)
+		default:
+			util.MustWrite(buf, hw.byteOrder, val)
+		}
+	}
+	data := buf.Bytes()
+	hw.heap.objects = append(hw.heap.objects, data)
+	*indices = append(*indices, uint32(len(hw.heap.objects)))
+}
+
+// getAttributeDimensions returns the array dimensions and effective nDims
+// for an attribute value, detecting vlen (varying inner lengths) and stopping.
+func (hw *HDF5Writer) getAttributeDimensions(val any) ([]uint64, int) {
+	rv := reflect.ValueOf(val)
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	if e, ok := rv.Interface().(enumerated); ok {
+		return hw.getAttributeDimensions(e.values)
+	}
+	var dims []uint64
+	nDims := 0
+	for rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		if rv.Type() == reflect.TypeOf(compound{}) || rv.Type() == reflect.TypeOf(opaque{}) {
+			break
+		}
+		dims = append(dims, uint64(rv.Len()))
+		nDims++
+		if rv.Len() == 0 {
+			break
+		}
+		// Check if inner elements have varying lengths (= vlen boundary)
+		if rv.Len() > 1 && rv.Index(0).Kind() == reflect.Slice {
+			firstLen := rv.Index(0).Len()
+			isVlen := false
+			for i := 1; i < rv.Len(); i++ {
+				if rv.Index(i).Len() != firstLen {
+					isVlen = true
+					break
+				}
+			}
+			if isVlen {
+				break
+			}
+		}
+		rv = rv.Index(0)
+	}
+	return dims, nDims
+}
+
+// serializeVlenElement serializes a single vlen element and adds it to the heap.
+func (hw *HDF5Writer) serializeVlenElement(rv reflect.Value, v *h5Var) {
+	buf := new(bytes.Buffer)
+	for i := range rv.Len() {
+		elem := rv.Index(i)
+		switch val := elem.Interface().(type) {
+		case compound:
+			hw.writeCompoundValue(buf, val)
+		case opaque:
+			util.MustWriteRaw(buf, []byte(val))
+		case enumerated:
+			util.MustWrite(buf, hw.byteOrder, val.values)
+		default:
+			util.MustWrite(buf, hw.byteOrder, val)
+		}
+	}
+	data := buf.Bytes()
+	hw.heap.objects = append(hw.heap.objects, data)
+	v.vlenHeapIndices = append(v.vlenHeapIndices, uint32(len(hw.heap.objects)))
 }
 
 func (hw *HDF5Writer) writeGlobalHeap() {
@@ -643,10 +1006,43 @@ func (hw *HDF5Writer) getDimensions(val any) []uint64 {
 }
 
 func getDimensionsRecursive(rv reflect.Value) []uint64 {
+	// Unwrap enumerated to its inner values
+	if e, ok := rv.Interface().(enumerated); ok {
+		return getDimensionsRecursive(reflect.ValueOf(e.values))
+	}
 	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		// Stop at compound and opaque (named slice types that are leaf values)
+		if rv.Type() == reflect.TypeOf(compound{}) || rv.Type() == reflect.TypeOf(opaque{}) {
+			return nil
+		}
 		dims := []uint64{uint64(rv.Len())}
 		if rv.Len() > 0 {
 			inner := getDimensionsRecursive(rv.Index(0))
+			dims = append(dims, inner...)
+		}
+		return dims
+	}
+	return nil
+}
+
+// getDimensionsLimited returns dimensions up to maxDepth levels deep.
+// For vlen variables, the array nesting exceeds the declared dimensions;
+// this function stops after maxDepth levels so the excess nesting can be
+// identified as vlen data.
+func getDimensionsLimited(rv reflect.Value, maxDepth int) []uint64 {
+	if e, ok := rv.Interface().(enumerated); ok {
+		return getDimensionsLimited(reflect.ValueOf(e.values), maxDepth)
+	}
+	if maxDepth <= 0 {
+		return nil
+	}
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		if rv.Type() == reflect.TypeOf(compound{}) || rv.Type() == reflect.TypeOf(opaque{}) {
+			return nil
+		}
+		dims := []uint64{uint64(rv.Len())}
+		if rv.Len() > 0 {
+			inner := getDimensionsLimited(rv.Index(0), maxDepth-1)
 			dims = append(dims, inner...)
 		}
 		return dims
@@ -658,6 +1054,14 @@ func (hw *HDF5Writer) AddAttributes(attrs api.AttributeMap) error {
 	if !hasValidNames(attrs) {
 		return ErrInvalidName
 	}
+	if attrs != nil {
+		for _, k := range attrs.Keys() {
+			v, _ := attrs.Get(k)
+			if !isSupportedType(v) {
+				return fmt.Errorf("%w: %T", ErrUnsupportedType, v)
+			}
+		}
+	}
 	hw.root.attributes = attrs
 	return nil
 }
@@ -668,6 +1072,17 @@ func (hw *HDF5Writer) AddVar(name string, vr api.Variable) error {
 	}
 	if !hasValidNames(vr.Attributes) {
 		return ErrInvalidName
+	}
+	if !isSupportedType(vr.Values) {
+		return fmt.Errorf("%w: %T", ErrUnsupportedType, vr.Values)
+	}
+	if vr.Attributes != nil {
+		for _, k := range vr.Attributes.Keys() {
+			v, _ := vr.Attributes.Get(k)
+			if !isSupportedType(v) {
+				return fmt.Errorf("%w: %T", ErrUnsupportedType, v)
+			}
+		}
 	}
 	hw.root.vars[name] = &h5Var{
 		name:       name,
@@ -707,6 +1122,14 @@ func (gw *groupWriter) AddAttributes(attrs api.AttributeMap) error {
 	if !hasValidNames(attrs) {
 		return ErrInvalidName
 	}
+	if attrs != nil {
+		for _, k := range attrs.Keys() {
+			v, _ := attrs.Get(k)
+			if !isSupportedType(v) {
+				return fmt.Errorf("%w: %T", ErrUnsupportedType, v)
+			}
+		}
+	}
 	gw.group.attributes = attrs
 	return nil
 }
@@ -717,6 +1140,17 @@ func (gw *groupWriter) AddVar(name string, vr api.Variable) error {
 	}
 	if !hasValidNames(vr.Attributes) {
 		return ErrInvalidName
+	}
+	if !isSupportedType(vr.Values) {
+		return fmt.Errorf("%w: %T", ErrUnsupportedType, vr.Values)
+	}
+	if vr.Attributes != nil {
+		for _, k := range vr.Attributes.Keys() {
+			v, _ := vr.Attributes.Get(k)
+			if !isSupportedType(v) {
+				return fmt.Errorf("%w: %T", ErrUnsupportedType, v)
+			}
+		}
 	}
 	gw.group.vars[name] = &h5Var{
 		name:       name,
@@ -741,6 +1175,83 @@ func (gw *groupWriter) CreateGroup(name string) (api.Writer, error) {
 	}
 	gw.group.groups[name] = g
 	return &groupWriter{hw: gw.hw, group: g}, nil
+}
+
+// isSupportedType checks whether val is a type the HDF5/NetCDF4 writer can
+// handle. It recursively unwraps slices/arrays (stopping at compound/opaque)
+// and checks that the leaf type is one of the supported scalar types.
+func isSupportedType(val any) bool {
+	switch v := val.(type) {
+	case int8, uint8, int16, uint16, int32, uint32, int64, uint64,
+		float32, float64, string:
+		return true
+	case compound:
+		for _, f := range v {
+			if !isSupportedType(f.Val) {
+				return false
+			}
+		}
+		return true
+	case opaque:
+		return true
+	case enumerated:
+		return isSupportedType(v.values)
+	}
+
+	rv := reflect.ValueOf(val)
+	for rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		t := rv.Type()
+		if t == reflect.TypeOf(compound{}) || t == reflect.TypeOf(opaque{}) {
+			return true
+		}
+		if rv.Len() == 0 {
+			// Check element type of empty slice
+			return isSupportedElemType(t.Elem())
+		}
+		rv = rv.Index(0)
+		// Check for named types at element level
+		switch rv.Interface().(type) {
+		case compound, opaque, enumerated:
+			return isSupportedType(rv.Interface())
+		}
+	}
+
+	// Check the leaf scalar
+	switch rv.Kind() {
+	case reflect.Int8, reflect.Uint8,
+		reflect.Int16, reflect.Uint16,
+		reflect.Int32, reflect.Uint32,
+		reflect.Int64, reflect.Uint64,
+		reflect.Float32, reflect.Float64,
+		reflect.String:
+		return true
+	}
+	return false
+}
+
+// isSupportedElemType checks whether a reflect.Type (which may be a slice
+// element type from an empty slice) eventually resolves to a supported leaf.
+func isSupportedElemType(t reflect.Type) bool {
+	for t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+		if t == reflect.TypeOf(compound{}) || t == reflect.TypeOf(opaque{}) {
+			return true
+		}
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Int8, reflect.Uint8,
+		reflect.Int16, reflect.Uint16,
+		reflect.Int32, reflect.Uint32,
+		reflect.Int64, reflect.Uint64,
+		reflect.Float32, reflect.Float64,
+		reflect.String:
+		return true
+	}
+	// Also accept enumerated struct type
+	if t == reflect.TypeOf(enumerated{}) {
+		return true
+	}
+	return false
 }
 
 func hasValidNames(am api.AttributeMap) bool {

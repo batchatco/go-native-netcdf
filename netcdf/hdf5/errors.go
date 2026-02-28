@@ -81,4 +81,8 @@ var (
 	// ErrUnsupportedReferenceVersion is returned a reference version other than 1
 	// is encountered.
 	ErrUnsupportedReferenceVersion = errors.New("unsupported reference version")
+
+	// ErrUnsupportedType is returned when a Go type not supported by NetCDF4
+	// is passed to the writer (e.g. bool, complex64, int).
+	ErrUnsupportedType = errors.New("unsupported type")
 )

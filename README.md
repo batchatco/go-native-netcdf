@@ -225,6 +225,20 @@ underlying format for NetCDF4, it does not aim to support every feature or exoti
 data type available in the full HDF5 specification that is not typically used in
 NetCDF4 files.
 
+### HDF5 Reader Type Support
+The HDF5 reader supports user-defined types such as enum, compound, opaque, and
+vlen. However, the values returned for these types use internal (unexported) Go
+types, so they cannot be inspected programmatically by callers. The `ListTypes()`
+and `GetType()` methods on the `Group` interface provide CDL-format type
+descriptions as strings, which is currently the only way to get metadata such as
+enum member names.
+
+### HDF5 Writer Type Support
+The HDF5 writer supports all standard NetCDF4 types listed in the type mapping
+table above. User-defined types such as enum, compound, opaque, and vlen are not
+directly constructable through the writer API, but if read from an existing file,
+they can be written back out (round-tripped) without loss.
+
 ### HDF5 Writer Storage
 The native HDF5 writer currently stores all data using **contiguous** storage.
 Advanced HDF5 features such as **chunking**, **deflate (compression)**, **shuffle**, and **Fletcher32** are not supported for writing.

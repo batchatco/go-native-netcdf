@@ -3453,6 +3453,12 @@ func undoInterfaces(v any) reflect.Value {
 	if top.Kind() != reflect.Slice {
 		return top
 	}
+	// Don't recurse into named slice types (e.g. compound, opaque).
+	// These are intentionally distinct from their underlying types
+	// and should not be decomposed.
+	if top.Type().Name() != "" {
+		return top
+	}
 	length := reflect.ValueOf(v).Len()
 	if length == 0 {
 		return emptySlice(v)

@@ -11,7 +11,9 @@ import (
 type enumManagerType struct{}
 
 type enumerated struct {
-	values any
+	values     any
+	names      []string // member names (e.g. "RED", "GREEN")
+	memberVals []any    // member values (e.g. int8(0), int8(1))
 }
 
 var (
@@ -100,7 +102,7 @@ func (enumManagerType) alloc(hr heapReader, c caster, bf io.Reader, attr *attrib
 	if cast != nil {
 		return values
 	}
-	return enumerated{values}
+	return enumerated{values, enumAttr.enumNames, enumAttr.enumValues}
 }
 
 func (enumManagerType) defaultFillValue(obj *object, objFillValue []byte, undefinedFillValue bool) []byte {

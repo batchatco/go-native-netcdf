@@ -752,7 +752,11 @@ func TestGlobalAttrs(t *testing.T) {
 			"ui32": uint32(8),
 			"i64":  int64(9),
 			"ui64": uint64(10),
-			"col":  enumerated{int8(3)},
+			"col": enumerated{
+				values:     int8(3),
+				names:      []string{"RED", "YELLOW", "GREEN", "CYAN", "BLUE", "MAGENTA"},
+				memberVals: []any{int8(0), int8(1), int8(2), int8(3), int8(4), int8(5)},
+			},
 			"all": compound{
 				{"b", int8('0')},
 				{"s", int16(1)},
@@ -1981,27 +1985,47 @@ func TestEnum(t *testing.T) {
 	defer nc.Close()
 	enum := keyValList{
 		{"c", "color", api.Variable{
-			Values:     enumerated{[]int8{0, 1, 2, 3, 4, 5}},
+			Values: enumerated{
+				values:     []int8{0, 1, 2, 3, 4, 5},
+				names:      []string{"RED", "YELLOW", "GREEN", "CYAN", "BLUE", "MAGENTA"},
+				memberVals: []any{int8(0), int8(1), int8(2), int8(3), int8(4), int8(5)},
+			},
 			Dimensions: []string{"dim"},
 			Attributes: nilMap,
 		}},
 		{"j", "junk", api.Variable{
-			Values:     enumerated{[]int64{1, 2, 3, 4, 5, 6}},
+			Values: enumerated{
+				values:     []int64{1, 2, 3, 4, 5, 6},
+				names:      []string{"FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"},
+				memberVals: []any{int64(1), int64(2), int64(3), int64(4), int64(5), int64(6)},
+			},
 			Dimensions: []string{"dim"},
 			Attributes: nilMap,
 		}},
 		{"nodim", "color", api.Variable{
-			Values:     enumerated{int8(2)},
+			Values: enumerated{
+				values:     int8(2),
+				names:      []string{"RED", "YELLOW", "GREEN", "CYAN", "BLUE", "MAGENTA"},
+				memberVals: []any{int8(0), int8(1), int8(2), int8(3), int8(4), int8(5)},
+			},
 			Dimensions: nil,
 			Attributes: nilMap,
 		}},
 		{"c2", "color2", api.Variable{
-			Values:     enumerated{uint16(0)},
+			Values: enumerated{
+				values:     uint16(0),
+				names:      []string{"BLACK", "WHITE"},
+				memberVals: []any{uint16(0), uint16(1)},
+			},
 			Dimensions: nil,
 			Attributes: nilMap,
 		}},
 		{"j2", "junk2", api.Variable{
-			Values:     enumerated{int32(7)},
+			Values: enumerated{
+				values:     int32(7),
+				names:      []string{"SEVENTH", "EIGHTH"},
+				memberVals: []any{int32(7), int32(8)},
+			},
 			Dimensions: nil,
 			Attributes: nilMap,
 		}},

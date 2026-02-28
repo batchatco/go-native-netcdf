@@ -49,12 +49,13 @@ type h5Message struct {
 }
 
 type HDF5Writer struct {
-	file     *os.File
-	buf      *bytes.Buffer
-	root     *h5Group
-	heap     *h5GlobalHeap
-	closed   bool
-	dimAddrs map[string]uint64 // dimension name → dim scale variable OH address
+	file      *os.File
+	buf       *bytes.Buffer
+	root      *h5Group
+	heap      *h5GlobalHeap
+	closed    bool
+	dimAddrs  map[string]uint64 // dimension name → dim scale variable OH address
+	byteOrder binary.ByteOrder
 }
 
 func (hw *HDF5Writer) Close() (err error) {
@@ -511,7 +512,7 @@ func (hw *HDF5Writer) writeDataRecursive(rv reflect.Value, fixedLen int) {
 		}
 		return
 	}
-	util.MustWriteLE(hw.buf, rv.Interface())
+	util.MustWrite(hw.buf, hw.byteOrder, rv.Interface())
 }
 
 func (hw *HDF5Writer) shouldUseVLen(rv reflect.Value) bool {
@@ -761,8 +762,9 @@ func OpenWriter(fileName string) (api.Writer, error) {
 	}
 	rootAttrs, _ := util.NewOrderedMap(nil, nil)
 	hw := &HDF5Writer{
-		file: file,
-		buf:  new(bytes.Buffer),
+		file:      file,
+		buf:       new(bytes.Buffer),
+		byteOrder: util.NativeByteOrder,
 		root: &h5Group{
 			name:       "/",
 			groups:     make(map[string]*h5Group),

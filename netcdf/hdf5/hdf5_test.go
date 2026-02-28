@@ -1,6 +1,7 @@
 package hdf5
 
 import (
+	"encoding/binary"
 	"io"
 	"math"
 	"os"
@@ -677,23 +678,46 @@ func TestTypes(t *testing.T) {
 	checkAll(t, nc, values)
 }
 
-// Big-endian test. Also uses old file format style (symbol table)
+// Big-endian test. Writes a big-endian file with our writer and reads it back.
 func TestTypesBE(t *testing.T) {
-	fileName := "testdata/testtypesbe.nc" // base filename without extension
-	nc, err := Open(fileName)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	defer nc.Close()
-	values2 := keyValList{}
+	// Filter to numeric types only (skip strings)
+	var values2 keyValList
 	for i := range values {
 		if strings.HasPrefix(values[i].name, "str") {
 			continue
 		}
 		values2 = append(values2, values[i])
-		values2[len(values2)-1].val.Dimensions = []string{}
 	}
+
+	// Write a big-endian file
+	fileName := "testdata/testtypesbe_out.nc"
+	w, err := OpenWriter(fileName)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	defer os.Remove(fileName)
+	w.(*HDF5Writer).byteOrder = binary.BigEndian
+	for _, v := range values2 {
+		err = w.AddVar(v.name, api.Variable{
+			Values:     v.val.Values,
+			Dimensions: v.val.Dimensions,
+			Attributes: filterAttributes(v.val.Attributes),
+		})
+		if err != nil {
+			t.Fatalf("AddVar(%s): %v", v.name, err)
+		}
+	}
+	err = w.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Read it back and verify
+	nc, err := Open(fileName)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer nc.Close()
 	checkAll(t, nc, values2)
 }
 

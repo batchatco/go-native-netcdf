@@ -7,6 +7,9 @@ import (
 	"github.com/batchatco/go-thrower"
 )
 
+// NativeByteOrder is the byte order of the host machine.
+var NativeByteOrder binary.ByteOrder = binary.NativeEndian
+
 // MustWrite wraps binary.Write and throws an error if it fails.
 func MustWrite(w io.Writer, order binary.ByteOrder, data any) {
 	err := binary.Write(w, order, data)

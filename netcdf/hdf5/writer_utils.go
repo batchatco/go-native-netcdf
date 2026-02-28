@@ -2,6 +2,7 @@ package hdf5
 
 import (
 	"bytes"
+	"encoding/binary"
 	"reflect"
 
 	"github.com/batchatco/go-native-netcdf/netcdf/util"
@@ -30,12 +31,14 @@ func buildDataspaceMessage(dimensions []uint64) []byte {
 	return buf.Bytes()
 }
 
-func buildFixedPointDatatype(size int, signed bool) []byte {
+func buildFixedPointDatatype(size int, signed bool, order binary.ByteOrder) []byte {
 	buf := new(bytes.Buffer)
 	util.MustWriteByte(buf, 0x10) // version 1, class 0
 
 	var b1 byte
-	b1 = 0x00 // bit 0 = 0 (LE)
+	if order == binary.BigEndian {
+		b1 = 0x01 // bit 0 = 1 (BE)
+	}
 	if signed {
 		b1 |= 0x08 // bit 3 = 1 (signed)
 	}
@@ -50,12 +53,15 @@ func buildFixedPointDatatype(size int, signed bool) []byte {
 	return buf.Bytes()
 }
 
-func buildFloatingPointDatatype(size int) []byte {
+func buildFloatingPointDatatype(size int, order binary.ByteOrder) []byte {
 	buf := new(bytes.Buffer)
 	util.MustWriteByte(buf, 0x11) // version 1, class 1
 
 	var b1, b2, b3 byte
-	b1 = 0x20 // LE, mantissa norm = 2
+	b1 = 0x20 // mantissa norm = 2
+	if order == binary.BigEndian {
+		b1 |= 0x01 // bit 0 = 1 (BE)
+	}
 	if size == 4 {
 		b2 = 31 // sign location 31
 	} else {
@@ -165,7 +171,7 @@ func (hw *HDF5Writer) writeAttributeDataRecursive(buf *bytes.Buffer, rv reflect.
 		}
 		return
 	}
-	util.MustWriteLE(buf, rv.Interface())
+	util.MustWrite(buf, hw.byteOrder, rv.Interface())
 }
 
 func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
@@ -177,25 +183,25 @@ func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
 
 	switch t.Kind() {
 	case reflect.Int8:
-		return buildFixedPointDatatype(1, true)
+		return buildFixedPointDatatype(1, true, hw.byteOrder)
 	case reflect.Uint8:
-		return buildFixedPointDatatype(1, false)
+		return buildFixedPointDatatype(1, false, hw.byteOrder)
 	case reflect.Int16:
-		return buildFixedPointDatatype(2, true)
+		return buildFixedPointDatatype(2, true, hw.byteOrder)
 	case reflect.Uint16:
-		return buildFixedPointDatatype(2, false)
+		return buildFixedPointDatatype(2, false, hw.byteOrder)
 	case reflect.Int32:
-		return buildFixedPointDatatype(4, true)
+		return buildFixedPointDatatype(4, true, hw.byteOrder)
 	case reflect.Uint32:
-		return buildFixedPointDatatype(4, false)
+		return buildFixedPointDatatype(4, false, hw.byteOrder)
 	case reflect.Int64:
-		return buildFixedPointDatatype(8, true)
+		return buildFixedPointDatatype(8, true, hw.byteOrder)
 	case reflect.Uint64:
-		return buildFixedPointDatatype(8, false)
+		return buildFixedPointDatatype(8, false, hw.byteOrder)
 	case reflect.Float32:
-		return buildFloatingPointDatatype(4)
+		return buildFloatingPointDatatype(4, hw.byteOrder)
 	case reflect.Float64:
-		return buildFloatingPointDatatype(8)
+		return buildFloatingPointDatatype(8, hw.byteOrder)
 	case reflect.String:
 		if hw.shouldUseVLen(rv) {
 			return hw.buildVLenStringDatatype()
@@ -207,7 +213,7 @@ func (hw *HDF5Writer) buildDatatypeMessage(val any) []byte {
 		findMaxLen(rv, &maxLen)
 		return buildStringDatatype(maxLen + 1)
 	}
-	return buildFixedPointDatatype(4, true)
+	return buildFixedPointDatatype(4, true, hw.byteOrder)
 }
 
 func (hw *HDF5Writer) buildVLenStringDatatype() []byte {

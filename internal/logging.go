@@ -3,16 +3,15 @@ package internal
 // Internal logging utility.
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"runtime/debug"
-	"sync"
 )
 
 type Logger struct {
 	logLevel LogLevel
 	logger   *log.Logger
-	lock     sync.Mutex
 }
 
 type LogLevel int
@@ -45,7 +44,7 @@ var (
 
 func NewLogger() *Logger {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
-	return &Logger{logLevel: LogLevelDefault, logger: logger, lock: sync.Mutex{}}
+	return &Logger{logLevel: LogLevelDefault, logger: logger}
 }
 
 func (l *Logger) LogLevel() LogLevel {
@@ -62,57 +61,30 @@ func (l *Logger) SetLogLevel(level LogLevel) LogLevel {
 	return old
 }
 
-func (l *Logger) output(level LogLevel, f func(...any), v ...any) {
+func (l *Logger) output(level LogLevel, s string) {
 	if level > l.logLevel {
 		return
 	}
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	l.logger.SetPrefix(levelToPrefix[level])
-	f(v...)
+	l.logger.Output(2, levelToPrefix[level]+s)
 }
 
-func (l *Logger) outputf(level LogLevel, f func(string, ...any), format string, v ...any) {
-	if level > l.logLevel {
-		return
-	}
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l *Logger) Info(v ...any)                 { l.output(LevelInfo, fmt.Sprintln(v...)) }
+func (l *Logger) Infof(format string, v ...any) { l.output(LevelInfo, fmt.Sprintf(format, v...)) }
 
-	l.logger.SetPrefix(levelToPrefix[level])
-	f(format, v...)
-}
+func (l *Logger) Warn(v ...any)                 { l.output(LevelWarn, fmt.Sprintln(v...)) }
+func (l *Logger) Warnf(format string, v ...any) { l.output(LevelWarn, fmt.Sprintf(format, v...)) }
 
-func (l *Logger) Info(v ...any) {
-	l.output(LevelInfo, l.logger.Println, v...)
-}
-
-func (l *Logger) Infof(format string, v ...any) {
-	l.outputf(LevelInfo, l.logger.Printf, format, v...)
-}
-
-func (l *Logger) Warn(v ...any) {
-	l.output(LevelWarn, l.logger.Println, v...)
-}
-
-func (l *Logger) Warnf(format string, v ...any) {
-	l.outputf(LevelWarn, l.logger.Printf, format, v...)
-}
-
-func (l *Logger) Error(v ...any) {
-	l.output(LevelError, l.logger.Println, v...)
-}
-
-func (l *Logger) Errorf(format string, v ...any) {
-	l.outputf(LevelError, l.logger.Printf, format, v...)
-}
+func (l *Logger) Error(v ...any)                 { l.output(LevelError, fmt.Sprintln(v...)) }
+func (l *Logger) Errorf(format string, v ...any) { l.output(LevelError, fmt.Sprintf(format, v...)) }
 
 func (l *Logger) Fatal(v ...any) {
 	log.Print(string(debug.Stack()))
-	l.output(LevelFatal, l.logger.Fatalln, v...)
+	l.output(LevelFatal, fmt.Sprintln(v...))
+	os.Exit(1)
 }
 
 func (l *Logger) Fatalf(format string, v ...any) {
 	log.Print(string(debug.Stack()))
-	l.outputf(LevelFatal, l.logger.Fatalf, format, v...)
+	l.output(LevelFatal, fmt.Sprintf(format, v...))
+	os.Exit(1)
 }

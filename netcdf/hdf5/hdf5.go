@@ -1,8 +1,4 @@
 // Package hdf5 implements HDF5 for NetCDF
-//
-// The specification for HDF5 is not comprehensive and leaves out many details.
-// A lot of this code was determined from reverse-engineering various HDF5
-// data files and cross-referencing with the HDF5 C library source.
 package hdf5
 
 import (
@@ -40,7 +36,7 @@ const (
 	dtversionStandard = iota + 1 // not what the doc calls it
 	dtversionArray
 	dtversionPacked
-	dtversionV4 // undocumented; used when superblock v3 is enabled
+	dtversionV4 // new reference types; introduced in HDF5 1.12
 )
 
 // For disabling/enabling code
@@ -54,7 +50,9 @@ const (
 	floatEnums = false
 )
 
-// dtversionV4 is used when superblock v3 (SOHM) is enabled
+// maxDTVersion is the highest datatype version we support.
+// Version 4 was introduced in HDF5 1.12 for new reference types.
+// For compound types, version 4 uses the same packed encoding as version 3.
 const maxDTVersion byte = 4
 
 // The hidden attribute which identifies what software wrote the file out.
@@ -193,9 +191,9 @@ type attribute struct {
 }
 
 type dataBlock struct {
-	offset   uint64 // offset of data
-	length   uint64 // size in bytes of data
-	dsLength uint64 // size in byte of dataset chunk
+	offset     uint64 // offset of data
+	length     uint64 // size in bytes of data
+	dsLength   uint64 // size in byte of dataset chunk
 	filterMask uint32
 	offsets    []uint64
 	rawData    []byte
@@ -223,13 +221,13 @@ type HDF5 struct {
 }
 
 type linkInfo struct {
-	heapAddress  uint64
-	btreeAddress uint64
-	block        []uint64
-	iBlock             []uint64
-	maxHeapSize        int
-	blockSize          uint64
-	tableWidth         uint16
+	heapAddress      uint64
+	btreeAddress     uint64
+	block            []uint64
+	iBlock           []uint64
+	maxHeapSize      int
+	blockSize        uint64
+	tableWidth       uint16
 	maximumBlockSize uint64
 }
 
@@ -1494,22 +1492,22 @@ func (h5 *HDF5) readGroupInfo(obf io.Reader) {
 	flags := read8(bf)
 	logger.Infof("flags=%s", binaryToString(uint64(flags)))
 	if hasFlag8(flags, 0) {
-		// this flag is never set
+		// Link phase change: max compact and min dense values.
+		// These are group management hints and can be safely ignored.
 		assert(bf.Rem() >= 4, "mcv/mdv size")
 		mcv := read16(bf)
 		logger.Infof("mcv=0x%x", mcv)
 		mdv := read16(bf)
 		logger.Infof("mdv=0x%x", mdv)
-		fail("group info link phase change flags not supported")
 	}
 	if hasFlag8(flags, 1) {
-		// this flag is never set
+		// Estimated entry info: estimated number of entries and name length.
+		// These are group management hints and can be safely ignored.
 		assert(bf.Rem() >= 4, "ene/elnl size")
 		ene := read16(bf)
-		logger.Infof("elnl=0x%x", ene)
+		logger.Infof("ene=0x%x", ene)
 		elnl := read16(bf)
 		logger.Infof("elnl=0x%x", elnl)
-		fail("group info esimated numbers not supported")
 	}
 	if bf.Rem() > 0 {
 		// Pre-release HDF5 1.8.0 (before March 2007) always wrote a
@@ -2407,7 +2405,7 @@ func New(file api.ReadSeekerCloser) (nc api.Group, err error) {
 		logger.Info("Opened", f.Name())
 	}
 	h5 := &HDF5{
-		fileSize: fileSize,
+		fileSize:      fileSize,
 		groupName:     "/",
 		file:          newRaFile(file),
 		rootAddr:      0,
@@ -2454,7 +2452,6 @@ func makeSlices(ty reflect.Type, dimLengths []uint64) reflect.Value {
 	}
 	return reflect.MakeSlice(sliceType, int(dimLengths[0]), int(dimLengths[0]))
 }
-
 
 func readAll(bf io.Reader, b []byte) (uint64, error) {
 	tot := uint64(0)

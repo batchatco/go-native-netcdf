@@ -1293,6 +1293,96 @@ func TestCompound2(t *testing.T) {
 	checkAll(t, nc, values)
 }
 
+// TestCompoundDatatypeV4 tests reading compound types encoded with datatype
+// version 4, which is used by HDF5 1.12+ (H5F_LIBVER_V112). We create a
+// fixed-dimension compound file and repack it with --low=3 --high=3 to force
+// V112 format, which encodes datatypes at version 4. Fixed dimensions are
+// used because V112 also forces V4 data layout messages for chunked data
+// (UNLIMITED dimensions), which the reader does not yet support.
+func TestCompoundDatatypeV4(t *testing.T) {
+	genName := ncGen(t, "testcompoundsv4")
+	if genName == "" {
+		t.Error(errorNcGen)
+		return
+	}
+	defer os.Remove(genName)
+
+	// Repack with V112 library version bounds to produce datatype version 4
+	repackedName := "testdata/testcompoundsv4_repacked.nc"
+	cmd := exec.Command(h5RepackBinary, "--low=3", "--high=3", genName, repackedName)
+	err := cmd.Run()
+	if err != nil {
+		t.Skip("h5repack with --low=3 --high=3 not supported:", err)
+		return
+	}
+	defer os.Remove(repackedName)
+
+	nc, err := Open(repackedName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer nc.Close()
+
+	vals := []compound{
+		{
+			compoundField{
+				Name: "A",
+				Val: compound{
+					{"B", int8('0')},
+					{"S", int16(1)},
+					{"I", int32(2)},
+					{"F", float32(3.0)},
+					{"D", float64(4.0)},
+				},
+			},
+			compoundField{
+				Name: "S",
+				Val:  "a",
+			},
+		},
+		{
+			compoundField{
+				Name: "A",
+				Val: compound{
+					{"B", int8('1')},
+					{"S", int16(2)},
+					{"I", int32(3)},
+					{"F", float32(4.0)},
+					{"D", float64(5.0)},
+				},
+			},
+			compoundField{
+				Name: "S",
+				Val:  "b",
+			},
+		},
+	}
+	samevals := []compound{
+		{{"A", int32(0)}, {"B", int32(1)}, {"C", int32(2)}},
+		{{"A", int32(3)}, {"B", int32(4)}, {"C", int32(5)}},
+	}
+	values := keyValList{
+		keyVal{
+			"v", "Includes",
+			api.Variable{
+				Values:     vals,
+				Dimensions: []string{"dim"},
+				Attributes: nilMap,
+			},
+		},
+		keyVal{
+			"same", "Sametypes",
+			api.Variable{
+				Values:     samevals,
+				Dimensions: []string{"dim"},
+				Attributes: nilMap,
+			},
+		},
+	}
+	checkAll(t, nc, values)
+}
+
 func TestArray(t *testing.T) {
 	// Arrays are only used implicitly in NetCDF4.
 	genName := ncGen(t, "testarray")

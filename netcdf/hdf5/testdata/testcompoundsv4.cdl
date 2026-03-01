@@ -1,0 +1,31 @@
+netcdf testcompoundsv4 {
+types:
+  compound Alltypes {
+    byte B;
+    short S;
+    int I;
+    float F;
+    double D;
+  };
+  compound Includes {
+    Alltypes A;
+    string S;
+  };
+  compound Sametypes {
+    int A;
+    int B;
+    int C;
+  };
+
+dimensions:
+  dim = 2;
+
+variables:
+  Includes v(dim);
+  Sametypes same(dim);
+
+data:
+  v = {{'0', 1, 2, 3.0, 4.0}, "a"}, {{'1', 2, 3, 4.0, 5.0}, "b"};
+
+  same = {0,1,2},{3,4,5};
+}

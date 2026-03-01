@@ -1479,6 +1479,7 @@ func genSuperblockFile(t *testing.T, version string) string {
 	buildCmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		t.Skip("cannot build mksuperblock (HDF5 C library may not be available):", string(out))
+		return ""
 	}
 	t.Cleanup(func() { os.Remove(bin) })
 

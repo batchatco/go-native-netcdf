@@ -1383,31 +1383,10 @@ func TestCompoundDatatypeV4(t *testing.T) {
 	checkAll(t, nc, values)
 }
 
-// TestSuperblockV0 tests reading a pure HDF5 file with a V0 superblock,
-// which uses symbol tables and local heaps instead of the V2 fractal heap
-// and link messages. This exercises the readSymbolTable, readSymbolTableLeaf,
-// and readLocalHeap code paths. The test file is generated at test time
-// by building and running the testdata/mkv0 helper program, which uses
-// cgo to call the HDF5 C library directly.
-func TestSuperblockV0(t *testing.T) {
-	// Build the mkv0 helper
-	mkv0Bin := "testdata/mkv0_bin"
-	buildCmd := exec.Command("go", "build", "-o", mkv0Bin, "./testdata/mkv0")
-	buildCmd.Env = append(os.Environ(), "CGO_ENABLED=1")
-	if out, err := buildCmd.CombinedOutput(); err != nil {
-		t.Skip("cannot build mkv0 (HDF5 C library may not be available):", string(out))
-		return
-	}
-	defer os.Remove(mkv0Bin)
-
-	// Generate the V0 file
-	filename := "testdata/testsbv0.h5"
-	cmd := exec.Command("./"+mkv0Bin, filename)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatal("mkv0 failed:", string(out))
-	}
-	defer os.Remove(filename)
-
+// checkSuperblockFile verifies that an HDF5 file created by testdata/mksuperblock
+// contains the expected datasets, attributes, and subgroups.
+func checkSuperblockFile(t *testing.T, filename string) {
+	t.Helper()
 	nc, err := Open(filename)
 	if err != nil {
 		t.Fatal(err)
@@ -1490,113 +1469,47 @@ func TestSuperblockV0(t *testing.T) {
 	}
 }
 
-// TestSuperblockV1 tests reading a pure HDF5 file with a V1 superblock.
-// V1 is created by the HDF5 C library when a non-default indexed storage
-// B-tree K value is set with H5Pset_istore_k. Like V0, it uses symbol
-// tables and local heaps, but adds the indexed storage K field in the
-// superblock. The test file is generated at test time by building and
-// running the testdata/mkv1 helper program, which uses cgo to call the
-// HDF5 C library directly. This approach is necessary because h5repack
-// and other HDF5 command-line tools cannot produce V1 superblock files.
-func TestSuperblockV1(t *testing.T) {
-	// Build the mkv1 helper
-	mkv1Bin := "testdata/mkv1_bin"
-	buildCmd := exec.Command("go", "build", "-o", mkv1Bin, "./testdata/mkv1")
+// genSuperblockFile builds the testdata/mksuperblock helper and uses it to
+// generate an HDF5 file with the given superblock version. It skips the test
+// if the HDF5 C library is not available.
+func genSuperblockFile(t *testing.T, version string) string {
+	t.Helper()
+	bin := "testdata/mksuperblock_bin"
+	buildCmd := exec.Command("go", "build", "-o", bin, "./testdata/mksuperblock")
 	buildCmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	if out, err := buildCmd.CombinedOutput(); err != nil {
-		t.Skip("cannot build mkv1 (HDF5 C library may not be available):", string(out))
-		return
+		t.Skip("cannot build mksuperblock (HDF5 C library may not be available):", string(out))
 	}
-	defer os.Remove(mkv1Bin)
+	t.Cleanup(func() { os.Remove(bin) })
 
-	// Generate the V1 file
-	filename := "testdata/testsbv1.h5"
-	cmd := exec.Command("./"+mkv1Bin, filename)
+	filename := "testdata/testsb_v" + version + ".h5"
+	cmd := exec.Command("./"+bin, version, filename)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatal("mkv1 failed:", string(out))
+		t.Fatal("mksuperblock failed:", string(out))
 	}
-	defer os.Remove(filename)
+	t.Cleanup(func() { os.Remove(filename) })
+	return filename
+}
 
-	nc, err := Open(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer nc.Close()
+// TestSuperblockV0 tests reading a pure HDF5 file with a V0 superblock,
+// which uses symbol tables and local heaps instead of the V2 fractal heap
+// and link messages. This exercises the readSymbolTable, readSymbolTableLeaf,
+// and readLocalHeap code paths. The test file is generated at test time by
+// the testdata/mksuperblock helper, which uses cgo to call the HDF5 C
+// library directly.
+func TestSuperblockV0(t *testing.T) {
+	checkSuperblockFile(t, genSuperblockFile(t, "0"))
+}
 
-	// Check root-level variables
-	vars := nc.ListVariables()
-	slices.Sort(vars)
-	expectedVars := []string{"floats", "ints", "shorts"}
-	if !reflect.DeepEqual(vars, expectedVars) {
-		t.Fatalf("variables: got %v, want %v", vars, expectedVars)
-	}
-
-	// Check int values and attribute
-	getter, err := nc.GetVarGetter("ints")
-	if err != nil {
-		t.Fatal(err)
-	}
-	intVals, err := getter.Values()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(intVals, []int32{1, 2, 3, 4, 5}) {
-		t.Errorf("ints: got %v", intVals)
-	}
-	attrs := getter.Attributes()
-	units, ok := attrs.Get("units")
-	if !ok {
-		t.Error("missing 'units' attribute on ints")
-	} else if units != "meters" {
-		t.Errorf("units: got %v, want 'meters'", units)
-	}
-
-	// Check float values
-	getter, err = nc.GetVarGetter("floats")
-	if err != nil {
-		t.Fatal(err)
-	}
-	floatVals, err := getter.Values()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(floatVals, []float64{1.5, 2.5, 3.5}) {
-		t.Errorf("floats: got %v", floatVals)
-	}
-
-	// Check short values
-	getter, err = nc.GetVarGetter("shorts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	shortVals, err := getter.Values()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(shortVals, []int16{10, 20, 30}) {
-		t.Errorf("shorts: got %v", shortVals)
-	}
-
-	// Check subgroup
-	groups := nc.ListSubgroups()
-	if len(groups) != 1 || groups[0] != "grp" {
-		t.Fatalf("subgroups: got %v, want [grp]", groups)
-	}
-	sg, err := nc.GetGroup("grp")
-	if err != nil {
-		t.Fatal(err)
-	}
-	getter, err = sg.GetVarGetter("bytes")
-	if err != nil {
-		t.Fatal(err)
-	}
-	byteVals, err := getter.Values()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(byteVals, []int8{7, 8, 9}) {
-		t.Errorf("grp/bytes: got %v", byteVals)
-	}
+// TestSuperblockV1 tests reading a pure HDF5 file with a V1 superblock.
+// V1 adds the indexed storage B-tree K field compared to V0, but otherwise
+// uses the same symbol table and local heap structures. The test file is
+// generated at test time by the testdata/mksuperblock helper, which uses
+// cgo to call the HDF5 C library directly. This approach is necessary
+// because h5repack and other HDF5 command-line tools cannot produce V1
+// superblock files.
+func TestSuperblockV1(t *testing.T) {
+	checkSuperblockFile(t, genSuperblockFile(t, "1"))
 }
 
 func TestArray(t *testing.T) {

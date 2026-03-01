@@ -1,12 +1,13 @@
-// Command mkv1 creates an HDF5 file with a V1 superblock.
+// Command mksuperblock creates an HDF5 file with a specific superblock version.
 //
-// V1 is triggered by setting a non-default indexed storage B-tree K value
-// via H5Pset_istore_k, combined with libver bounds of EARLIEST to prevent
-// the library from upgrading to V2.
-// This approach is used because h5repack and other HDF5 command-line tools
-// cannot produce V1 superblock files.
+// V0 is the default when libver bounds are set to EARLIEST. V1 is triggered
+// by additionally setting a non-default indexed storage B-tree K value via
+// H5Pset_istore_k. Both use libver bounds pinned to EARLIEST/V18 to prevent
+// the library from upgrading to V2. This approach is necessary because
+// h5repack and other HDF5 command-line tools cannot produce V0 or V1
+// superblock files.
 //
-// Usage: mkv1 <output.h5>
+// Usage: mksuperblock <0|1> <output.h5>
 package main
 
 // #cgo LDFLAGS: -lhdf5
@@ -21,21 +22,29 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintf(os.Stderr, "usage: mkv1 <output.h5>\n")
+	if len(os.Args) != 3 {
+		fmt.Fprintf(os.Stderr, "usage: mksuperblock <0|1> <output.h5>\n")
 		os.Exit(1)
 	}
-	filename := C.CString(os.Args[1])
+	version := os.Args[1]
+	if version != "0" && version != "1" {
+		fmt.Fprintf(os.Stderr, "mksuperblock: version must be 0 or 1\n")
+		os.Exit(1)
+	}
+	filename := C.CString(os.Args[2])
 	defer C.free(unsafe.Pointer(filename))
 
 	// File creation properties: non-default istore_k forces V1
-	fcpl := C.H5Pcreate(C.H5P_FILE_CREATE)
-	if fcpl < 0 {
-		fatal("H5Pcreate(FILE_CREATE)")
-	}
-	defer C.H5Pclose(fcpl)
-	if C.H5Pset_istore_k(fcpl, 64) < 0 {
-		fatal("H5Pset_istore_k")
+	fcpl := C.hid_t(C.H5P_DEFAULT)
+	if version == "1" {
+		fcpl = C.H5Pcreate(C.H5P_FILE_CREATE)
+		if fcpl < 0 {
+			fatal("H5Pcreate(FILE_CREATE)")
+		}
+		defer C.H5Pclose(fcpl)
+		if C.H5Pset_istore_k(fcpl, 64) < 0 {
+			fatal("H5Pset_istore_k")
+		}
 	}
 
 	// File access properties: pin to earliest to prevent V2
@@ -142,6 +151,6 @@ func writeStringAttr(obj C.hid_t, name, value string) {
 }
 
 func fatal(msg string) {
-	fmt.Fprintf(os.Stderr, "mkv1: %s failed\n", msg)
+	fmt.Fprintf(os.Stderr, "mksuperblock: %s failed\n", msg)
 	os.Exit(1)
 }
